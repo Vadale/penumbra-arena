@@ -1,0 +1,111 @@
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3",
+  "pytest-asyncio>=0.24",
+  "pytest-cov>=5.0",
+  "hypothesis>=6.115",
+  "ruff>=0.7",
+  "pyright>=1.1.380",
+  "pre-commit>=4.0",
+]
+
+# ───────────────────────────────────────────────────────────────────────────
+# ruff — single tool for lint + format
+# ───────────────────────────────────────────────────────────────────────────
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = [
+  "state",
+  "snapshots",
+  "checkpoints",
+  "chain_data",
+  "ckks_keys",
+  "logs",
+  ".venv",
+  "node_modules",
+]
+
+[tool.ruff.lint]
+select = [
+  "E",    # pycodestyle errors
+  "W",    # pycodestyle warnings
+  "F",    # pyflakes
+  "I",    # isort
+  "B",    # bugbear
+  "UP",   # pyupgrade
+  "N",    # pep8-naming
+  "C4",   # comprehensions
+  "SIM",  # simplify
+  "RUF",  # ruff-specific
+  "PIE",  # misc
+  "PT",   # pytest style
+  "S",    # bandit
+  "ASYNC",
+]
+ignore = [
+  "E501",   # formatter handles line length
+  "S101",   # asserts ok everywhere we use them
+  "B008",   # FastAPI Depends() in defaults
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101", "PLR2004"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+# ───────────────────────────────────────────────────────────────────────────
+# pyright — strict typing on packages, lenient on apps/tests
+# ───────────────────────────────────────────────────────────────────────────
+[tool.pyright]
+# We don't use `strict = [...]` because it force-enables the noisy
+# "unknown" reports that fight networkx/torch generics. Instead we
+# explicitly enable the strict checks that *do* give us signal on our
+# own code (missing parameter / return types, missing type args,
+# implicit Optionals, unreachable code, etc.) and leave the third-party
+# generics in peace.
+include = ["packages"]
+exclude = [
+  "**/node_modules",
+  "**/.venv",
+  "state",
+  "snapshots",
+  "checkpoints",
+  "chain_data",
+]
+pythonVersion = "3.12"
+pythonPlatform = "Darwin"
+typeCheckingMode = "basic"
+
+reportMissingParameterType = "error"
+reportMissingTypeArgument = false
+reportImplicitStringConcatenation = "warning"
+reportUntypedFunctionDecorator = "warning"
+reportUntypedBaseClass = "warning"
+reportUntypedClassDecorator = "warning"
+reportUnusedExpression = "warning"
+reportInconsistentConstructor = "error"
+
+reportMissingTypeStubs = "none"
+reportUnknownMemberType = false
+reportUnknownArgumentType = false
+reportUnknownVariableType = false
+reportUnknownParameterType = false
+reportUnknownLambdaType = false
+
+# ───────────────────────────────────────────────────────────────────────────
+# pytest
+# ───────────────────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+testpaths = ["packages"]
+asyncio_mode = "auto"
+addopts = "-q --strict-markers --tb=short"
+markers = [
+  "slow: marks tests as slow",
+  "crypto: marks crypto property tests",
+  "integration: marks integration tests requiring the full stack",
+]
