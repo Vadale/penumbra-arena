@@ -1,0 +1,49 @@
+# syntax=docker/dockerfile:1.7
+# ──────────────────────────────────────────────────────────────────────
+# Builder stage — install workspace deps with uv into a venv.
+# ──────────────────────────────────────────────────────────────────────
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
+
+ENV UV_LINK_MODE=copy \
+    UV_PROJECT_ENVIRONMENT=/app/.venv \
+    UV_COMPILE_BYTECODE=1
+
+WORKDIR /app
+
+# Copy lockfile + manifests first so this layer caches across code changes.
+COPY pyproject.toml uv.lock ./
+COPY packages/core/pyproject.toml packages/core/pyproject.toml
+COPY packages/transport/pyproject.toml packages/transport/pyproject.toml
+
+# Pre-create the package source dirs so uv can resolve workspace members
+# during the dep install. The actual source comes in the next layer.
+RUN mkdir -p packages/core/penumbra_core packages/transport/penumbra_transport \
+ && touch packages/core/penumbra_core/__init__.py packages/transport/penumbra_transport/__init__.py \
+ && touch packages/core/README.md packages/transport/README.md
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-editable
+
+# Now bring in the real code.
+COPY packages/ packages/
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-editable
+
+# ──────────────────────────────────────────────────────────────────────
+# Runtime stage — slim Python image with the venv copied in.
+# ──────────────────────────────────────────────────────────────────────
+FROM python:3.12-slim-bookworm AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/app/.venv/bin:$PATH"
+
+WORKDIR /app
+
+COPY --from=builder /app/.venv /app/.venv
+COPY --from=builder /app/packages /app/packages
+
+EXPOSE 8000
+
+CMD ["uvicorn", "penumbra_transport.api:app", "--host", "0.0.0.0", "--port", "8000"]
