@@ -1,0 +1,17 @@
+id: text_processing
+title: "Text processing: grep, awk, sed, sort, uniq"
+steps:
+  - instruction: "Search for the word 'penumbra' (case-insensitive) anywhere in the README."
+    validate_cmd: "grep -i penumbra README.md | head -3"
+    expected_pattern: "(?i)penumbra"
+    hint: "`grep -i` is case-insensitive."
+
+  - instruction: "Print only the second column (whitespace-separated) of `ls -la`."
+    validate_cmd: "ls -la | awk '{print $2}' | head -5"
+    expected_pattern: "^[0-9]+"
+    hint: "awk treats whitespace-separated fields as $1, $2, … by default."
+
+  - instruction: "Show the 5 most frequent words in this README."
+    validate_cmd: "tr -s '[:space:]' '\\n' < README.md | sort | uniq -c | sort -rn | head -5"
+    expected_pattern: "^[[:space:]]*[0-9]+ [^ ]"
+    hint: "tr to split, sort + uniq -c to count, sort -rn for top-N."

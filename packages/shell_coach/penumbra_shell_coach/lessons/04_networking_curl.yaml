@@ -1,0 +1,17 @@
+id: networking_curl
+title: "Networking: curl, dig, lsof"
+steps:
+  - instruction: "Resolve example.com via dig and show the first ANSWER line."
+    validate_cmd: "dig +short example.com | head -1"
+    expected_pattern: "^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+"
+    hint: "`+short` strips the verbose header."
+
+  - instruction: "Issue a HEAD request to https://example.com and show the HTTP status line."
+    validate_cmd: "curl -sI https://example.com | head -1"
+    expected_pattern: "HTTP/[12]"
+    hint: "`-s` silent, `-I` HEAD-only."
+
+  - instruction: "List ports currently in LISTEN state on this Mac."
+    validate_cmd: "lsof -nP -iTCP -sTCP:LISTEN 2>/dev/null | head -5"
+    expected_pattern: "(LISTEN|COMMAND)"
+    hint: "lsof -i lists socket-using processes; -sTCP:LISTEN filters by state."

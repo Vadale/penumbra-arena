@@ -1,0 +1,22 @@
+id: macos_specific
+title: "macOS-specific tools: brew, defaults, mdfind, pbcopy"
+steps:
+  - instruction: "Print the Homebrew version."
+    validate_cmd: "brew --version | head -1"
+    expected_pattern: "Homebrew"
+    hint: "`brew --version` prints the version string."
+
+  - instruction: "Use mdfind (Spotlight) to find any file in the current directory whose name contains 'README'."
+    validate_cmd: "mdfind -onlyin . -name README | head -3"
+    expected_pattern: "README"
+    hint: "`mdfind -onlyin <dir>` restricts to a subtree."
+
+  - instruction: "Read the system-wide AppleShowAllFiles default (whether Finder shows dotfiles)."
+    validate_cmd: "defaults read com.apple.Finder AppleShowAllFiles 2>/dev/null || echo not-set"
+    expected_pattern: "(true|false|1|0|not-set|NO|YES)"
+    hint: "`defaults read <domain> <key>` reads a preference; missing keys print stderr — we tolerate that."
+
+  - instruction: "Copy a string to the macOS clipboard and verify with pbpaste."
+    validate_cmd: "echo 'penumbra' | pbcopy && pbpaste"
+    expected_pattern: "penumbra"
+    hint: "`pbcopy` consumes stdin, `pbpaste` emits the current clipboard contents."

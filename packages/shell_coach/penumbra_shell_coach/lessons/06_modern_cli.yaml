@@ -1,0 +1,17 @@
+id: modern_cli
+title: "Modern CLI replacements: rg, jq, fzf, eza"
+steps:
+  - instruction: "Use ripgrep (rg) to find every TODO marker under the current directory."
+    validate_cmd: "command -v rg >/dev/null && rg -n 'TODO' . 2>/dev/null | head -3 || echo 'rg-not-installed'"
+    expected_pattern: "(TODO|rg-not-installed)"
+    hint: "If ripgrep isn't installed, `brew install ripgrep`."
+
+  - instruction: "Use jq to pretty-print pnpm-lock.yaml... wait — that's YAML. Use yq to convert and pretty-print pnpm-workspace.yaml."
+    validate_cmd: "command -v yq >/dev/null && yq . pnpm-workspace.yaml | head -5 || cat pnpm-workspace.yaml | head -5"
+    expected_pattern: "(packages|apps)"
+    hint: "`yq` is jq for YAML. Falls back to plain cat if not installed."
+
+  - instruction: "Show the disk used by node_modules using eza (or du if eza not present)."
+    validate_cmd: "command -v eza >/dev/null && eza --total-size -lah node_modules 2>/dev/null | head -3 || du -sh node_modules 2>/dev/null || echo 'no-node-modules'"
+    expected_pattern: "(node_modules|no-node-modules|[0-9]+[KMGT])"
+    hint: "`eza --total-size` is a modern alternative to `ls` with directory totals."

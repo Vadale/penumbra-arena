@@ -1,0 +1,17 @@
+id: pipes_redirection
+title: "Pipes, redirection, process substitution"
+steps:
+  - instruction: "Count the number of lines in pyproject.toml."
+    validate_cmd: "wc -l < pyproject.toml"
+    expected_pattern: "^[[:space:]]*[0-9]+"
+    hint: "`<` redirects a file into a command's stdin."
+
+  - instruction: "Send the output of `ls` to a file `/tmp/ls_output.txt` and verify it exists."
+    validate_cmd: "ls > /tmp/ls_output.txt && test -s /tmp/ls_output.txt && echo ok"
+    expected_pattern: "ok"
+    hint: "`>` overwrites the target; `>>` appends."
+
+  - instruction: "Pipe `echo` into a chain that reverses each line."
+    validate_cmd: "echo 'hello' | rev"
+    expected_pattern: "olleh"
+    hint: "`rev` reverses each input line character-by-character."

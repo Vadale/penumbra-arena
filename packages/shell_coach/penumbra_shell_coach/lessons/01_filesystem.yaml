@@ -1,0 +1,22 @@
+id: filesystem
+title: "Filesystem: listing, finding, sizing"
+steps:
+  - instruction: "List the contents of the current directory in long format with human-readable sizes."
+    validate_cmd: "ls -lah"
+    expected_pattern: "total"
+    hint: "Try `ls -lah` (l=long, a=all, h=human-readable sizes)."
+
+  - instruction: "Count how many .py files exist under the current directory tree."
+    validate_cmd: "find . -name '*.py' -type f | wc -l"
+    expected_pattern: "^[[:space:]]*[0-9]+"
+    hint: "Pipe `find` into `wc -l` to count matched lines."
+
+  - instruction: "Show the total size of the current directory in human-readable units."
+    validate_cmd: "du -sh ."
+    expected_pattern: "[0-9]+(\\.[0-9]+)?[KMGT]"
+    hint: "`du -sh <dir>` reports the summed size of a directory."
+
+  - instruction: "Find files modified within the last day."
+    validate_cmd: "find . -type f -mtime -1 | head -5"
+    expected_pattern: ".+"
+    hint: "`-mtime -1` matches files changed less than 1 day ago."
