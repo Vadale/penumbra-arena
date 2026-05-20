@@ -1268,8 +1268,10 @@ source = { editable = "packages/transport" }
 dependencies = [
     { name = "fastapi" },
     { name = "msgpack" },
+    { name = "numpy" },
     { name = "penumbra-chain" },
     { name = "penumbra-core" },
+    { name = "penumbra-crypto" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -1277,8 +1279,10 @@ dependencies = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
     { name = "msgpack", specifier = ">=1.1" },
+    { name = "numpy", specifier = ">=2.0" },
     { name = "penumbra-chain", editable = "packages/chain" },
     { name = "penumbra-core", editable = "packages/core" },
+    { name = "penumbra-crypto", editable = "packages/crypto" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
 ]
 

@@ -64,9 +64,7 @@ def build_app(
         loop = TickLoop(sim, push, tick_hz=tick_hz)
         await loop.start()
         await orchestrator.start()
-        app.state.penumbra = AppState(
-            simulation=sim, hub=hub, loop=loop, orchestrator=orchestrator
-        )
+        app.state.penumbra = AppState(simulation=sim, hub=hub, loop=loop, orchestrator=orchestrator)
         try:
             yield
         finally:
@@ -135,6 +133,19 @@ def build_app(
         sim.config.time_warp = multiplier
         return {"time_warp": multiplier}
 
+    @app.get("/encrypted-heatmap")
+    async def encrypted_heatmap() -> dict[str, object]:
+        sample = app.state.penumbra.orchestrator.heatmap.latest
+        if sample is None:
+            return {"ready": False}
+        return {
+            "ready": True,
+            "tick": sample.tick,
+            "timestamp_ns": sample.timestamp_ns,
+            "density": sample.density.tolist(),
+            "decrypted_total": sample.decrypted_total,
+        }
+
     @app.get("/chain/latest")
     async def chain_latest() -> dict[str, object]:
         node = app.state.penumbra.orchestrator.node
@@ -177,7 +188,7 @@ def build_app(
 
 def _block_view(blk: object) -> dict[str, object]:
     """Render a Block as a JSON-friendly dict for the explorer endpoints."""
-    from penumbra_chain.block import Block  # noqa: PLC0415
+    from penumbra_chain.block import Block
 
     if not isinstance(blk, Block):
         raise TypeError("_block_view expects a Block instance")

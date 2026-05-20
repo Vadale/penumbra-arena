@@ -8,13 +8,16 @@ dependencies = [
   "fastapi>=0.115",
   "uvicorn[standard]>=0.32",
   "msgpack>=1.1",
+  "numpy>=2.0",
   "penumbra-core",
   "penumbra-chain",
+  "penumbra-crypto",
 ]
 
 [tool.uv.sources]
 penumbra-core = { workspace = true }
 penumbra-chain = { workspace = true }
+penumbra-crypto = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

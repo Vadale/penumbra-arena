@@ -60,6 +60,7 @@ ignore = [
 "packages/analytics/**" = ["RUF002", "RUF003"]
 "packages/learning/**" = ["RUF002", "RUF003"]
 "packages/attacker/**" = ["RUF002", "RUF003"]
+"packages/transport/**" = ["RUF002", "RUF003"]
 
 [tool.ruff.format]
 quote-style = "double"
