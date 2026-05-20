@@ -58,6 +58,7 @@ ignore = [
 # Math docstrings in crypto/ and analytics/ use Greek letters and the proper minus sign.
 "packages/crypto/**" = ["RUF002", "RUF003"]
 "packages/analytics/**" = ["RUF002", "RUF003"]
+"packages/learning/**" = ["RUF002", "RUF003"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -95,6 +96,7 @@ reportUnusedExpression = "warning"
 reportInconsistentConstructor = "error"
 
 reportMissingTypeStubs = "none"
+reportPrivateImportUsage = false  # torch's stubs flag everything as private
 reportUnknownMemberType = false
 reportUnknownArgumentType = false
 reportUnknownVariableType = false
