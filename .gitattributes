@@ -1,0 +1,35 @@
+# Normalise line endings to LF on commit, regardless of OS
+* text=auto eol=lf
+
+# Force LF for source files
+*.py text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.toml text eol=lf
+*.md text eol=lf
+*.sh text eol=lf
+
+# Mark binaries explicitly so diffs don't try
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.tar binary
+*.whl binary
+
+# Generated / not human-relevant in PR review
+uv.lock linguist-generated=true
+pnpm-lock.yaml linguist-generated=true
+
+# Treat lesson YAMLs as data, not source for stats
+packages/shell_coach/lessons/*.yaml linguist-detectable=false
