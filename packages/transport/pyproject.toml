@@ -9,10 +9,12 @@ dependencies = [
   "uvicorn[standard]>=0.32",
   "msgpack>=1.1",
   "penumbra-core",
+  "penumbra-chain",
 ]
 
 [tool.uv.sources]
 penumbra-core = { workspace = true }
+penumbra-chain = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

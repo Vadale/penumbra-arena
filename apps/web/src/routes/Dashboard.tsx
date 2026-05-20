@@ -1,3 +1,4 @@
+import { ChainExplorer } from "../chain/Explorer";
 import { usePenumbraStore } from "../streams/store";
 import { usePenumbraSocket } from "../streams/ws";
 import { Arena } from "../three/Arena";
@@ -43,7 +44,7 @@ export function Dashboard() {
           )}
         </div>
       </header>
-      <main className="grid flex-1 grid-cols-[1fr_280px]">
+      <main className="grid flex-1 grid-cols-[1fr_320px_320px]">
         <section className="relative bg-slate-950">
           <Arena />
         </section>
@@ -61,6 +62,10 @@ export function Dashboard() {
           ) : (
             <div className="text-xs text-slate-500">No frame received yet.</div>
           )}
+        </aside>
+        <aside className="border-l border-slate-800 bg-slate-900/40 p-4 text-sm">
+          <div className="mb-2 text-xs uppercase tracking-wider text-slate-400">Chain</div>
+          <ChainExplorer />
         </aside>
       </main>
     </div>

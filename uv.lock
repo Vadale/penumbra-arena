@@ -1268,6 +1268,7 @@ source = { editable = "packages/transport" }
 dependencies = [
     { name = "fastapi" },
     { name = "msgpack" },
+    { name = "penumbra-chain" },
     { name = "penumbra-core" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -1276,6 +1277,7 @@ dependencies = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
     { name = "msgpack", specifier = ">=1.1" },
+    { name = "penumbra-chain", editable = "packages/chain" },
     { name = "penumbra-core", editable = "packages/core" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
 ]

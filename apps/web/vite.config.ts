@@ -11,6 +11,7 @@ export default defineConfig({
       "/health": "http://localhost:8000",
       "/state": "http://localhost:8000",
       "/control": "http://localhost:8000",
+      "/chain": "http://localhost:8000",
       "/ws": { target: "ws://localhost:8000", ws: true },
     },
   },
