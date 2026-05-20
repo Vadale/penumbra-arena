@@ -82,7 +82,11 @@ class Simulation:
         arena = Arena.build(config.arena, seeded)
         rng = seeded.numpy_for("agents-init")
         n_nodes = arena.graph.number_of_nodes()
-        spawn_nodes = rng.integers(0, n_nodes, size=config.n_agents).tolist()
+        # `.tolist()` coerces numpy scalars to Python ints so downstream
+        # msgpack serialisation works without per-call casts.
+        spawn_nodes: list[NodeId] = [
+            int(x) for x in rng.integers(0, n_nodes, size=config.n_agents).tolist()
+        ]
 
         policy_fn = policy_factory or (lambda _: random_walk_policy)  # type: ignore[return-value]
         agents = [

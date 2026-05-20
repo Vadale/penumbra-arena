@@ -10,6 +10,7 @@ dev = [
   "ruff>=0.7",
   "pyright>=1.1.380",
   "pre-commit>=4.0",
+  "httpx>=0.28",
 ]
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -103,7 +104,7 @@ reportUnknownLambdaType = false
 [tool.pytest.ini_options]
 testpaths = ["packages"]
 asyncio_mode = "auto"
-addopts = "-q --strict-markers --tb=short"
+addopts = "-q --strict-markers --tb=short --import-mode=importlib"
 markers = [
   "slow: marks tests as slow",
   "crypto: marks crypto property tests",

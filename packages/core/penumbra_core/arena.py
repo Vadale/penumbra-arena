@@ -89,7 +89,11 @@ class Arena:
         # Clamp initial samples to the floor.
         for edge, cost in edge_cost.items():
             edge_cost[edge] = max(cost, config.ou_floor)
-        goals = list(rng.choice(graph.number_of_nodes(), size=config.n_goals, replace=False))
+        # `.tolist()` coerces numpy scalars to Python ints — important for
+        # downstream msgpack serialisation, which refuses numpy types.
+        goals: list[NodeId] = list(
+            rng.choice(graph.number_of_nodes(), size=config.n_goals, replace=False).tolist()
+        )
         return cls(config=config, graph=graph, edge_cost=edge_cost, goals=goals, rng=rng)
 
     def step(self) -> None:
@@ -155,7 +159,8 @@ class Arena:
         self.edge_cost.pop(_canon(u, v), None)
 
     def _try_add_edge(self, nodes: list[NodeId]) -> None:
-        u, v = self.rng.choice(nodes, size=2, replace=False).tolist()
+        u_raw, v_raw = self.rng.choice(nodes, size=2, replace=False).tolist()
+        u, v = int(u_raw), int(v_raw)
         if u == v or self.graph.has_edge(u, v):
             return
         self.graph.add_edge(u, v)
