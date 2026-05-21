@@ -1,8 +1,9 @@
 # penumbra-analytics
 
-Real statistical analysis on the simulation tick stream.
+Real statistical analysis on the simulation tick stream. 13 of 13
+core modules shipped.
 
-## Concept taught — 12 modules, one practice per
+## Concept taught — 13 modules, one practice per
 
 | Module | Technique |
 |---|---|
@@ -18,6 +19,7 @@ Real statistical analysis on the simulation tick stream.
 | `topology` | persistent homology via ripser (Vietoris-Rips), persistence lifetimes, total persistence |
 | `transport` | Sinkhorn-regularised optimal transport plans, exact 1-D Wasserstein via CDFs |
 | `causal` | propensity-score estimation (with clipping), IPW ATE, AIPW doubly-robust ATE |
+| `topics` | BERTopic + UMAP + HDBSCAN + bge-small-en-v1.5 over a templated agent-utterance corpus; rolling 20s cadence consumer in the dashboard pipeline |
 | `dashboard_pipeline` | streaming orchestrator: rolling buffers + per-consumer cadences, snapshot polling for the frontend |
 
 Each module is a small, self-contained file with a `Concept taught:`
@@ -50,13 +52,22 @@ line in its module docstring — the launching point for the dedicated
 from penumbra_analytics import (
     descriptive, inferential, econometrics, monte_carlo,
     linalg, clustering, time_series, bayesian, survival,
-    topology, transport, causal,
+    topology, transport, causal, topics,
 )
 from penumbra_analytics.dashboard_pipeline import DashboardPipeline, DashboardSnapshot
 ```
 
-## Deferred
+## Topics module quickstart
 
-- `topics.py` (BERTopic) — agent utterances don't exist yet; module
-  is left as a docs-stub. ~500 MB of HuggingFace deps would arrive
-  with it.
+```python
+import numpy as np
+from penumbra_analytics.topics import ALL_ACTIONS, compute, utterance_for
+
+rng = np.random.default_rng(seed=42)
+corpus = [utterance_for(a, rng) for a in ALL_ACTIONS for _ in range(30)]
+result = compute(corpus, min_topic_size=5)
+print(result.n_topics, result.representative_words[0])
+```
+
+First call downloads `BAAI/bge-small-en-v1.5` (~133 MB) into
+`~/.cache/huggingface/hub/`. Subsequent runs are ~1 s of compute.

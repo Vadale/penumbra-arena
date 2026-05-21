@@ -463,7 +463,109 @@ Invoke `@doc-writer`.
 
 ---
 
-## After Phase 7 — Learning loop
+## Phase 8 — Production rounding
+
+The originally-planned phases stopped at 7. The tags from `ci-actions`
+onward correspond to "make the running system live up to its
+docstrings" work. Each is a one-or-two-day micro-phase; recipes below
+are sketches rather than full step-by-step (the actual code is now in
+the repo for reference).
+
+### 8.1 — CI · `ci-actions`
+
+[ ] `.github/workflows/check.yml` with two parallel jobs (backend,
+    frontend) using `astral-sh/setup-uv@v3` + `pnpm/action-setup@v4`.
+[ ] Concurrency group `${{ github.workflow }}-${{ github.ref }}` so
+    superseded pushes don't queue.
+
+### 8.2 — DP accountant in runtime · `dp-runtime`
+
+[ ] `EncryptedHeatmap` gains optional `dp_mechanism` + `dp_epsilon_per_release`.
+[ ] `/dp/budget` endpoint reports total/spent/remaining.
+[ ] HeatmapSample wire format carries `noise_applied` + `epsilon_spent_total`.
+
+### 8.3 — Slashing on-chain · `chain-slashing` + `slashing-in-block`
+
+🔒 Mandatory `crypto-auditor` review before commit.
+
+[ ] `penumbra_chain.slashing`: SlashingEvidence + verify_evidence().
+[ ] `Node.slash(evidence)` updates `active_indices` + queues
+    `pending_slashings`; idempotent.
+[ ] Block.payload heterogeneous: outcomes + slashings, both
+    committed by the Merkle root.
+
+### 8.4 — Disk persistence + world snapshots · `chain-persistence` + `world-snapshots` + `world-full`
+
+[ ] `penumbra_chain.persistence`: Parquet (blocks, mempool) + JSON
+    (validators, secrets w/ chmod 0o600, state, pending slashings).
+[ ] `penumbra_core.persistence`: pickle-based simulation snapshot
+    (arena + agents + RNG bit-generator state); schema_version=1.
+[ ] `penumbra_transport.world`: save_world / load_world /
+    load_world_simulation / list_worlds.
+[ ] `POST /world/save` captures chain + simulation + CKKS keys + DP
+    budget; `POST /world/load` hot-swaps the chain only; sim half
+    consumed on restart via `PENUMBRA_SIM_SNAPSHOT`.
+[ ] `pna world {save,load,list}` CLI subcommand.
+
+### 8.5 — Slashing UX · `chain-slashing-ui` + `chain-slash-endpoint`
+
+[ ] ChainExplorer renders red-tinted slashing rows under each block.
+[ ] `POST /chain/slash` accepts SlashingEvidence JSON.
+[ ] `POST /chain/_demo/self-slash` (gated by env var) makes the
+    "the validator I just slashed was one of MINE" demo trivial.
+[ ] `pna byzantine-cmd --submit-self-slash --api …` to drive it.
+
+### 8.6 — MAPPO live + crypto persistence · `mappo-live` + `crypto-persistence`
+
+[ ] `penumbra_learning.policy_loader.mappo_policy_factory` loads
+    the checkpoint at boot.
+[ ] `MAPPO.load(actor_only=True)` makes the checkpoint portable
+    across population sizes.
+[ ] `penumbra_crypto.crypto_persistence`: save/restore CKKS context
+    + DP budget across restart.
+
+### 8.7 — Tour + DP/signing tiles · `tour-mode` + `dashboard-dp-signing`
+
+[ ] `apps/web/src/tour/TourOverlay.tsx` walks first-time visitors
+    through the four panels; persisted in localStorage.
+[ ] AnalyticsPanel tiles for `DP ε remaining` + `Dilithium sigs
+    verified`.
+
+### 8.8 — Real Groth16 circuit · `groth16-real`
+
+[ ] `circuits/multiplier.circom` (the canonical hello-world R1CS).
+[ ] `circuits/setup.sh` runs a local powers-of-tau ceremony +
+    Groth16 setup + sample proof.
+[ ] `circuits/artifacts/{vk,proof,public}.json` committed.
+[ ] `packages/crypto/tests/test_circom_integration.py` loads them
+    via `snark.load_*` and verifies through our pure-Python verifier.
+
+### 8.9 — TFHE (educational) · `tfhe-educational`
+
+🔒 Mandatory `crypto-auditor` review before commit.
+
+[ ] `crypto/educational/tfhe_boolean.py`: LWE-based homomorphic
+    XOR/NOT/NAND/AND/OR; "encrypted faction overlap" use case.
+[ ] Document the no-bootstrapping caveat loudly in the module
+    docstring.
+
+### 8.10 — Topics via BERTopic · `bertopic-live`
+
+[ ] `analytics/topics.py`: 4 templated phrase buckets × 10 phrases.
+[ ] `compute(corpus)` runs BERTopic + UMAP + HDBSCAN + bge-small.
+[ ] Streaming consumer at a 20s cadence in the dashboard pipeline.
+[ ] Frontend tile under the changepoints row.
+
+### 8.11 — Full PTY · `xterm-pty`
+
+[ ] `transport/pty_bridge.py`: `spawn_shell()` + WS bridge.
+[ ] `WS /ws/pty` gated by `PENUMBRA_ENABLE_PTY=1`.
+[ ] `apps/web/src/terminal/Terminal.tsx` with xterm.js + addon-fit.
+[ ] Dashboard bottom panel gets a Coach/Terminal tab toggle.
+
+---
+
+## After Phase 8 — Learning loop
 
 The project is now your curriculum. Recommended order of "explain this" sessions with `@learner`:
 
