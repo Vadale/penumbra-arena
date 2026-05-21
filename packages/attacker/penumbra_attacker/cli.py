@@ -69,8 +69,10 @@ def byzantine_cmd(
     submit_self_slash: bool = typer.Option(
         False,
         "--submit-self-slash",
-        help="Also call POST /chain/_demo/self-slash on the live node to "
-        "remove validator 0 from the active set via real on-chain slashing.",
+        help=(
+            "Also call POST /chain/_demo/self-slash on the live node to "
+            "remove validator 0 from the active set via real on-chain slashing."
+        ),
     ),
     api: str = typer.Option(_DEFAULT_API, "--api", help="backend base URL"),
 ) -> None:

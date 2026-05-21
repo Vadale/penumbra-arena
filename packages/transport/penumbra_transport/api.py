@@ -331,6 +331,9 @@ def build_app(
             "h1_bars": [list(bar) for bar in snap.h1_bars],
             "bayesian_theta": snap.bayesian_theta,
             "var95": snap.var95,
+            "n_topics": snap.n_topics,
+            "topic_sizes": {str(k): v for k, v in snap.topic_sizes.items()},
+            "topic_top_words": {str(k): list(v) for k, v in snap.topic_top_words.items()},
         }
 
     @app.get("/encrypted-heatmap")

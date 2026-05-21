@@ -28,6 +28,7 @@ from penumbra_analytics import (
     inferential,
     monte_carlo,
     time_series,
+    topics,
     topology,
 )
 from penumbra_analytics import transport as analytics_transport
@@ -55,6 +56,9 @@ class DashboardSnapshot:
     h1_bars: tuple[tuple[float, float], ...] = ()
     bayesian_theta: float | None = None
     var95: float | None = None
+    n_topics: int | None = None
+    topic_sizes: dict[int, int] = field(default_factory=dict)
+    topic_top_words: dict[int, tuple[str, ...]] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -78,12 +82,17 @@ class DashboardPipeline:
             "topology": 10.0,
             "bayesian": 10.0,
             "var95": 5.0,
+            # Topic modelling is the most expensive consumer — it runs
+            # the bge-small embedder over ~200 utterances. 20s cadence
+            # keeps it off the hot path.
+            "topics": 20.0,
         }
     )
 
     _trajectory_lengths: deque[float] = field(default_factory=lambda: deque(maxlen=512))
     _positions: deque[NDArray[np.float64]] = field(default_factory=lambda: deque(maxlen=64))
     _heatmaps: deque[NDArray[np.float64]] = field(default_factory=lambda: deque(maxlen=64))
+    _utterances: deque[str] = field(default_factory=lambda: deque(maxlen=400))
     _last_run: dict[str, float] = field(default_factory=dict)
     _snapshot: DashboardSnapshot = field(default_factory=lambda: DashboardSnapshot(tick=-1))
 
@@ -93,6 +102,7 @@ class DashboardPipeline:
         tick: int,
         positions: NDArray[np.float64],
         heatmap: NDArray[np.float64] | None = None,
+        utterances: list[str] | None = None,
     ) -> None:
         """Push a tick's observation into the rolling buffers."""
         self._snapshot = (
@@ -102,6 +112,8 @@ class DashboardPipeline:
         self._positions.append(np.asarray(positions, dtype=np.float64))
         if heatmap is not None:
             self._heatmaps.append(np.asarray(heatmap, dtype=np.float64))
+        if utterances:
+            self._utterances.extend(utterances)
 
     def recompute(self) -> DashboardSnapshot:
         """Re-run any consumer whose cadence has elapsed since last run."""
@@ -178,6 +190,17 @@ class DashboardPipeline:
             metrics = monte_carlo.var_cvar(values, confidence=0.95)
             self._snapshot.var95 = metrics.var
             self._last_run["var95"] = now
+
+        if self._due(now, "topics") and len(self._utterances) >= 40:
+            corpus = list(self._utterances)
+            try:
+                result = topics.compute(corpus, min_topic_size=5)
+                self._snapshot.n_topics = result.n_topics
+                self._snapshot.topic_sizes = dict(result.topic_sizes)
+                self._snapshot.topic_top_words = dict(result.representative_words)
+            except Exception:
+                logger.debug("topic modelling failed on the current window", exc_info=True)
+            self._last_run["topics"] = now
 
         return self._snapshot
 

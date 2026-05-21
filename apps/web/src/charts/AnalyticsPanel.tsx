@@ -89,6 +89,15 @@ export function AnalyticsPanel() {
               : `${snap.signing_stats.n_agents} agents · 0 rejected`
           }
         />
+        <Tile
+          label="BERTopic topics"
+          value={snap.n_topics !== null ? String(snap.n_topics) : "—"}
+          caption={
+            snap.n_topics && snap.n_topics > 0
+              ? `top: ${Object.values(snap.topic_top_words)[0]?.slice(0, 3).join(" / ") ?? ""}`
+              : "warming up"
+          }
+        />
       </div>
 
       {summary && (

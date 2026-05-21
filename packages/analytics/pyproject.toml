@@ -17,6 +17,9 @@ dependencies = [
   "pot>=0.9",
   "numpyro>=0.18",
   "penumbra-core",
+  "bertopic>=0.17.4",
+  "sentence-transformers>=3.0",
+  "umap-learn>=0.5.12",
 ]
 
 [tool.uv.sources]

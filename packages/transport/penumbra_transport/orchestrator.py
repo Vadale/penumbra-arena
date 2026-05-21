@@ -165,6 +165,23 @@ class Orchestrator:
         )
         self.node.submit_outcome(outcome)
 
+    def _sample_utterances(self) -> list[str]:
+        """One utterance per agent, sampled from a templated corpus by action.
+
+        The action category is derived crudely from each agent's position
+        modulo 4. Pedagogically: it's enough to seed a meaningful topic
+        signal — BERTopic will find the structure as long as the corpus
+        has any structure at all.
+        """
+        from penumbra_analytics.topics import ALL_ACTIONS, utterance_for
+
+        rng = self.simulation.seeded.numpy_for("utterances")
+        out: list[str] = []
+        for agent in self.simulation.agents:
+            action = ALL_ACTIONS[agent.position % len(ALL_ACTIONS)]
+            out.append(utterance_for(action, rng))
+        return out
+
     async def _heatmap_loop(self) -> None:
         try:
             while True:
@@ -188,10 +205,16 @@ class Orchestrator:
                     heatmap_density = (
                         self.heatmap.latest.density if self.heatmap.latest is not None else None
                     )
+                    # Synthesise per-tick agent utterances. We map each
+                    # agent's last action (encoded as the direction of
+                    # its most recent hop) to one of {explore, exploit,
+                    # defend, ally} and sample a templated phrase.
+                    utterances = self._sample_utterances()
                     self.pipeline.observe(
                         tick=self.simulation.tick_counter,
                         positions=positions,
                         heatmap=heatmap_density,
+                        utterances=utterances,
                     )
                     await asyncio.to_thread(self.pipeline.recompute)
                     # Sign + verify the current tick's moves. The protocol

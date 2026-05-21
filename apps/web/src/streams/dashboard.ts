@@ -46,6 +46,9 @@ export interface DashboardSnapshot {
   var95: number | null;
   dp_budget: DPBudget | null;
   signing_stats: SigningStats;
+  n_topics: number | null;
+  topic_sizes: Record<string, number>;
+  topic_top_words: Record<string, string[]>;
 }
 
 const POLL_MS = 500;
