@@ -37,6 +37,11 @@ web-lint:
 web-build:
     pnpm --filter web build
 
+web-test:
+    pnpm --filter web test
+
+check-all: check web-typecheck web-lint web-test
+
 # ── runtime ────────────────────────────────────────────────────────────
 api-dev:
     PENUMBRA_SEED=42 uv run uvicorn penumbra_transport.api:app --reload --port 8000

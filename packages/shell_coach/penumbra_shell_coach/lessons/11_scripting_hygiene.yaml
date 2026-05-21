@@ -1,0 +1,22 @@
+id: scripting_hygiene
+title: "Scripting hygiene: set -euo pipefail, [[ ]] vs [ ], traps"
+steps:
+  - instruction: "Show that a pipeline failing in the middle is silent without `pipefail`."
+    validate_cmd: "(false | true; echo exit=$?)"
+    expected_pattern: "exit=0"
+    hint: "Without `set -o pipefail`, only the LAST command's exit status counts — even if `false` mid-pipeline."
+
+  - instruction: "Now enable pipefail and see the failure surface."
+    validate_cmd: "(set -o pipefail; false | true; echo exit=$?)"
+    expected_pattern: "exit=[1-9]"
+    hint: "`set -o pipefail` makes the pipeline's exit status the FIRST non-zero one. Combine with `set -eu` for safe scripts."
+
+  - instruction: "Use the modern `[[ ]]` test for string comparison (works with empty / unquoted vars)."
+    validate_cmd: "v=''; [[ -z $v ]] && echo empty"
+    expected_pattern: "empty"
+    hint: "`[[ ]]` is the bash/zsh built-in; safer than `[ ]` (POSIX `test`) with empty / glob-like values."
+
+  - instruction: "Register a trap that runs on script exit."
+    validate_cmd: "(trap 'echo cleanup' EXIT; echo body)"
+    expected_pattern: "body"
+    hint: "`trap '<cmd>' EXIT` queues a handler that runs at every exit path — useful for cleanup."

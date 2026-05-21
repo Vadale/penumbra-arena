@@ -8,12 +8,14 @@ No global state, no atexit hooks.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+import numpy as np
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from penumbra_core.rng import bootstrap
@@ -64,6 +66,19 @@ def build_app(
 
         loop = TickLoop(sim, push, tick_hz=tick_hz)
         await loop.start()
+        # Warm-start the encrypted heatmap synchronously so the first
+        # /encrypted-heatmap and /dashboard polls don't return
+        # {"ready": false} / null fields just because the analytics tasks
+        # haven't yet had time to run their first iteration.
+        await asyncio.to_thread(orchestrator.heatmap.compute, sim)
+        positions = np.asarray([a.position for a in sim.agents], dtype=np.float64)
+        orchestrator.pipeline.observe(
+            tick=sim.tick_counter,
+            positions=positions,
+            heatmap=orchestrator.heatmap.latest.density
+            if orchestrator.heatmap.latest is not None
+            else None,
+        )
         await orchestrator.start()
         app.state.penumbra = AppState(simulation=sim, hub=hub, loop=loop, orchestrator=orchestrator)
         try:
@@ -133,6 +148,16 @@ def build_app(
         sim: Simulation = app.state.penumbra.simulation
         sim.config.time_warp = multiplier
         return {"time_warp": multiplier}
+
+    @app.get("/agents/signing-stats")
+    async def agents_signing_stats() -> dict[str, int]:
+        """Aggregate Dilithium sign/verify counts since boot."""
+        keystore = app.state.penumbra.orchestrator.keystore
+        return {
+            "verified": keystore.stats.verified,
+            "rejected": keystore.stats.rejected,
+            "n_agents": len(keystore.keypairs),
+        }
 
     @app.post("/coach/exec")
     async def coach_exec(payload: dict[str, str]) -> dict[str, object]:
@@ -213,6 +238,24 @@ def build_app(
             "timestamp_ns": sample.timestamp_ns,
             "density": sample.density.tolist(),
             "decrypted_total": sample.decrypted_total,
+            "noise_applied": sample.noise_applied,
+            "epsilon_spent_total": sample.epsilon_spent_total,
+        }
+
+    @app.get("/dp/budget")
+    async def dp_budget() -> dict[str, object]:
+        """Snapshot of the DP accountant for the encrypted-heatmap mechanism."""
+        mechanism = app.state.penumbra.orchestrator.heatmap.dp_mechanism
+        if mechanism is None:
+            return {"enabled": False}
+        budget = mechanism.budget
+        return {
+            "enabled": True,
+            "epsilon_total": budget.epsilon,
+            "epsilon_spent": budget.epsilon_spent,
+            "epsilon_remaining": budget.remaining_epsilon,
+            "delta_total": budget.delta,
+            "delta_spent": budget.delta_spent,
         }
 
     @app.get("/chain/latest")

@@ -1,0 +1,17 @@
+id: archives
+title: "Archives: tar, gzip, zip"
+steps:
+  - instruction: "Create a tar.gz archive of pyproject.toml at /tmp/penumbra-demo.tgz."
+    validate_cmd: "tar czf /tmp/penumbra-demo.tgz pyproject.toml && test -s /tmp/penumbra-demo.tgz && echo ok"
+    expected_pattern: "ok"
+    hint: "`tar czf <archive> <files>` — c=create, z=gzip, f=filename."
+
+  - instruction: "List the contents of that archive without extracting."
+    validate_cmd: "tar tzf /tmp/penumbra-demo.tgz"
+    expected_pattern: "pyproject\\.toml"
+    hint: "`tar tzf` — t=list (no extract), z=gzip, f=filename."
+
+  - instruction: "Extract it to /tmp/penumbra-extract/ and verify."
+    validate_cmd: "mkdir -p /tmp/penumbra-extract && tar xzf /tmp/penumbra-demo.tgz -C /tmp/penumbra-extract && ls /tmp/penumbra-extract && rm -rf /tmp/penumbra-extract /tmp/penumbra-demo.tgz"
+    expected_pattern: "pyproject\\.toml"
+    hint: "`tar xzf <archive> -C <dest>` — x=extract, -C changes target dir before extracting."

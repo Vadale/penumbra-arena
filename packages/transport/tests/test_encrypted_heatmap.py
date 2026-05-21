@@ -50,3 +50,40 @@ def test_heatmap_latest_cached(backend: TenSEALBackend) -> None:
     assert heatmap.latest is None
     sample = heatmap.compute(sim)
     assert heatmap.latest is sample
+
+
+def test_dp_noised_release_consumes_budget(backend: TenSEALBackend) -> None:
+    """With a DP mechanism attached, each compute() spends epsilon."""
+    from penumbra_crypto.dp import DPMechanism, PrivacyBudget
+
+    sim = _build_sim()
+    budget = PrivacyBudget(epsilon=1.0)
+    mechanism = DPMechanism(budget)
+    heatmap = EncryptedHeatmap.for_simulation(
+        backend, sim, dp_mechanism=mechanism, dp_epsilon_per_release=0.1
+    )
+    sample = heatmap.compute(sim)
+    assert sample.noise_applied
+    assert abs(sample.epsilon_spent_total - 0.1) < 1e-9
+    # And after the second release, ε spent should be 0.2.
+    sample2 = heatmap.compute(sim)
+    assert abs(sample2.epsilon_spent_total - 0.2) < 1e-9
+
+
+def test_dp_falls_back_to_clean_when_budget_exhausted(backend: TenSEALBackend) -> None:
+    """Past the ε budget the mechanism logs a warning and releases un-noised."""
+    from penumbra_crypto.dp import DPMechanism, PrivacyBudget
+
+    sim = _build_sim()
+    budget = PrivacyBudget(epsilon=0.2)
+    mechanism = DPMechanism(budget)
+    heatmap = EncryptedHeatmap.for_simulation(
+        backend, sim, dp_mechanism=mechanism, dp_epsilon_per_release=0.15
+    )
+    first = heatmap.compute(sim)
+    assert first.noise_applied
+    second = heatmap.compute(sim)
+    # Second release would overdraw — falls back to clean.
+    assert not second.noise_applied
+    # The clean sum equals the agent count exactly.
+    assert abs(second.decrypted_total - len(sim.agents)) < 1e-2

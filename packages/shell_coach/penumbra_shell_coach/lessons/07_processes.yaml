@@ -1,0 +1,17 @@
+id: processes
+title: "Processes: ps, lsof, kill, jobs"
+steps:
+  - instruction: "List your top 5 most CPU-hungry processes."
+    validate_cmd: "ps -A -o %cpu,comm | sort -rn | head -5"
+    expected_pattern: "^[[:space:]]*[0-9]+(\\.[0-9]+)?[[:space:]]+\\S+"
+    hint: "`ps -A -o %cpu,comm` lists every process; pipe through `sort -rn | head -5`."
+
+  - instruction: "Find which process is listening on TCP port 5173 (Vite dev), if any."
+    validate_cmd: "lsof -nP -iTCP:5173 -sTCP:LISTEN 2>/dev/null || echo 'port-free'"
+    expected_pattern: "(LISTEN|port-free)"
+    hint: "`lsof -i :<port>` shows TCP/UDP socket holders."
+
+  - instruction: "Start a sleep in the background, list jobs, then kill it."
+    validate_cmd: "sleep 5 & PID=$!; sleep 0.2; jobs; kill $PID 2>/dev/null; echo ok"
+    expected_pattern: "ok"
+    hint: "`<cmd> &` backgrounds it, `$!` captures the last bg PID, `jobs` lists, `kill` ends it."

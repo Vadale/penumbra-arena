@@ -1,0 +1,17 @@
+id: crypto_tools
+title: "Crypto-adjacent tools: openssl, gpg, ssh-keygen"
+steps:
+  - instruction: "Print the SHA-256 of pyproject.toml via openssl."
+    validate_cmd: "openssl dgst -sha256 pyproject.toml"
+    expected_pattern: "SHA(2-)?256.*[a-f0-9]{64}"
+    hint: "`openssl dgst -sha256 <file>` outputs the digest. `shasum -a 256 <file>` is the macOS-native alternative."
+
+  - instruction: "Generate a small random base64 string suitable as a session token."
+    validate_cmd: "openssl rand -base64 24"
+    expected_pattern: "^[A-Za-z0-9+/=]+$"
+    hint: "`openssl rand -base64 N` reads N bytes from the CSPRNG and base64-encodes them. The actual byte count after b64 is ceil(N/3)*4."
+
+  - instruction: "Show the fingerprint of an ed25519 SSH key (creates one in /tmp if absent)."
+    validate_cmd: "f=/tmp/penumbra-ssh-demo; ssh-keygen -t ed25519 -f $f -N '' -q 2>/dev/null; ssh-keygen -lf $f; rm -f $f ${f}.pub"
+    expected_pattern: "(ed25519|256 SHA256:)"
+    hint: "`ssh-keygen -t ed25519 -f <path>` creates a keypair; `ssh-keygen -lf <pub>` prints its fingerprint."

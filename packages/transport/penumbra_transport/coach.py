@@ -67,7 +67,7 @@ async def run_command(command_line: str) -> CommandResult:
         stdout_bytes, stderr_bytes = await asyncio.wait_for(
             process.communicate(), timeout=TIMEOUT_SECONDS
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         process.kill()
         await process.wait()
         return CommandResult(

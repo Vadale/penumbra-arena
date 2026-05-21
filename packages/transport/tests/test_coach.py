@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from penumbra_transport.coach import (
     ALLOWED_BINARIES,
     DisallowedCommandError,
@@ -37,4 +36,4 @@ async def test_psh_lessons_runs_if_installed() -> None:
 
 def test_allow_list_is_small() -> None:
     """We deliberately keep the allow-list tiny."""
-    assert ALLOWED_BINARIES == {"pna", "psh"}
+    assert {"pna", "psh"} == ALLOWED_BINARIES

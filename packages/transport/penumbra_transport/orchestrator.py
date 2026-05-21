@@ -20,7 +20,6 @@ import time
 from dataclasses import dataclass, field
 
 import numpy as np
-
 from penumbra_analytics.dashboard_pipeline import DashboardPipeline, DashboardSnapshot
 from penumbra_chain.block import MatchOutcome
 from penumbra_chain.node import Node
@@ -29,7 +28,9 @@ from penumbra_core.arena import Arena
 from penumbra_core.match import Match
 from penumbra_core.simulation import Simulation
 from penumbra_crypto.ckks import get_backend
+from penumbra_crypto.dp import DPMechanism, PrivacyBudget
 
+from penumbra_transport.agent_signing import AgentKeystore
 from penumbra_transport.encrypted_heatmap import EncryptedHeatmap
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,7 @@ class Orchestrator:
     node: Node
     heatmap: EncryptedHeatmap
     pipeline: DashboardPipeline
+    keystore: AgentKeystore
     block_interval: float = BLOCK_INTERVAL_SECONDS_DEFAULT
     heatmap_interval: float = HEATMAP_INTERVAL_SECONDS_DEFAULT
     analytics_interval: float = ANALYTICS_INTERVAL_SECONDS_DEFAULT
@@ -55,17 +57,71 @@ class Orchestrator:
     _analytics_task: asyncio.Task[None] | None = field(default=None, init=False)
     _started_at: float | None = field(default=None, init=False)
     _last_block_height: int = field(default=-1, init=False)
+    _last_signed_tick: int = field(default=-1, init=False)
 
     @classmethod
-    def build(cls, simulation: Simulation, *, n_validators: int = 4) -> Orchestrator:
+    def build(
+        cls,
+        simulation: Simulation,
+        *,
+        n_validators: int = 4,
+        dp_total_epsilon: float = 5.0,
+        dp_epsilon_per_release: float = 0.05,
+    ) -> Orchestrator:
         node = Node.boot(n_validators=n_validators)
-        heatmap = EncryptedHeatmap.for_simulation(get_backend(), simulation)
+        # Wire a DP mechanism into the heatmap. A 5.0 ε budget at 0.05 ε
+        # per release supports 100 noised releases before the accountant
+        # refuses further DP-protected output (the system then logs a
+        # warning and continues to release the clean aggregate).
+        budget = PrivacyBudget(epsilon=dp_total_epsilon)
+        dp_mechanism = DPMechanism(budget)
+        heatmap = EncryptedHeatmap.for_simulation(
+            get_backend(),
+            simulation,
+            dp_mechanism=dp_mechanism,
+            dp_epsilon_per_release=dp_epsilon_per_release,
+        )
         pipeline = DashboardPipeline()
+        keystore = AgentKeystore.for_n_agents(len(simulation.agents))
         orchestrator = cls(
-            simulation=simulation, node=node, heatmap=heatmap, pipeline=pipeline
+            simulation=simulation,
+            node=node,
+            heatmap=heatmap,
+            pipeline=pipeline,
+            keystore=keystore,
         )
         simulation.on_match_end = orchestrator._on_match_end
         return orchestrator
+
+    def sign_and_verify_moves(self) -> None:
+        """Sign-and-verify the current tick's agent positions.
+
+        Runs once per heatmap iteration. The signing happens *after* the
+        moves in the tick loop because the simulation owns the policy
+        decision; from the orchestrator's perspective each position the
+        agent is currently on IS the move it most recently made. The
+        verifier (same process) checks each sig immediately — what we're
+        demonstrating is the protocol shape, not adversarial separation.
+        """
+        tick = self.simulation.tick_counter
+        if tick <= self._last_signed_tick:
+            return
+        self._last_signed_tick = tick
+        # Snapshot agent positions BEFORE the sign+verify pass; the
+        # simulation tick loop runs concurrently and can mutate
+        # `agent.position` between the sign() and the verify() of the
+        # same row, producing spurious rejections.
+        snapshot: list[tuple[int, int]] = [
+            (agent.id, agent.position) for agent in self.simulation.agents
+        ]
+        for agent_id, target_node in snapshot:
+            sig = self.keystore.sign_move(agent_id=agent_id, tick=tick, target_node=target_node)
+            self.keystore.verify_move(
+                agent_id=agent_id,
+                tick=tick,
+                target_node=target_node,
+                signature=sig,
+            )
 
     @property
     def latest_dashboard_snapshot(self) -> DashboardSnapshot:
@@ -138,6 +194,10 @@ class Orchestrator:
                         heatmap=heatmap_density,
                     )
                     await asyncio.to_thread(self.pipeline.recompute)
+                    # Sign + verify the current tick's moves. The protocol
+                    # demo is per-tick even though analytics is per-second
+                    # because the heatmap is the cadence we already pay.
+                    await asyncio.to_thread(self.sign_and_verify_moves)
                 except Exception:
                     logger.exception("analytics pipeline raised; continuing")
         except asyncio.CancelledError:

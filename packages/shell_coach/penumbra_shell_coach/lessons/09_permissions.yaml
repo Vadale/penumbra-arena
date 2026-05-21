@@ -1,0 +1,17 @@
+id: permissions
+title: "Permissions: chmod, chown, umask, ACLs"
+steps:
+  - instruction: "Create a temp file, make it executable for the owner, verify the +x bit."
+    validate_cmd: "f=/tmp/penumbra-perm-demo; echo 'echo hi' > $f && chmod u+x $f && ls -l $f && rm $f"
+    expected_pattern: "^-..x"
+    hint: "`chmod u+x <file>` adds execute for the owner. `ls -l` shows the mode bits."
+
+  - instruction: "Print the current shell's umask (the bits stripped from default new-file modes)."
+    validate_cmd: "umask"
+    expected_pattern: "^[0-9]+"
+    hint: "`umask` with no args reads it; `umask 022` would set rwxr-xr-x as the default mode."
+
+  - instruction: "Check the macOS extended-attribute flags on this directory (quarantine, ACLs)."
+    validate_cmd: "ls -le@ . 2>/dev/null | head -3"
+    expected_pattern: "(drwx|@|total)"
+    hint: "`ls -l@` shows extended attributes; `-e` shows ACL entries."
