@@ -65,10 +65,39 @@ def dp_reconstruct_cmd(
 
 
 @app.command()
-def byzantine_cmd() -> None:
-    """Sign two conflicting blocks at the same height and detect the equivocation."""
+def byzantine_cmd(
+    submit_self_slash: bool = typer.Option(
+        False,
+        "--submit-self-slash",
+        help="Also call POST /chain/_demo/self-slash on the live node to "
+        "remove validator 0 from the active set via real on-chain slashing.",
+    ),
+    api: str = typer.Option(_DEFAULT_API, "--api", help="backend base URL"),
+) -> None:
+    """Sign two conflicting blocks at the same height and detect the equivocation.
+
+    With --submit-self-slash, ALSO submit a self-slash demo to the live
+    node (gated server-side by PENUMBRA_DEMO_SELF_SLASH=1) so you see
+    the on-chain consequence: the validator drops out of the active set.
+    """
     result = byzantine.demo()
     typer.echo(f"equivocation proof verified: {result.equivocation_detected}")
+    if not submit_self_slash:
+        return
+    try:
+        outcome = _http_post(_api_url(api, "/chain/_demo/self-slash"), {})
+    except urllib.error.HTTPError as exc:
+        typer.echo(
+            f"slash submission rejected: {exc.read().decode('utf-8', errors='replace')}",
+            err=True,
+        )
+        raise typer.Exit(code=1) from exc
+    except urllib.error.URLError as exc:
+        typer.echo(f"could not reach {api}: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"slashed validator: {outcome['slashed']}")
+    typer.echo(f"observed at chain height: {outcome['height_observed']}")
+    typer.echo(f"active validators: {outcome['active_validators']} / {outcome['total_validators']}")
 
 
 @app.command(name="timing")

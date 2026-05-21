@@ -156,6 +156,87 @@ def build_app(
         sim.config.time_warp = multiplier
         return {"time_warp": multiplier}
 
+    @app.post("/chain/slash")
+    async def chain_slash(payload: dict[str, str]) -> dict[str, object]:
+        """Submit slashing evidence against a validator.
+
+        Body: hex-encoded SlashingEvidence
+          {offender_pubkey, block_a_hash, sig_a, block_b_hash, sig_b}
+        On success returns the SlashingTx height_observed + new active count.
+        """
+        from penumbra_chain.slashing import SlashingError, SlashingEvidence
+
+        try:
+            evidence = SlashingEvidence(
+                offender_pubkey=bytes.fromhex(payload["offender_pubkey"]),
+                block_a_hash=bytes.fromhex(payload["block_a_hash"]),
+                sig_a=bytes.fromhex(payload["sig_a"]),
+                block_b_hash=bytes.fromhex(payload["block_b_hash"]),
+                sig_b=bytes.fromhex(payload["sig_b"]),
+            )
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=f"bad evidence payload: {exc}") from exc
+
+        node = app.state.penumbra.orchestrator.node
+        try:
+            tx = node.slash(evidence)
+        except SlashingError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        return {
+            "slashed": evidence.offender_pubkey.hex()[:16] + "…",
+            "height_observed": tx.height_observed,
+            "active_validators": len(node.active_indices),
+            "total_validators": len(node.validators),
+        }
+
+    @app.post("/chain/_demo/self-slash")
+    async def chain_demo_self_slash() -> dict[str, object]:
+        """Pedagogical only: have the node 'betray' its own validator 0.
+
+        Generates two BLS sigs over two different fake block hashes
+        using validator 0's secret key, then submits the resulting
+        equivocation proof. After the call, validator 0 is removed
+        from active_indices. Gated behind PENUMBRA_DEMO_SELF_SLASH=1
+        so production-shaped runs can't accidentally enable it.
+        """
+        import hashlib
+        import os
+
+        from penumbra_chain.slashing import SlashingEvidence
+        from penumbra_crypto import bls
+
+        if os.environ.get("PENUMBRA_DEMO_SELF_SLASH") != "1":
+            raise HTTPException(
+                status_code=403,
+                detail="self-slash demo disabled; set PENUMBRA_DEMO_SELF_SLASH=1 to enable",
+            )
+
+        node = app.state.penumbra.orchestrator.node
+        # Pick the first currently-active validator so re-running stays
+        # observable (not idempotent against the same index forever).
+        if not node.active_indices:
+            raise HTTPException(status_code=409, detail="no active validators left to slash")
+        target_idx = min(node.active_indices)
+        secret = node.secrets[target_idx]
+        pub = node.validators[target_idx].bls_pubkey
+        h_a = hashlib.sha256(b"demo-self-slash:branch-a").digest()
+        h_b = hashlib.sha256(b"demo-self-slash:branch-b").digest()
+        evidence = SlashingEvidence(
+            offender_pubkey=pub,
+            block_a_hash=h_a,
+            sig_a=bls.sign(secret.bls_secret, h_a),
+            block_b_hash=h_b,
+            sig_b=bls.sign(secret.bls_secret, h_b),
+        )
+        tx = node.slash(evidence)
+        return {
+            "slashed": pub.hex()[:16] + "…",
+            "height_observed": tx.height_observed,
+            "active_validators": len(node.active_indices),
+            "total_validators": len(node.validators),
+        }
+
     @app.get("/agents/signing-stats")
     async def agents_signing_stats() -> dict[str, int]:
         """Aggregate Dilithium sign/verify counts since boot."""
@@ -287,15 +368,30 @@ def build_app(
     async def world_save(payload: dict[str, str]) -> dict[str, object]:
         name = payload.get("name", "")
         state = app.state.penumbra
+        orchestrator = state.orchestrator
+        dp_mechanism = orchestrator.heatmap.dp_mechanism
+        # The CKKS backend lives inside the encrypted-heatmap object;
+        # reach in via its private attr because the backend protocol
+        # doesn't expose itself directly (intentional — callers go
+        # through the heatmap).
+        ckks_backend = orchestrator.heatmap._backend
         try:
-            path = save_world(name, state.orchestrator.node, state.simulation)
+            path = save_world(
+                name,
+                orchestrator.node,
+                state.simulation,
+                ckks_backend=ckks_backend,
+                dp_budget=dp_mechanism.budget if dp_mechanism is not None else None,
+            )
         except InvalidSnapshotNameError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {
             "name": name,
             "path": str(path),
-            "height": state.orchestrator.node.height,
+            "height": orchestrator.node.height,
             "simulation_tick": state.simulation.tick_counter,
+            "ckks_saved": True,
+            "dp_budget_saved": dp_mechanism is not None,
         }
 
     @app.post("/world/load")
@@ -372,16 +468,43 @@ def build_app(
 
 
 def _build_simulation_with_optional_mappo() -> Simulation:
-    """Build a Simulation, attaching the MAPPO policy if a checkpoint is present.
+    """Build a Simulation, optionally restoring from snapshot and/or attaching MAPPO.
 
-    The default checkpoint lives at `checkpoints/mappo_v0.pt` (the path
-    written by `scripts/train_initial_checkpoint.py`). Override via the
-    `PENUMBRA_MAPPO_CHECKPOINT` env var, or set it to an empty string to
-    force the random-walk baseline.
+    Precedence
+    ----------
+    1. PENUMBRA_SIM_SNAPSHOT — if set and the file exists, restore the
+       simulation from that snapshot (arena + agents + RNG state) and
+       reattach policies via the MAPPO factory (or random walk if MAPPO
+       missing).
+    2. Otherwise build a fresh Simulation from seed.
+
+    Both paths honour PENUMBRA_MAPPO_CHECKPOINT for the policy factory.
     """
     import os
+    from pathlib import Path
 
     checkpoint = os.environ.get("PENUMBRA_MAPPO_CHECKPOINT", "checkpoints/mappo_v0.pt")
+    snapshot = os.environ.get("PENUMBRA_SIM_SNAPSHOT", "")
+
+    # Resolve the policy factory once; both branches use it.
+    def _resolve_factory(n_agents: int) -> object | None:
+        if not checkpoint:
+            return None
+        try:
+            from penumbra_learning.policy_loader import mappo_policy_factory
+
+            return mappo_policy_factory(checkpoint, n_agents=n_agents)
+        except ImportError:
+            logger.warning("penumbra_learning not importable; falling back to random walk")
+            return None
+
+    if snapshot and Path(snapshot).is_file():
+        from penumbra_core.persistence import load_simulation
+
+        factory = _resolve_factory(SimulationConfig().n_agents)
+        logger.info("restoring simulation from %s", snapshot)
+        return load_simulation(Path(snapshot), policy_factory=factory)  # type: ignore[arg-type]
+
     config = SimulationConfig()
     seeded = bootstrap()
     if not checkpoint:

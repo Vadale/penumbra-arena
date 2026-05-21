@@ -41,6 +41,19 @@ function BlockCard({ block }: { block: BlockView }) {
           )}
         </ul>
       )}
+      {block.slashings && block.slashings.length > 0 && (
+        <ul className="mt-2 space-y-0.5 text-xs">
+          {block.slashings.map((s) => (
+            <li
+              key={s.offender_pubkey}
+              className="flex justify-between rounded bg-rose-950/40 px-1.5 py-0.5"
+            >
+              <span className="text-rose-300">slashed</span>
+              <span className="font-mono text-rose-200">{s.offender_pubkey}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

@@ -12,6 +12,11 @@ export interface BlockOutcomeView {
   end_reason: string;
 }
 
+export interface BlockSlashingView {
+  offender_pubkey: string;
+  height_observed: number;
+}
+
 export interface BlockView {
   hash: string;
   height: number;
@@ -20,6 +25,7 @@ export interface BlockView {
   proposer_pubkey: string;
   timestamp_ns: number;
   outcomes: BlockOutcomeView[];
+  slashings: BlockSlashingView[];
   validator_count: number;
 }
 

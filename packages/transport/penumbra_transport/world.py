@@ -45,6 +45,11 @@ from typing import Any
 from penumbra_chain.node import Node
 from penumbra_core.persistence import load_simulation, save_simulation
 from penumbra_core.simulation import Simulation
+from penumbra_crypto.crypto_persistence import (
+    save_ckks_context,
+    save_dp_budget,
+)
+from penumbra_crypto.dp import PrivacyBudget
 
 _NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
@@ -62,8 +67,15 @@ def _validate_name(name: str) -> None:
         raise InvalidSnapshotNameError(f"snapshot name {name!r} must match {_NAME_RE.pattern}")
 
 
-def save_world(name: str, node: Node, simulation: Simulation | None = None) -> Path:
-    """Snapshot the chain (and optionally the simulation) to state/snapshots/<name>/.
+def save_world(
+    name: str,
+    node: Node,
+    simulation: Simulation | None = None,
+    *,
+    ckks_backend: object | None = None,
+    dp_budget: PrivacyBudget | None = None,
+) -> Path:
+    """Snapshot the chain (and optionally simulation + CKKS + DP budget).
 
     Returns the world directory (parent of the chain dir).
     """
@@ -74,6 +86,10 @@ def save_world(name: str, node: Node, simulation: Simulation | None = None) -> P
     node.save_to(chain_target)
     if simulation is not None:
         save_simulation(simulation, world / "simulation.pkl")
+    if ckks_backend is not None:
+        save_ckks_context(ckks_backend, world / "crypto" / "ckks_context.bin")
+    if dp_budget is not None:
+        save_dp_budget(dp_budget, world / "crypto" / "dp_budget.json")
     return world
 
 
