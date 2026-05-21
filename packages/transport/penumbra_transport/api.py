@@ -19,6 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from penumbra_core.rng import bootstrap
 from penumbra_core.simulation import Simulation, SimulationConfig
 
+from penumbra_transport.coach import DisallowedCommandError, run_command
 from penumbra_transport.framing import encode_frame
 from penumbra_transport.hub import Hub
 from penumbra_transport.loop import TickLoop
@@ -132,6 +133,41 @@ def build_app(
         sim: Simulation = app.state.penumbra.simulation
         sim.config.time_warp = multiplier
         return {"time_warp": multiplier}
+
+    @app.post("/coach/exec")
+    async def coach_exec(payload: dict[str, str]) -> dict[str, object]:
+        command_line = payload.get("command", "")
+        try:
+            result = await run_command(command_line)
+        except DisallowedCommandError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {
+            "exit_code": result.exit_code,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "timed_out": result.timed_out,
+        }
+
+    @app.get("/coach/presets")
+    async def coach_presets() -> dict[str, list[dict[str, str]]]:
+        """Curated set of commands the frontend exposes as one-click buttons."""
+        return {
+            "attacker": [
+                {"label": "replay attack", "command": "pna replay-cmd"},
+                {"label": "byzantine equivocation", "command": "pna byzantine-cmd"},
+                {"label": "DP reconstruction", "command": "pna dp-reconstruct"},
+                {"label": "linkability", "command": "pna linkability-cmd"},
+            ],
+            "shell": [
+                {"label": "lessons", "command": "psh lessons"},
+                {"label": "explain ls -la", "command": "psh explain 'ls -la'"},
+                {"label": "suggest after ls", "command": "psh suggest ls"},
+                {
+                    "label": "interpret 'command not found'",
+                    "command": "psh interpret 'zsh: command not found: rg'",
+                },
+            ],
+        }
 
     @app.get("/dashboard")
     async def dashboard_snapshot() -> dict[str, object]:

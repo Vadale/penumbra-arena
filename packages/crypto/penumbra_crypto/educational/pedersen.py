@@ -35,7 +35,7 @@ from typing import Final
 #
 # (The values below are the "MODP Group 14" parameters from RFC 3526,
 # §3, widely deployed and adequate for an educational module.)
-_P: Final[int] = int(  # noqa: PLR0913 — multi-line hex literal for readability
+_P: Final[int] = int(
     "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1"  # pyright: ignore[reportImplicitStringConcatenation]
     "29024E088A67CC74020BBEA63B139B22514A08798E3404DD"
     "EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245"
