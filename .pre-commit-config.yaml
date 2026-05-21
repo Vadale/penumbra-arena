@@ -14,8 +14,24 @@ repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.7.4
     hooks:
+      # NOTE: `--exit-non-zero-on-fix` was REMOVED on 2026-05-21 after
+      # diagnosing a class of silent-commit-rollback bugs:
+      #   - When you `git commit` with both staged AND unstaged
+      #     changes, pre-commit stashes the unstaged set, runs the
+      #     hooks, ruff auto-fixes something, then exits 1 because
+      #     of `--exit-non-zero-on-fix`. Pre-commit reports
+      #     "Stashed changes conflicted with hook auto-fixes…
+      #     Rolling back fixes" — which makes it look like the
+      #     fixes were undone but the COMMIT proceeded. In reality
+      #     the commit ALSO got cancelled, HEAD didn't advance,
+      #     and the only signal was the cryptic "rollback" line.
+      #   - Without the flag, ruff still auto-fixes (--fix), but
+      #     exits 0 on success. The fixes land cleanly, the commit
+      #     proceeds, and the developer sees the auto-fixes IN the
+      #     commit. pyright runs after so semantic regressions are
+      #     still caught.
       - id: ruff
-        args: ["--fix", "--exit-non-zero-on-fix"]
+        args: ["--fix"]
       - id: ruff-format
 
   - repo: local
