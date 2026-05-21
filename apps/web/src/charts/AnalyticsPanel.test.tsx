@@ -8,9 +8,7 @@ describe("AnalyticsPanel", () => {
   });
 
   it("renders the connecting placeholder when /dashboard is silent", () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(
-      () => new Promise(() => {}) as never,
-    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => new Promise(() => {}) as never);
     render(<AnalyticsPanel />);
     expect(screen.getByText(/analytics connecting/i)).toBeInTheDocument();
   });

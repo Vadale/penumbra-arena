@@ -33,6 +33,13 @@ from penumbra_transport.pty_bridge import (
     read_pty,
     spawn_shell,
 )
+from penumbra_transport.repl_bridge import (
+    ReplSession,
+    repl_enabled,
+)
+from penumbra_transport.repl_bridge import (
+    execute as repl_execute,
+)
 from penumbra_transport.world import (
     InvalidSnapshotNameError,
     SnapshotNotFoundError,
@@ -478,6 +485,49 @@ def build_app(
     async def pty_status() -> dict[str, object]:
         """Returns whether the PTY bridge is enabled for this process."""
         return {"enabled": pty_enabled()}
+
+    @app.get("/repl/status")
+    async def repl_status() -> dict[str, object]:
+        """Returns whether the sandboxed Python REPL is enabled."""
+        return {"enabled": repl_enabled()}
+
+    @app.websocket("/ws/repl")
+    async def ws_repl(websocket: WebSocket) -> None:
+        """Bidirectional bridge to the sandboxed Penumbra REPL.
+
+        Wire format (JSON text frames):
+          → {"type": "submit", "source": "<one-liner>"}
+          ← {"type": "result", "stdout": "...", "stderr": "..."}
+
+        Gated by PENUMBRA_ENABLE_REPL=1.
+        """
+        if not repl_enabled():
+            await websocket.close(code=4403)
+            return
+
+        await websocket.accept()
+        import json
+
+        orchestrator = app.state.penumbra.orchestrator
+        session = ReplSession.for_orchestrator(orchestrator)
+        welcome = session.api.help() + "\n"
+        await websocket.send_text(json.dumps({"type": "result", "stdout": welcome, "stderr": ""}))
+        try:
+            while True:
+                msg = await websocket.receive_text()
+                try:
+                    parsed = json.loads(msg)
+                except json.JSONDecodeError:
+                    continue
+                if parsed.get("type") != "submit":
+                    continue
+                source = parsed.get("source", "")
+                stdout, stderr = await asyncio.to_thread(repl_execute, session, source)
+                await websocket.send_text(
+                    json.dumps({"type": "result", "stdout": stdout, "stderr": stderr})
+                )
+        except WebSocketDisconnect:
+            return
 
     @app.websocket("/ws/pty")
     async def ws_pty(websocket: WebSocket) -> None:

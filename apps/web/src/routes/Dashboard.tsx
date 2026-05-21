@@ -4,11 +4,12 @@ import { AnalyticsPanel } from "../charts/AnalyticsPanel";
 import { CoachConsole } from "../coach/Console";
 import { usePenumbraStore } from "../streams/store";
 import { usePenumbraSocket } from "../streams/ws";
+import { ReplConsole } from "../terminal/ReplConsole";
 import { Terminal } from "../terminal/Terminal";
 import { Arena } from "../three/Arena";
 import { TourOverlay } from "../tour/TourOverlay";
 
-type BottomTab = "coach" | "terminal";
+type BottomTab = "coach" | "terminal" | "repl";
 
 export function Dashboard() {
   usePenumbraSocket();
@@ -82,8 +83,22 @@ export function Dashboard() {
               >
                 Terminal
               </button>
+              <span className="text-slate-700">·</span>
+              <button
+                type="button"
+                onClick={() => setBottomTab("repl")}
+                className={
+                  bottomTab === "repl"
+                    ? "text-slate-100 underline underline-offset-4"
+                    : "text-slate-500 hover:text-slate-300"
+                }
+              >
+                REPL
+              </button>
             </div>
-            {bottomTab === "coach" ? <CoachConsole /> : <Terminal />}
+            {bottomTab === "coach" && <CoachConsole />}
+            {bottomTab === "terminal" && <Terminal />}
+            {bottomTab === "repl" && <ReplConsole />}
           </div>
         </section>
         <aside className="overflow-y-auto border-l border-slate-800 bg-slate-900/40 p-4 text-sm">

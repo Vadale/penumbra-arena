@@ -81,8 +81,6 @@ export function TourOverlay() {
   if (!current) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-6">
-      {/* biome-ignore lint/a11y/useKeyWithClickEvents: backdrop dismissal is purely
-          additive — primary controls (next/skip/done) are buttons */}
       <button
         type="button"
         aria-label="dismiss tour"

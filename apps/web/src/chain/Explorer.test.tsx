@@ -8,9 +8,7 @@ describe("ChainExplorer", () => {
   });
 
   it("renders the connecting placeholder before any poll succeeds", () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(
-      () => new Promise(() => {}) as never,
-    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => new Promise(() => {}) as never);
     render(<ChainExplorer />);
     expect(screen.getByText(/chain explorer connecting/i)).toBeInTheDocument();
   });

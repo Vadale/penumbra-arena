@@ -8,9 +8,7 @@ describe("Terminal", () => {
   });
 
   it("renders the checking placeholder before /pty/status resolves", () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(
-      () => new Promise(() => {}) as never,
-    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => new Promise(() => {}) as never);
     render(<Terminal />);
     expect(screen.getByText(/checking PTY availability/i)).toBeInTheDocument();
   });
