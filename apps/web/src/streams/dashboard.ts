@@ -28,6 +28,8 @@ export interface DashboardSnapshot {
   sinkhorn_cost: number | null;
   h0_total: number | null;
   h1_total: number | null;
+  h0_bars: [number, number][];
+  h1_bars: [number, number][];
   bayesian_theta: number | null;
   var95: number | null;
 }

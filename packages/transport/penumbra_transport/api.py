@@ -196,6 +196,8 @@ def build_app(
             "sinkhorn_cost": snap.sinkhorn_cost,
             "h0_total": snap.h0_total,
             "h1_total": snap.h1_total,
+            "h0_bars": [list(bar) for bar in snap.h0_bars],
+            "h1_bars": [list(bar) for bar in snap.h1_bars],
             "bayesian_theta": snap.bayesian_theta,
             "var95": snap.var95,
         }

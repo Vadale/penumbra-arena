@@ -49,6 +49,10 @@ class DashboardSnapshot:
     sinkhorn_cost: float | None = None
     h0_total: float | None = None
     h1_total: float | None = None
+    # Full barcode intervals so the frontend can render persistence bars.
+    # Each entry is [birth, death]; `inf` deaths are clamped on the wire.
+    h0_bars: tuple[tuple[float, float], ...] = ()
+    h1_bars: tuple[tuple[float, float], ...] = ()
     bayesian_theta: float | None = None
     var95: float | None = None
 
@@ -149,6 +153,8 @@ class DashboardPipeline:
                 diagram = topology.persistence_from_points(points, max_dim=1)
                 self._snapshot.h0_total = topology.total_persistence(diagram.h0)
                 self._snapshot.h1_total = topology.total_persistence(diagram.h1)
+                self._snapshot.h0_bars = _bars_payload(diagram.h0)
+                self._snapshot.h1_bars = _bars_payload(diagram.h1)
             self._last_run["topology"] = now
 
         if self._due(now, "bayesian"):
@@ -187,6 +193,27 @@ class DashboardPipeline:
         snapshot = self._snapshot
         snapshot.tick = tick
         return snapshot
+
+
+def _bars_payload(diagram: NDArray[np.float64]) -> tuple[tuple[float, float], ...]:
+    """Convert a ripser persistence diagram into a JSON-friendly tuple of pairs.
+
+    Infinite deaths (the global connected component lives forever) are
+    clamped to the max finite death in the diagram + a small margin so
+    the frontend can render them as the right edge of the chart. If
+    the diagram has only infinite intervals, we clamp to 1.0.
+    """
+    if diagram.size == 0:
+        return ()
+    finite_mask = np.isfinite(diagram[:, 1])
+    finite_max = float(diagram[finite_mask, 1].max()) if finite_mask.any() else 1.0
+    bars: list[tuple[float, float]] = []
+    for birth, death in diagram.tolist():
+        death_clamped = float(death) if np.isfinite(death) else finite_max * 1.05
+        bars.append((float(birth), death_clamped))
+    # Sort by descending lifetime so the most persistent bars come first.
+    bars.sort(key=lambda b: b[0] - b[1])  # negative lifetime → longest first
+    return tuple(bars)
 
 
 def _unused_inferential_import() -> object:

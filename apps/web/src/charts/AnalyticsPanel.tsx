@@ -7,6 +7,7 @@
  */
 
 import { useDashboardSnapshot } from "../streams/dashboard";
+import { PersistenceBarcode } from "./PersistenceBarcode";
 
 function fmt(value: number | null, digits = 3): string {
   if (value === null || !Number.isFinite(value)) return "—";
@@ -75,6 +76,15 @@ export function AnalyticsPanel() {
       {summary && (
         <div className="rounded border border-slate-800 bg-slate-900/30 p-2 text-[11px] text-slate-300">
           95% CI: [{fmt(summary.ci95_low)}, {fmt(summary.ci95_high)}]
+        </div>
+      )}
+
+      {(snap.h0_bars.length > 0 || snap.h1_bars.length > 0) && (
+        <div>
+          <div className="mb-1 text-[10px] uppercase tracking-wider text-slate-500">
+            persistence barcode
+          </div>
+          <PersistenceBarcode h0Bars={snap.h0_bars} h1Bars={snap.h1_bars} />
         </div>
       )}
     </div>
