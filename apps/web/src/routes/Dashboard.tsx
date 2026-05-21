@@ -1,16 +1,21 @@
+import { useState } from "react";
 import { ChainExplorer } from "../chain/Explorer";
 import { AnalyticsPanel } from "../charts/AnalyticsPanel";
 import { CoachConsole } from "../coach/Console";
 import { usePenumbraStore } from "../streams/store";
 import { usePenumbraSocket } from "../streams/ws";
+import { Terminal } from "../terminal/Terminal";
 import { Arena } from "../three/Arena";
 import { TourOverlay } from "../tour/TourOverlay";
+
+type BottomTab = "coach" | "terminal";
 
 export function Dashboard() {
   usePenumbraSocket();
 
   const connected = usePenumbraStore((s) => s.connected);
   const lastFrame = usePenumbraStore((s) => s.lastFrame);
+  const [bottomTab, setBottomTab] = useState<BottomTab>("coach");
 
   return (
     <div className="flex h-full flex-col">
@@ -53,8 +58,32 @@ export function Dashboard() {
             <Arena />
           </div>
           <div className="max-h-[40%] overflow-y-auto border-t border-slate-800 bg-slate-900/40 p-4">
-            <div className="mb-2 text-xs uppercase tracking-wider text-slate-400">Coach</div>
-            <CoachConsole />
+            <div className="mb-2 flex items-center gap-3 text-xs uppercase tracking-wider text-slate-400">
+              <button
+                type="button"
+                onClick={() => setBottomTab("coach")}
+                className={
+                  bottomTab === "coach"
+                    ? "text-slate-100 underline underline-offset-4"
+                    : "text-slate-500 hover:text-slate-300"
+                }
+              >
+                Coach
+              </button>
+              <span className="text-slate-700">·</span>
+              <button
+                type="button"
+                onClick={() => setBottomTab("terminal")}
+                className={
+                  bottomTab === "terminal"
+                    ? "text-slate-100 underline underline-offset-4"
+                    : "text-slate-500 hover:text-slate-300"
+                }
+              >
+                Terminal
+              </button>
+            </div>
+            {bottomTab === "coach" ? <CoachConsole /> : <Terminal />}
           </div>
         </section>
         <aside className="overflow-y-auto border-l border-slate-800 bg-slate-900/40 p-4 text-sm">

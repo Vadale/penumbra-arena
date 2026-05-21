@@ -9,6 +9,7 @@ No global state, no atexit hooks.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -26,6 +27,12 @@ from penumbra_transport.framing import encode_frame
 from penumbra_transport.hub import Hub
 from penumbra_transport.loop import TickLoop
 from penumbra_transport.orchestrator import Orchestrator
+from penumbra_transport.pty_bridge import (
+    PtySession,
+    pty_enabled,
+    read_pty,
+    spawn_shell,
+)
 from penumbra_transport.world import (
     InvalidSnapshotNameError,
     SnapshotNotFoundError,
@@ -466,6 +473,70 @@ def build_app(
             pass
         finally:
             await hub.detach(sub)
+
+    @app.get("/pty/status")
+    async def pty_status() -> dict[str, object]:
+        """Returns whether the PTY bridge is enabled for this process."""
+        return {"enabled": pty_enabled()}
+
+    @app.websocket("/ws/pty")
+    async def ws_pty(websocket: WebSocket) -> None:
+        """Bidirectional bridge between an xterm.js client and a fresh zsh PTY.
+
+        Wire format (JSON text frames from the client):
+          {"type": "input", "data": "<keystrokes>"}
+          {"type": "resize", "rows": int, "cols": int}
+        Frames TO the client are binary — raw PTY bytes including
+        terminal escape sequences. xterm.js handles them natively.
+        """
+        if not pty_enabled():
+            await websocket.close(code=4403)
+            return
+
+        await websocket.accept()
+        session: PtySession = await asyncio.to_thread(spawn_shell)
+        logger.info("PTY session pid=%d attached", session.pid)
+
+        async def pump_pty_to_ws() -> None:
+            async for chunk in read_pty(session):
+                with contextlib.suppress(Exception):
+                    await websocket.send_bytes(chunk)
+
+        async def pump_ws_to_pty() -> None:
+            while True:
+                msg = await websocket.receive()
+                if msg.get("type") == "websocket.disconnect":
+                    return
+                text = msg.get("text")
+                if text is None:
+                    continue
+                import json
+
+                try:
+                    parsed = json.loads(text)
+                except json.JSONDecodeError:
+                    continue
+                kind = parsed.get("type")
+                if kind == "input":
+                    await session.write(parsed.get("data", "").encode("utf-8"))
+                elif kind == "resize":
+                    rows = int(parsed.get("rows", 24))
+                    cols = int(parsed.get("cols", 80))
+                    session.resize(rows=rows, cols=cols)
+
+        pump_to = asyncio.create_task(pump_pty_to_ws())
+        pump_from = asyncio.create_task(pump_ws_to_pty())
+        try:
+            await asyncio.wait({pump_to, pump_from}, return_when=asyncio.FIRST_COMPLETED)
+        except WebSocketDisconnect:
+            pass
+        finally:
+            for task in (pump_to, pump_from):
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError, Exception):
+                    await task
+            await asyncio.to_thread(session.close)
+            logger.info("PTY session pid=%d closed", session.pid)
 
     return app
 
