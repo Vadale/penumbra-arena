@@ -106,7 +106,15 @@ class EncryptedHeatmap:
         return self._backend
 
     def compute(self, simulation: Simulation) -> HeatmapSample:
-        """Encrypt every agent's position, sum, decrypt, optionally DP-noise."""
+        """Encrypt every agent's position, sum, decrypt, optionally DP-noise.
+
+        Memory note (stress-test fix A): TenSEAL CKKSVectors wrap C++
+        objects that the Python GC doesn't release as eagerly as
+        pure-Python tuples. We `del` intermediate ciphertexts as we
+        go, and `del accumulator` after decryption, to keep the
+        per-call working set small. Without this the per-second
+        encrypt-sum-decrypt cycle climbs RSS by a few MB per second.
+        """
         accumulator: object | None = None
         for agent in simulation.agents:
             if not 0 <= agent.position < self._n_nodes:
@@ -114,12 +122,20 @@ class EncryptedHeatmap:
             one_hot = np.zeros(self._n_nodes, dtype=np.float64)
             one_hot[agent.position] = 1.0
             ct = self._backend.encrypt(one_hot)
-            accumulator = ct if accumulator is None else self._backend.add(accumulator, ct)
+            if accumulator is None:
+                accumulator = ct
+            else:
+                new_acc = self._backend.add(accumulator, ct)
+                del accumulator
+                del ct
+                accumulator = new_acc
+            del one_hot
         if accumulator is None:
             density = np.zeros(self._n_nodes, dtype=np.float64)
         else:
             decrypted = self._backend.decrypt(accumulator)[: self._n_nodes]
             density = np.maximum(decrypted, 0.0)
+            del accumulator
 
         noise_applied = False
         if self._dp is not None:

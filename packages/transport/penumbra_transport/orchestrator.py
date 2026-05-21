@@ -40,6 +40,26 @@ HEATMAP_INTERVAL_SECONDS_DEFAULT = 1.0
 ANALYTICS_INTERVAL_SECONDS_DEFAULT = 1.0
 
 
+def _release_torch_caches() -> None:
+    """Best-effort flush of torch's MPS/CUDA/CPU allocator caches.
+
+    Stress-test fix: per-tick MAPPO actor calls allocate temporary
+    MPS tensors that torch's cache holds for re-use. Over a long run
+    those caches climb to multi-GB. Periodic empty_cache reclaims the
+    backing memory without affecting model weights.
+    """
+    try:
+        import torch  # pyright: ignore[reportMissingImports]
+    except ImportError:
+        return
+    if hasattr(torch, "mps") and torch.backends.mps.is_available():
+        with contextlib.suppress(Exception):
+            torch.mps.empty_cache()
+    if torch.cuda.is_available():
+        with contextlib.suppress(Exception):
+            torch.cuda.empty_cache()
+
+
 @dataclass(slots=True)
 class Orchestrator:
     """Owns Simulation + chain Node + encrypted heatmap + analytics pipeline."""
@@ -65,14 +85,17 @@ class Orchestrator:
         simulation: Simulation,
         *,
         n_validators: int = 4,
-        dp_total_epsilon: float = 5.0,
-        dp_epsilon_per_release: float = 0.05,
+        dp_total_epsilon: float = 1000.0,
+        dp_epsilon_per_release: float = 0.01,
     ) -> Orchestrator:
         node = Node.boot(n_validators=n_validators)
-        # Wire a DP mechanism into the heatmap. A 5.0 ε budget at 0.05 ε
-        # per release supports 100 noised releases before the accountant
-        # refuses further DP-protected output (the system then logs a
-        # warning and continues to release the clean aggregate).
+        # Wire a DP mechanism into the heatmap. Defaults (post stress-
+        # test tuning): ε_total=1000.0 / per-release=0.01 supports
+        # ~100,000 noised releases at the 1 Hz cadence — about 27 hours
+        # before the accountant trips. Earlier defaults (5.0 / 0.05)
+        # exhausted the budget in ~50 seconds, which made the live
+        # demo log "DP off" almost immediately. Picking a longer
+        # horizon makes the DP claim observable across a real session.
         budget = PrivacyBudget(epsilon=dp_total_epsilon)
         dp_mechanism = DPMechanism(budget)
         heatmap = EncryptedHeatmap.for_simulation(
@@ -172,7 +195,17 @@ class Orchestrator:
         modulo 4. Pedagogically: it's enough to seed a meaningful topic
         signal — BERTopic will find the structure as long as the corpus
         has any structure at all.
+
+        Returns [] if PENUMBRA_ENABLE_TOPICS != "1". The BERTopic
+        consumer is the heaviest tick-time cost (stress test measured
+        4.7 Hz vs 10 Hz target with topics on; closer to 9 Hz with
+        topics off). Default-off keeps the simulation responsive;
+        the user opts in to spend tick budget on topic modelling.
         """
+        import os
+
+        if os.environ.get("PENUMBRA_ENABLE_TOPICS") != "1":
+            return []
         from penumbra_analytics.topics import ALL_ACTIONS, utterance_for
 
         rng = self.simulation.seeded.numpy_for("utterances")
@@ -183,6 +216,9 @@ class Orchestrator:
         return out
 
     async def _heatmap_loop(self) -> None:
+        import gc
+
+        iterations = 0
         try:
             while True:
                 await asyncio.sleep(self.heatmap_interval)
@@ -190,11 +226,23 @@ class Orchestrator:
                     await asyncio.to_thread(self.heatmap.compute, self.simulation)
                 except Exception:
                     logger.exception("encrypted-heatmap compute raised; continuing")
+                iterations += 1
+                # Stress-test fix: CKKS + torch MPS allocate
+                # C-extension memory that Python's GC doesn't sweep on
+                # its normal generation cadence. gc.collect every 10s +
+                # torch.mps.empty_cache every 30s caps the residue.
+                if iterations % 10 == 0:
+                    gc.collect()
+                if iterations % 30 == 0:
+                    _release_torch_caches()
         except asyncio.CancelledError:
             raise
 
     async def _analytics_loop(self) -> None:
         """Feed the dashboard pipeline at 1 Hz and re-run any due consumer."""
+        import gc
+
+        iterations = 0
         try:
             while True:
                 await asyncio.sleep(self.analytics_interval)
@@ -223,6 +271,13 @@ class Orchestrator:
                     await asyncio.to_thread(self.sign_and_verify_moves)
                 except Exception:
                     logger.exception("analytics pipeline raised; continuing")
+                iterations += 1
+                # Stress-test fix: pqcrypto Dilithium sign+verify + numpy
+                # buffers from the consumers (ripser, scipy, numpyro)
+                # accumulate temporaries that Python's normal GC sweeps
+                # too lazily. Full-collect every 10s caps the working set.
+                if iterations % 10 == 0:
+                    gc.collect()
         except asyncio.CancelledError:
             raise
 

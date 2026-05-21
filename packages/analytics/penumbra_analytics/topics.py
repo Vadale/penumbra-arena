@@ -173,23 +173,31 @@ def compute(
         calculate_probabilities=False,
         verbose=False,
     )
-    topics, _probs = model.fit_transform(corpus)
-    topics_array = np.asarray(topics)
-    info = model.get_topic_info()
+    try:
+        topics, _probs = model.fit_transform(corpus)
+        topics_array = np.asarray(topics)
+        info = model.get_topic_info()
 
-    topic_sizes: dict[int, int] = {}
-    rep_words: dict[int, tuple[str, ...]] = {}
-    # iter via columns + zip — pyright can't infer namedtuple attrs
-    # from .itertuples() at the pandas DataFrame level.
-    topic_ids = [int(t) for t in info["Topic"].tolist()]
-    counts = [int(c) for c in info["Count"].tolist()]
-    for tid, count in zip(topic_ids, counts, strict=True):
-        if tid == -1:
-            continue
-        topic_sizes[tid] = count
-        topic_info = model.get_topic(tid)
-        if isinstance(topic_info, list):
-            rep_words[tid] = tuple(w for w, _ in topic_info)
+        topic_sizes: dict[int, int] = {}
+        rep_words: dict[int, tuple[str, ...]] = {}
+        topic_ids = [int(t) for t in info["Topic"].tolist()]
+        counts = [int(c) for c in info["Count"].tolist()]
+        for tid, count in zip(topic_ids, counts, strict=True):
+            if tid == -1:
+                continue
+            topic_sizes[tid] = count
+            topic_info = model.get_topic(tid)
+            if isinstance(topic_info, list):
+                rep_words[tid] = tuple(w for w, _ in topic_info)
+    finally:
+        # Stress-test fix A: explicitly release the per-call BERTopic +
+        # UMAP + HDBSCAN models. Without this they accumulate in
+        # backreference cycles and the embedder's torch tensors stay
+        # pinned in MPS memory across calls.
+        del model
+        del umap
+        del hdbscan
+        del info
 
     return TopicResult(
         n_topics=len(topic_sizes),

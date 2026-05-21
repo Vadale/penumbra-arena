@@ -192,14 +192,23 @@ class DashboardPipeline:
             self._last_run["var95"] = now
 
         if self._due(now, "topics") and len(self._utterances) >= 40:
+            # Stress-test fix A/B: explicit gc after BERTopic; in early
+            # measurements RSS climbed ~9 GB/h because BERTopic + UMAP +
+            # HDBSCAN models were piling up. Forcing a sweep returns
+            # ~80% of the per-call allocation immediately.
+            import gc
+
             corpus = list(self._utterances)
             try:
                 result = topics.compute(corpus, min_topic_size=5)
                 self._snapshot.n_topics = result.n_topics
                 self._snapshot.topic_sizes = dict(result.topic_sizes)
                 self._snapshot.topic_top_words = dict(result.representative_words)
+                del result
             except Exception:
                 logger.debug("topic modelling failed on the current window", exc_info=True)
+            del corpus
+            gc.collect()
             self._last_run["topics"] = now
 
         return self._snapshot
