@@ -4,6 +4,7 @@ import { CoachConsole } from "../coach/Console";
 import { usePenumbraStore } from "../streams/store";
 import { usePenumbraSocket } from "../streams/ws";
 import { Arena } from "../three/Arena";
+import { TourOverlay } from "../tour/TourOverlay";
 
 export function Dashboard() {
   usePenumbraSocket();
@@ -65,6 +66,7 @@ export function Dashboard() {
           <ChainExplorer />
         </aside>
       </main>
+      <TourOverlay />
     </div>
   );
 }

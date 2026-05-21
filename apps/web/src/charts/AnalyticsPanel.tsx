@@ -71,6 +71,24 @@ export function AnalyticsPanel() {
           label="changepoints"
           value={snap.changepoints.length > 0 ? snap.changepoints.join(", ") : "—"}
         />
+        <Tile
+          label="DP ε remaining"
+          value={snap.dp_budget ? fmt(snap.dp_budget.epsilon_remaining, 3) : "—"}
+          caption={
+            snap.dp_budget
+              ? `spent ${fmt(snap.dp_budget.epsilon_spent, 3)} / ${fmt(snap.dp_budget.epsilon_total, 1)}`
+              : "DP off"
+          }
+        />
+        <Tile
+          label="Dilithium sigs verified"
+          value={snap.signing_stats.verified.toLocaleString()}
+          caption={
+            snap.signing_stats.rejected > 0
+              ? `${snap.signing_stats.rejected} rejected · ${snap.signing_stats.n_agents} agents`
+              : `${snap.signing_stats.n_agents} agents · 0 rejected`
+          }
+        />
       </div>
 
       {summary && (

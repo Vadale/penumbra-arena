@@ -26,6 +26,13 @@ from penumbra_transport.framing import encode_frame
 from penumbra_transport.hub import Hub
 from penumbra_transport.loop import TickLoop
 from penumbra_transport.orchestrator import Orchestrator
+from penumbra_transport.world import (
+    InvalidSnapshotNameError,
+    SnapshotNotFoundError,
+    list_worlds,
+    load_world,
+    save_world,
+)
 
 if TYPE_CHECKING:
     from penumbra_core.simulation import TickFrame
@@ -57,7 +64,7 @@ def build_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        sim = simulation or Simulation.build(SimulationConfig(), bootstrap())
+        sim = simulation or _build_simulation_with_optional_mappo()
         hub = Hub()
         orchestrator = Orchestrator.build(sim)
 
@@ -196,10 +203,28 @@ def build_app(
 
     @app.get("/dashboard")
     async def dashboard_snapshot() -> dict[str, object]:
-        snap = app.state.penumbra.orchestrator.latest_dashboard_snapshot
+        orchestrator = app.state.penumbra.orchestrator
+        snap = orchestrator.latest_dashboard_snapshot
         summary = snap.summary
+        dp_mechanism = orchestrator.heatmap.dp_mechanism
+        dp_budget = (
+            None
+            if dp_mechanism is None
+            else {
+                "epsilon_total": dp_mechanism.budget.epsilon,
+                "epsilon_spent": dp_mechanism.budget.epsilon_spent,
+                "epsilon_remaining": dp_mechanism.budget.remaining_epsilon,
+            }
+        )
+        signing_stats = {
+            "verified": orchestrator.keystore.stats.verified,
+            "rejected": orchestrator.keystore.stats.rejected,
+            "n_agents": len(orchestrator.keystore.keypairs),
+        }
         return {
             "tick": snap.tick,
+            "dp_budget": dp_budget,
+            "signing_stats": signing_stats,
             "summary": (
                 None
                 if summary is None
@@ -258,6 +283,54 @@ def build_app(
             "delta_spent": budget.delta_spent,
         }
 
+    @app.post("/world/save")
+    async def world_save(payload: dict[str, str]) -> dict[str, object]:
+        name = payload.get("name", "")
+        state = app.state.penumbra
+        try:
+            path = save_world(name, state.orchestrator.node, state.simulation)
+        except InvalidSnapshotNameError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {
+            "name": name,
+            "path": str(path),
+            "height": state.orchestrator.node.height,
+            "simulation_tick": state.simulation.tick_counter,
+        }
+
+    @app.post("/world/load")
+    async def world_load(payload: dict[str, str]) -> dict[str, object]:
+        name = payload.get("name", "")
+        try:
+            new_node = load_world(name)
+        except InvalidSnapshotNameError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except SnapshotNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        orchestrator = app.state.penumbra.orchestrator
+        orchestrator.node = new_node
+        return {
+            "name": name,
+            "height": new_node.height,
+            "active_validators": len(new_node.active_indices),
+            "slashed": len(new_node.slashed_pubkeys),
+        }
+
+    @app.get("/world/list")
+    async def world_list() -> dict[str, object]:
+        entries = list_worlds()
+        return {
+            "snapshots": [
+                {
+                    "name": e.name,
+                    "path": e.path,
+                    "chain_height": e.chain_height,
+                    "has_simulation": e.has_simulation,
+                }
+                for e in entries
+            ]
+        }
+
     @app.get("/chain/latest")
     async def chain_latest() -> dict[str, object]:
         node = app.state.penumbra.orchestrator.node
@@ -298,6 +371,32 @@ def build_app(
     return app
 
 
+def _build_simulation_with_optional_mappo() -> Simulation:
+    """Build a Simulation, attaching the MAPPO policy if a checkpoint is present.
+
+    The default checkpoint lives at `checkpoints/mappo_v0.pt` (the path
+    written by `scripts/train_initial_checkpoint.py`). Override via the
+    `PENUMBRA_MAPPO_CHECKPOINT` env var, or set it to an empty string to
+    force the random-walk baseline.
+    """
+    import os
+
+    checkpoint = os.environ.get("PENUMBRA_MAPPO_CHECKPOINT", "checkpoints/mappo_v0.pt")
+    config = SimulationConfig()
+    seeded = bootstrap()
+    if not checkpoint:
+        return Simulation.build(config, seeded)
+    try:
+        from penumbra_learning.policy_loader import mappo_policy_factory
+
+        factory = mappo_policy_factory(checkpoint, n_agents=config.n_agents)
+        return Simulation.build(config, seeded, policy_factory=factory)
+    except ImportError:
+        # penumbra-learning isn't installed (e.g. a slim deployment) — fall back.
+        logger.warning("penumbra_learning not importable; falling back to random walk")
+        return Simulation.build(config, seeded)
+
+
 def _block_view(blk: object) -> dict[str, object]:
     """Render a Block as a JSON-friendly dict for the explorer endpoints."""
     from penumbra_chain.block import Block
@@ -319,6 +418,13 @@ def _block_view(blk: object) -> dict[str, object]:
                 "end_reason": o.end_reason,
             }
             for o in blk.payload
+        ],
+        "slashings": [
+            {
+                "offender_pubkey": s.evidence.offender_pubkey.hex()[:16] + "…",
+                "height_observed": s.height_observed,
+            }
+            for s in blk.slashings
         ],
         "validator_count": len(blk.validator_pubkeys),
     }

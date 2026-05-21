@@ -198,7 +198,22 @@ class MAPPO:
             path,
         )
 
-    def load(self, path: str, *, weights_only: bool = True) -> None:
+    def load(
+        self,
+        path: str,
+        *,
+        weights_only: bool = True,
+        actor_only: bool = False,
+    ) -> None:
+        """Restore weights from `path`.
+
+        `actor_only=True` skips the centralised critic. At inference time
+        only the actor is needed (the critic is a training artefact); and
+        the critic's input dim scales with n_agents, so a checkpoint
+        trained at one population size is otherwise incompatible with a
+        differently-sized live simulation.
+        """
         ckpt = torch.load(path, map_location=self.device, weights_only=weights_only)
         self.actor.load_state_dict(ckpt["actor"])
-        self.critic.load_state_dict(ckpt["critic"])
+        if not actor_only:
+            self.critic.load_state_dict(ckpt["critic"])

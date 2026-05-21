@@ -1704,12 +1704,14 @@ source = { editable = "packages/chain" }
 dependencies = [
     { name = "penumbra-core" },
     { name = "penumbra-crypto" },
+    { name = "polars" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "penumbra-core", editable = "packages/core" },
     { name = "penumbra-crypto", editable = "packages/crypto" },
+    { name = "polars", specifier = ">=1.16" },
 ]
 
 [[package]]

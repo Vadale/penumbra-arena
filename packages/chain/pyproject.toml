@@ -5,6 +5,7 @@ description = "Penumbra local blockchain: blocks, Merkle, PoS-VRF, BLS finality,
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+  "polars>=1.16",
   "penumbra-core",
   "penumbra-crypto",
 ]

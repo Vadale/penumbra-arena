@@ -17,6 +17,18 @@ export interface DashboardSummary {
   ci95_high: number;
 }
 
+export interface DPBudget {
+  epsilon_total: number;
+  epsilon_spent: number;
+  epsilon_remaining: number;
+}
+
+export interface SigningStats {
+  verified: number;
+  rejected: number;
+  n_agents: number;
+}
+
 export interface DashboardSnapshot {
   tick: number;
   summary: DashboardSummary | null;
@@ -32,6 +44,8 @@ export interface DashboardSnapshot {
   h1_bars: [number, number][];
   bayesian_theta: number | null;
   var95: number | null;
+  dp_budget: DPBudget | null;
+  signing_stats: SigningStats;
 }
 
 const POLL_MS = 500;
