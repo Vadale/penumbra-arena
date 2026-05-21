@@ -11,6 +11,11 @@ dependencies = [
   "statsmodels>=0.14",
   "scikit-learn>=1.5",
   "networkx>=3.4",
+  "hdbscan>=0.8.40",
+  "lifelines>=0.27",
+  "ripser>=0.6",
+  "pot>=0.9",
+  "numpyro>=0.18",
   "penumbra-core",
 ]
 
