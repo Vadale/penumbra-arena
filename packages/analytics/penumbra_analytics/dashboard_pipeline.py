@@ -132,7 +132,9 @@ class DashboardPipeline:
                 self._snapshot.arima_next = forecast.next_value
                 self._snapshot.arima_std = forecast.forecast_std
             except Exception:
-                logger.debug("consumer raised on the current window; will retry next cadence", exc_info=True)
+                logger.debug(
+                    "consumer raised on the current window; will retry next cadence", exc_info=True
+                )
             self._last_run["arima"] = now
 
         if self._due(now, "changepoints") and len(self._trajectory_lengths) >= 30:
