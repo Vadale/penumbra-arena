@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ChainExplorer } from "../chain/Explorer";
 import { AnalyticsPanel } from "../charts/AnalyticsPanel";
 import { CoachConsole } from "../coach/Console";
+import { StatusBar } from "../shell/StatusBar";
 import { usePenumbraStore } from "../streams/store";
 import { usePenumbraSocket } from "../streams/ws";
 import { ReplConsole } from "../terminal/ReplConsole";
@@ -20,97 +21,98 @@ export function Dashboard() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between border-b border-slate-800 bg-slate-900/60 px-6 py-3">
-        <div className="flex items-center gap-3">
-          <div className="text-base font-medium tracking-tight">Penumbra</div>
-          <div className="text-xs uppercase tracking-wider text-slate-400">Phase 1 · skeleton</div>
+      <header className="flex items-center justify-between border-b border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-panel)] px-4 py-2">
+        <div className="flex items-baseline gap-3">
+          <div className="text-sm font-semibold tracking-tight text-[color:var(--color-penumbra-text)]">
+            penumbra
+          </div>
+          <div className="text-[10px] uppercase tracking-[0.2em] text-[color:var(--color-penumbra-muted)]">
+            privacy · perpetual · multi-agent
+          </div>
         </div>
-        <div className="flex items-center gap-3 text-xs">
+        <div className="flex items-center gap-3 text-[11px]">
           <span
             className={
               connected
-                ? "rounded-full bg-emerald-900/50 px-2 py-0.5 text-emerald-300"
-                : "rounded-full bg-rose-900/50 px-2 py-0.5 text-rose-300"
+                ? "rounded-sm border border-[color:var(--color-penumbra-cyan)] bg-[color:var(--color-penumbra-cyan-bg)] px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-cyan)]"
+                : "rounded-sm border border-[color:var(--color-penumbra-ember)] bg-[color:var(--color-penumbra-ember-bg)] px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-ember)]"
             }
           >
-            {connected ? "connected" : "disconnected"}
+            {connected ? "linked" : "offline"}
           </span>
-          {lastFrame && (
-            <>
-              <span className="text-slate-400">
-                tick <span className="text-slate-100">{lastFrame.tick}</span>
-              </span>
-              <span className="text-slate-400">
-                match <span className="text-slate-100">{lastFrame.match_id}</span>
-              </span>
-              <span className="text-slate-400">
-                status <span className="text-slate-100">{lastFrame.match_status}</span>
-              </span>
-              <span className="text-slate-400">
-                edges <span className="text-slate-100">{lastFrame.arena_edge_count}</span>
-              </span>
-            </>
-          )}
         </div>
       </header>
-      <main className="grid flex-1 grid-cols-[1fr_360px_320px]">
-        <section className="flex flex-col bg-slate-950">
-          <div className="relative flex-1">
+
+      <main className="grid flex-1 grid-cols-[1fr_340px_300px] overflow-hidden">
+        <section className="flex flex-col bg-[color:var(--color-penumbra-bg)]">
+          <div className="relative flex-1 border-r border-[color:var(--color-penumbra-border)]">
             <Arena />
           </div>
-          <div className="max-h-[40%] overflow-y-auto border-t border-slate-800 bg-slate-900/40 p-4">
-            <div className="mb-2 flex items-center gap-3 text-xs uppercase tracking-wider text-slate-400">
-              <button
-                type="button"
-                onClick={() => setBottomTab("coach")}
-                className={
-                  bottomTab === "coach"
-                    ? "text-slate-100 underline underline-offset-4"
-                    : "text-slate-500 hover:text-slate-300"
-                }
-              >
-                Coach
-              </button>
-              <span className="text-slate-700">·</span>
-              <button
-                type="button"
-                onClick={() => setBottomTab("terminal")}
-                className={
-                  bottomTab === "terminal"
-                    ? "text-slate-100 underline underline-offset-4"
-                    : "text-slate-500 hover:text-slate-300"
-                }
-              >
-                Terminal
-              </button>
-              <span className="text-slate-700">·</span>
-              <button
-                type="button"
-                onClick={() => setBottomTab("repl")}
-                className={
-                  bottomTab === "repl"
-                    ? "text-slate-100 underline underline-offset-4"
-                    : "text-slate-500 hover:text-slate-300"
-                }
-              >
-                REPL
-              </button>
+          <div className="flex max-h-[42%] flex-col border-t border-r border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-panel)]">
+            <div className="flex items-center gap-3 border-b border-[color:var(--color-penumbra-border)] px-3 py-1.5 text-[10px] uppercase tracking-[0.18em]">
+              <PanelTab active={bottomTab === "coach"} onClick={() => setBottomTab("coach")}>
+                coach
+              </PanelTab>
+              <PanelTab active={bottomTab === "terminal"} onClick={() => setBottomTab("terminal")}>
+                shell
+              </PanelTab>
+              <PanelTab active={bottomTab === "repl"} onClick={() => setBottomTab("repl")}>
+                repl
+              </PanelTab>
             </div>
-            {bottomTab === "coach" && <CoachConsole />}
-            {bottomTab === "terminal" && <Terminal />}
-            {bottomTab === "repl" && <ReplConsole />}
+            <div className="flex-1 overflow-y-auto p-3">
+              {bottomTab === "coach" && <CoachConsole />}
+              {bottomTab === "terminal" && <Terminal />}
+              {bottomTab === "repl" && <ReplConsole />}
+            </div>
           </div>
         </section>
-        <aside className="overflow-y-auto border-l border-slate-800 bg-slate-900/40 p-4 text-sm">
-          <div className="mb-2 text-xs uppercase tracking-wider text-slate-400">Analytics</div>
+
+        <aside className="overflow-y-auto border-r border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-panel)] p-3 text-xs">
+          <SectionHeader>analytics</SectionHeader>
           <AnalyticsPanel />
         </aside>
-        <aside className="overflow-y-auto border-l border-slate-800 bg-slate-900/40 p-4 text-sm">
-          <div className="mb-2 text-xs uppercase tracking-wider text-slate-400">Chain</div>
+
+        <aside className="overflow-y-auto bg-[color:var(--color-penumbra-panel)] p-3 text-xs">
+          <SectionHeader>chain</SectionHeader>
           <ChainExplorer />
         </aside>
       </main>
+
+      <StatusBar lastFrame={lastFrame} connected={connected} />
       <TourOverlay />
+    </div>
+  );
+}
+
+function PanelTab({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        active
+          ? "border-b border-[color:var(--color-penumbra-cyan)] pb-0.5 text-[color:var(--color-penumbra-cyan)]"
+          : "pb-0.5 text-[color:var(--color-penumbra-muted)] hover:text-[color:var(--color-penumbra-text)]"
+      }
+    >
+      {children}
+    </button>
+  );
+}
+
+function SectionHeader({ children }: { children: string }) {
+  return (
+    <div className="mb-2 border-b border-[color:var(--color-penumbra-border)] pb-1 text-[10px] uppercase tracking-[0.18em] text-[color:var(--color-penumbra-muted)]">
+      {children}
     </div>
   );
 }

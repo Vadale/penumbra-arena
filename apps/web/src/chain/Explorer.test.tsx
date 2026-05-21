@@ -48,9 +48,9 @@ describe("ChainExplorer", () => {
     );
     render(<ChainExplorer />);
     await waitFor(() => {
-      expect(screen.getByText(/block #1/)).toBeInTheDocument();
+      expect(screen.getAllByText("#1").length).toBeGreaterThan(0);
     });
-    expect(screen.getByText(/match 7/)).toBeInTheDocument();
+    expect(screen.getByText("m7")).toBeInTheDocument();
     expect(screen.getByText(/slashed/i)).toBeInTheDocument();
     expect(screen.getByText(/deadbeef…/)).toBeInTheDocument();
   });

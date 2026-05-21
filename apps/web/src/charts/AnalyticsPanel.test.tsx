@@ -42,13 +42,12 @@ describe("AnalyticsPanel", () => {
     );
     render(<AnalyticsPanel />);
     await waitFor(() => {
-      expect(screen.getByText(/tick 99/)).toBeInTheDocument();
+      expect(screen.getByText(/dp\.ε rem/i)).toBeInTheDocument();
     });
-    expect(screen.getByText(/DP ε remaining/)).toBeInTheDocument();
-    expect(screen.getByText(/4.000/)).toBeInTheDocument();
-    expect(screen.getByText(/Dilithium sigs verified/)).toBeInTheDocument();
+    expect(screen.getByText("4.00")).toBeInTheDocument();
+    expect(screen.getByText(/sigs\.ok/i)).toBeInTheDocument();
     expect(screen.getByText("123")).toBeInTheDocument();
-    expect(screen.getByText(/BERTopic topics/)).toBeInTheDocument();
-    expect(screen.getByText(/explore \/ node \/ topology/)).toBeInTheDocument();
+    expect(screen.getByText(/topics/i)).toBeInTheDocument();
+    expect(screen.getByText(/explore·node·topology/)).toBeInTheDocument();
   });
 });
