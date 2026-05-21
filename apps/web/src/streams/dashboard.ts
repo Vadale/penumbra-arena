@@ -52,9 +52,52 @@ export interface DashboardSnapshot {
 }
 
 const POLL_MS = 500;
+const HISTORY_CAPACITY = 60; // ~30 s of history at 500ms cadence
 
-export function useDashboardSnapshot(): DashboardSnapshot | null {
+export interface DashboardHistory {
+  trajectory_mean: number[];
+  trajectory_std: number[];
+  arima_next: number[];
+  sinkhorn_cost: number[];
+  var95: number[];
+  bayesian_theta: number[];
+  h0_total: number[];
+  h1_total: number[];
+  hdbscan_clusters: number[];
+  dp_epsilon_spent: number[];
+  signing_verified: number[];
+  n_topics: number[];
+}
+
+const EMPTY_HISTORY: DashboardHistory = {
+  trajectory_mean: [],
+  trajectory_std: [],
+  arima_next: [],
+  sinkhorn_cost: [],
+  var95: [],
+  bayesian_theta: [],
+  h0_total: [],
+  h1_total: [],
+  hdbscan_clusters: [],
+  dp_epsilon_spent: [],
+  signing_verified: [],
+  n_topics: [],
+};
+
+function pushRolling(arr: number[], v: number | null): number[] {
+  const next = [...arr, v ?? NaN];
+  if (next.length > HISTORY_CAPACITY) next.shift();
+  return next;
+}
+
+export interface DashboardLive {
+  snap: DashboardSnapshot | null;
+  history: DashboardHistory;
+}
+
+export function useDashboardLive(): DashboardLive {
   const [snap, setSnap] = useState<DashboardSnapshot | null>(null);
+  const [history, setHistory] = useState<DashboardHistory>(EMPTY_HISTORY);
 
   useEffect(() => {
     let cancelled = false;
@@ -63,7 +106,28 @@ export function useDashboardSnapshot(): DashboardSnapshot | null {
         const res = await fetch("/dashboard");
         if (!res.ok) return;
         const payload = (await res.json()) as DashboardSnapshot;
-        if (!cancelled) setSnap(payload);
+        if (cancelled) return;
+        setSnap(payload);
+        setHistory((h) => ({
+          trajectory_mean: pushRolling(h.trajectory_mean, payload.summary?.mean ?? null),
+          trajectory_std: pushRolling(h.trajectory_std, payload.summary?.std ?? null),
+          arima_next: pushRolling(h.arima_next, payload.arima_next),
+          sinkhorn_cost: pushRolling(h.sinkhorn_cost, payload.sinkhorn_cost),
+          var95: pushRolling(h.var95, payload.var95),
+          bayesian_theta: pushRolling(h.bayesian_theta, payload.bayesian_theta),
+          h0_total: pushRolling(h.h0_total, payload.h0_total),
+          h1_total: pushRolling(h.h1_total, payload.h1_total),
+          hdbscan_clusters: pushRolling(h.hdbscan_clusters, payload.hdbscan_n_clusters),
+          dp_epsilon_spent: pushRolling(
+            h.dp_epsilon_spent,
+            payload.dp_budget?.epsilon_spent ?? null,
+          ),
+          signing_verified: pushRolling(
+            h.signing_verified,
+            payload.signing_stats?.verified ?? null,
+          ),
+          n_topics: pushRolling(h.n_topics, payload.n_topics),
+        }));
       } catch {
         // ignore; next poll will retry
       }
@@ -76,5 +140,10 @@ export function useDashboardSnapshot(): DashboardSnapshot | null {
     };
   }, []);
 
-  return snap;
+  return { snap, history };
+}
+
+/** Back-compat for older callers — returns just the snapshot. */
+export function useDashboardSnapshot(): DashboardSnapshot | null {
+  return useDashboardLive().snap;
 }

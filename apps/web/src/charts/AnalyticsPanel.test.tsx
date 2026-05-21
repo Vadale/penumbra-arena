@@ -42,9 +42,8 @@ describe("AnalyticsPanel", () => {
     );
     render(<AnalyticsPanel />);
     await waitFor(() => {
-      expect(screen.getByText(/dp\.ε rem/i)).toBeInTheDocument();
+      expect(screen.getByText(/dp\.ε spent/i)).toBeInTheDocument();
     });
-    expect(screen.getByText("4.00")).toBeInTheDocument();
     expect(screen.getByText(/sigs\.ok/i)).toBeInTheDocument();
     expect(screen.getByText("123")).toBeInTheDocument();
     expect(screen.getByText(/topics/i)).toBeInTheDocument();

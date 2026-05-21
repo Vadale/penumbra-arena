@@ -146,6 +146,36 @@ def build_app(
             "arena_edge_count": sim.arena.graph.number_of_edges(),
         }
 
+    @app.get("/arena/topology")
+    async def arena_topology() -> dict[str, object]:
+        """Full graph + current edge costs + goals.
+
+        Polled by the frontend ~every 5s to redraw the force-directed
+        2D arena view. Returns:
+          nodes:   [int, ...]
+          edges:   [{u, v, cost}, ...]
+          goals:   [int, ...]
+          tick:    int  (so the client knows how stale the snapshot is)
+        """
+        sim: Simulation = app.state.penumbra.simulation
+        arena = sim.arena
+        nodes = list(arena.graph.nodes())
+        edges = []
+        for u, v in arena.graph.edges():
+            edges.append(
+                {
+                    "u": int(u),
+                    "v": int(v),
+                    "cost": float(arena.cost_of(int(u), int(v))),
+                }
+            )
+        return {
+            "nodes": nodes,
+            "edges": edges,
+            "goals": list(arena.goals),
+            "tick": sim.tick_counter,
+        }
+
     @app.post("/control/pause")
     async def pause() -> dict[str, str]:
         app.state.penumbra.simulation.pause()
