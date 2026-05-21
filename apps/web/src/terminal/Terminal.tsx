@@ -16,26 +16,17 @@ import { Terminal as XTerm } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useRef, useState } from "react";
 
+// Use SAME-ORIGIN URLs everywhere; Vite proxies `/pty` + `/ws` to the
+// backend in dev (config picks up PENUMBRA_API_PORT). In production
+// the bundle is served by the same backend, so the relative paths
+// hit the same host:port directly.
 const PTY_WS_URL = (() => {
   if (typeof window === "undefined") return "";
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-  // In dev the backend lives on a different port; Vite proxies absent.
-  // Hardcode for dev; production would use a path under the same origin.
-  const host =
-    window.location.hostname === "localhost" && window.location.port === "5173"
-      ? "localhost:8000"
-      : window.location.host;
-  return `${proto}//${host}/ws/pty`;
+  return `${proto}//${window.location.host}/ws/pty`;
 })();
 
-const PTY_STATUS_URL = (() => {
-  if (typeof window === "undefined") return "";
-  const host =
-    window.location.hostname === "localhost" && window.location.port === "5173"
-      ? "http://localhost:8000"
-      : window.location.origin;
-  return `${host}/pty/status`;
-})();
+const PTY_STATUS_URL = "/pty/status";
 
 export function Terminal() {
   const containerRef = useRef<HTMLDivElement | null>(null);

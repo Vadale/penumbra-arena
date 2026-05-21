@@ -88,12 +88,19 @@ def test_slash_removes_validator_from_active_set() -> None:
     assert tx in node.pending_slashings
 
 
-def test_slash_is_idempotent() -> None:
+def test_slash_rejects_already_slashed() -> None:
+    """Per crypto-audit A2/A3: re-submitting evidence must raise, not no-op.
+
+    The previous behaviour fabricated a fresh SlashingTx from caller-
+    supplied data and returned it — which the HTTP layer treated as
+    canonical. That made the API a small forgery vector. Now we refuse.
+    """
     node = Node.boot(n_validators=4)
     ev = _build_evidence_for(1, node)
     node.slash(ev)
-    # Submitting again with the same offender should not double-slash.
-    node.slash(ev)
+    with pytest.raises(SlashingError, match="already slashed"):
+        node.slash(ev)
+    # And the active set still shows the validator slashed once.
     assert len(node.active_indices) == 3
 
 

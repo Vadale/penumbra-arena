@@ -41,8 +41,15 @@ def save_ckks_context(backend: object, path: Path) -> None:
         save_relin_keys=True,
     )
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(raw)
-    os.chmod(path, 0o600)
+    # Crypto-audit B1: atomic 0o600 write closes the TOCTOU between
+    # path.write_bytes (creates the file with default umask, often 0o644)
+    # and the subsequent chmod call.
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    fd = os.open(str(path), flags, 0o600)
+    try:
+        os.write(fd, raw)
+    finally:
+        os.close(fd)
 
 
 def load_ckks_context_bytes(path: Path) -> bytes:
@@ -87,13 +94,23 @@ def save_dp_budget(budget: PrivacyBudget, path: Path) -> None:
 
 
 def load_dp_budget(path: Path) -> PrivacyBudget:
-    """Reverse `save_dp_budget`."""
+    """Reverse `save_dp_budget`.
+
+    Crypto-audit B3: refuse silent partial payloads. Earlier the loader
+    fell back to `.get(..., 0.0)` for missing keys — a malicious operator
+    could truncate the file to `{}` and reset `epsilon_spent` to zero,
+    exactly the failure mode the accountant claims to prevent.
+    """
     if not path.is_file():
         raise FileNotFoundError(f"DP budget snapshot not found at {path}")
     payload = json.loads(path.read_text())
+    required = {"epsilon", "delta", "epsilon_spent", "delta_spent"}
+    missing = required - set(payload.keys())
+    if missing:
+        raise ValueError(f"DP budget snapshot at {path} is missing keys: {sorted(missing)}")
     return PrivacyBudget(
         epsilon=float(payload["epsilon"]),
-        delta=float(payload.get("delta", 0.0)),
-        epsilon_spent=float(payload.get("epsilon_spent", 0.0)),
-        delta_spent=float(payload.get("delta_spent", 0.0)),
+        delta=float(payload["delta"]),
+        epsilon_spent=float(payload["epsilon_spent"]),
+        delta_spent=float(payload["delta_spent"]),
     )

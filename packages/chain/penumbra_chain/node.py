@@ -112,10 +112,16 @@ class Node:
             raise SlashingError("offender pubkey is not in our validator set")
 
         if evidence.offender_pubkey in self.slashed_pubkeys:
-            for tx in self.pending_slashings:
-                if tx.evidence.offender_pubkey == evidence.offender_pubkey:
-                    return tx
-            return SlashingTx(evidence=evidence, height_observed=self.height)
+            # Crypto-audit A2/A3: previously we silently treated repeated
+            # evidence as a no-op and even fabricated a fresh SlashingTx
+            # with caller-supplied data, which the HTTP layer echoed back
+            # as if it were canonical chain state. Refuse instead.
+            raise SlashingError("validator is already slashed")
+        if offender_idx not in self.active_indices:
+            # Belt-and-braces: a validator not in active_indices but also
+            # not in slashed_pubkeys shouldn't happen, but if it does we
+            # refuse to mutate state.
+            raise SlashingError("offender is not in the active validator set")
 
         self.active_indices.discard(offender_idx)
         self.slashed_pubkeys.add(evidence.offender_pubkey)

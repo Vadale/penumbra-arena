@@ -13,11 +13,13 @@ from penumbra_learning.training import TrainingConfig, train
 
 
 def main() -> None:
-    env = PenumbraEnv(n_agents=10, arena_nodes=20, max_match_ticks=80, seed=42)
+    # Match the runtime config (penumbra_core.SimulationConfig) so the
+    # critic dim aligns: production runs at n_agents=50, arena_nodes=50.
+    env = PenumbraEnv(n_agents=50, arena_nodes=50, max_match_ticks=120, seed=42)
     agent = train(
         env,
         TrainingConfig(
-            n_iterations=20,
+            n_iterations=80,
             rollout_length=128,
             checkpoint_path="checkpoints/mappo_v0.pt",
         ),

@@ -26,7 +26,7 @@ this single-machine project never does.
 from __future__ import annotations
 
 import json
-import pickle
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -121,10 +121,21 @@ def _write_secrets(snapshot: NodeSnapshot, path: Path) -> None:
         {"bls_secret": s.bls_secret.hex(), "vrf_secret": str(s.vrf_secret)}
         for s in snapshot.secrets
     ]
-    path.write_text(json.dumps(payload, indent=2))
-    # 0o600 = only owner can read. Defence in depth even though the
-    # whole project runs as the user anyway.
-    path.chmod(0o600)
+    # Crypto-audit B1: atomic owner-only-readable write.
+    # write_text + chmod is a TOCTOU window in which the file is
+    # world-readable. os.open with mode=0o600 sets the bits BEFORE
+    # the first byte hits disk.
+    _atomic_owner_only_write(path, json.dumps(payload, indent=2).encode("utf-8"))
+
+
+def _atomic_owner_only_write(path: Path, data: bytes) -> None:
+    """Open with O_CREAT|O_TRUNC|O_WRONLY and mode 0o600, then write."""
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    fd = os.open(str(path), flags, 0o600)
+    try:
+        os.write(fd, data)
+    finally:
+        os.close(fd)
 
 
 def _read_secrets(path: Path) -> tuple[ValidatorSecret, ...]:
@@ -169,10 +180,11 @@ def _write_blocks(chain: list[Block], path: Path) -> None:
         # explicit empty marker file so restore knows the chain is empty.
         path.write_bytes(b"")
         return
-    # We serialise the payload (list of MatchOutcomes) and the finality
-    # bundle (validator_pubkeys + aggregate sig) as pickled bytes per row.
-    # Parquet handles binary columns natively and keeps everything in
-    # one file the user can `parquet-tools head` against for inspection.
+    # Crypto-audit B2: pickle.loads on a parquet column is arbitrary-
+    # code-execution if the file was tampered with. We now serialise the
+    # payload (MatchOutcomes), slashings, and finality validator pubkeys
+    # as JSON-of-hex strings per row. The parser is total + side-effect-
+    # free.
     rows = []
     for block in chain:
         rows.append(
@@ -183,14 +195,62 @@ def _write_blocks(chain: list[Block], path: Path) -> None:
                 "proposer_pubkey": block.header.proposer_pubkey.hex(),
                 "vrf_beta": block.header.vrf_beta.hex(),
                 "timestamp_ns": block.header.timestamp_ns,
-                "payload_blob": pickle.dumps(block.payload),
-                "slashings_blob": pickle.dumps(block.slashings),
-                "validator_pubkeys_blob": pickle.dumps(block.validator_pubkeys),
+                "payload_json": json.dumps([_outcome_to_json(o) for o in block.payload]),
+                "slashings_json": json.dumps([_slashing_to_json(s) for s in block.slashings]),
+                "validator_pubkeys_json": json.dumps([pk.hex() for pk in block.validator_pubkeys]),
                 "aggregate_signature": block.aggregate_signature.hex(),
             }
         )
     frame = pl.DataFrame(rows)
     frame.write_parquet(path)
+
+
+def _outcome_to_json(o: MatchOutcome) -> dict[str, object]:
+    return {
+        "match_id": o.match_id,
+        "winner_agent_id": o.winner_agent_id,
+        "winning_goal": o.winning_goal,
+        "started_tick": o.started_tick,
+        "end_tick": o.end_tick,
+        "end_reason": o.end_reason,
+        "arena_signature": o.arena_signature.hex(),
+    }
+
+
+def _outcome_from_json(row: dict[str, object]) -> MatchOutcome:
+    return MatchOutcome(
+        match_id=int(row["match_id"]),  # type: ignore[arg-type]
+        winner_agent_id=row["winner_agent_id"],  # type: ignore[arg-type]
+        winning_goal=row["winning_goal"],  # type: ignore[arg-type]
+        started_tick=int(row["started_tick"]),  # type: ignore[arg-type]
+        end_tick=int(row["end_tick"]),  # type: ignore[arg-type]
+        end_reason=str(row["end_reason"]),
+        arena_signature=bytes.fromhex(str(row["arena_signature"])),
+    )
+
+
+def _slashing_to_json(tx: SlashingTx) -> dict[str, object]:
+    return {
+        "offender_pubkey": tx.evidence.offender_pubkey.hex(),
+        "block_a_hash": tx.evidence.block_a_hash.hex(),
+        "sig_a": tx.evidence.sig_a.hex(),
+        "block_b_hash": tx.evidence.block_b_hash.hex(),
+        "sig_b": tx.evidence.sig_b.hex(),
+        "height_observed": tx.height_observed,
+    }
+
+
+def _slashing_from_json(row: dict[str, object]) -> SlashingTx:
+    return SlashingTx(
+        evidence=SlashingEvidence(
+            offender_pubkey=bytes.fromhex(str(row["offender_pubkey"])),
+            block_a_hash=bytes.fromhex(str(row["block_a_hash"])),
+            sig_a=bytes.fromhex(str(row["sig_a"])),
+            block_b_hash=bytes.fromhex(str(row["block_b_hash"])),
+            sig_b=bytes.fromhex(str(row["sig_b"])),
+        ),
+        height_observed=int(row["height_observed"]),  # type: ignore[arg-type]
+    )
 
 
 def _read_blocks(path: Path) -> list[Block]:
@@ -207,19 +267,14 @@ def _read_blocks(path: Path) -> list[Block]:
             vrf_beta=bytes.fromhex(row["vrf_beta"]),
             timestamp_ns=int(row["timestamp_ns"]),
         )
-        # `slashings_blob` is new — pre-existing parquet files won't have
-        # it. Fall back to an empty tuple to keep old snapshots loadable.
-        raw_slashings = row.get("slashings_blob") if isinstance(row, dict) else None
-        slashings_tuple: tuple[object, ...] = (
-            tuple(pickle.loads(raw_slashings))  # noqa: S301
-            if raw_slashings is not None
-            else ()
-        )
+        payload_rows = json.loads(row["payload_json"])
+        slashing_rows = json.loads(row.get("slashings_json", "[]") or "[]")
+        pubkey_rows = json.loads(row["validator_pubkeys_json"])
         block = Block(
             header=header,
-            payload=tuple(pickle.loads(row["payload_blob"])),  # noqa: S301
-            slashings=slashings_tuple,  # type: ignore[arg-type]
-            validator_pubkeys=tuple(pickle.loads(row["validator_pubkeys_blob"])),  # noqa: S301
+            payload=tuple(_outcome_from_json(r) for r in payload_rows),
+            slashings=tuple(_slashing_from_json(r) for r in slashing_rows),
+            validator_pubkeys=tuple(bytes.fromhex(h) for h in pubkey_rows),
             aggregate_signature=bytes.fromhex(row["aggregate_signature"]),
         )
         blocks.append(block)

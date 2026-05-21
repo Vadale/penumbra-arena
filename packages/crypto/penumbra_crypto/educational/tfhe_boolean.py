@@ -152,23 +152,34 @@ def homomorphic_not(c: LWECiphertext) -> LWECiphertext:
     )
 
 
-def homomorphic_nand(
+# NOTE on naming (crypto-audit C1):
+#
+# The three functions below are NOT homomorphic in the strict sense:
+# they take `key: LWEKey` and decrypt the inputs server-side before
+# computing the gate. Calling them `homomorphic_nand` was misleading.
+#
+# Real TFHE achieves the AND gate via a "programmable bootstrap" — a
+# noise-refreshing operation that evaluates a lookup table over the
+# encrypted bit without decrypting it. We don't implement bootstrapping
+# in this educational module (it's a multi-page algorithm in its own
+# right); instead we mark the gates as "trusted evaluator" so the
+# learner sees the semantic gap clearly.
+#
+# The ONLY way `homomorphic_faction_overlap` (below) is honest is by
+# avoiding these trusted-evaluator gates entirely — it uses XOR + NOT,
+# both of which are genuinely homomorphic.
+
+
+def trusted_evaluator_nand(
     key: LWEKey,
     a: LWECiphertext,
     b: LWECiphertext,
 ) -> LWECiphertext:
-    """NAND = NOT(AND).
+    """**Trusted-evaluator** NAND — decrypts both inputs server-side.
 
-    AND in this no-bootstrap setting requires the server to MOMENTARILY
-    decrypt a clipped intermediate — the educational compromise we
-    document loudly. In real TFHE the AND gate is computed via
-    bootstrapping a programmable bootstrap with the AND lookup table,
-    keeping the server zero-knowledge throughout.
-
-    For Penumbra's pedagogical demo, the trusted-evaluator AND here is
-    enough to *show the gate semantics*; in production, swap this
-    function for a Concrete-Python compiled circuit and the rest of
-    the architecture is unchanged.
+    Not a homomorphic gate. Here to show the gate semantics only; in a
+    real TFHE protocol this would be replaced by a programmable
+    bootstrap that evaluates the NAND table without learning the inputs.
     """
     ma = decrypt(key, a)
     mb = decrypt(key, b)
@@ -177,22 +188,30 @@ def homomorphic_nand(
     return encrypt(key, nand_bit)
 
 
-def homomorphic_and(
+def trusted_evaluator_and(
     key: LWEKey,
     a: LWECiphertext,
     b: LWECiphertext,
 ) -> LWECiphertext:
-    """AND. See homomorphic_nand docstring for the educational caveat."""
-    return homomorphic_not(homomorphic_nand(key, a, b))
+    """AND via NOT(NAND). Trusted evaluator — see `trusted_evaluator_nand`."""
+    return homomorphic_not(trusted_evaluator_nand(key, a, b))
 
 
-def homomorphic_or(
+def trusted_evaluator_or(
     key: LWEKey,
     a: LWECiphertext,
     b: LWECiphertext,
 ) -> LWECiphertext:
-    """OR(a,b) = NOT(AND(NOT(a), NOT(b)))."""
-    return homomorphic_not(homomorphic_and(key, homomorphic_not(a), homomorphic_not(b)))
+    """OR via De Morgan. Trusted evaluator — see `trusted_evaluator_nand`."""
+    return homomorphic_not(trusted_evaluator_and(key, homomorphic_not(a), homomorphic_not(b)))
+
+
+# Backwards-compatible aliases for the public API (and any in-repo
+# tests that imported the old names). New code should use the
+# `trusted_evaluator_*` names so the trust assumption is loud.
+homomorphic_nand = trusted_evaluator_nand
+homomorphic_and = trusted_evaluator_and
+homomorphic_or = trusted_evaluator_or
 
 
 # ── application: encrypted faction overlap ─────────────────────────
