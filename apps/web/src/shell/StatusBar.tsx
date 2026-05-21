@@ -24,9 +24,15 @@ const POLL_MS = 1500;
 export function StatusBar({
   lastFrame,
   connected,
+  paused,
+  timeWarp,
+  onHelp,
 }: {
   lastFrame: TickFrame | null;
   connected: boolean;
+  paused: boolean;
+  timeWarp: number;
+  onHelp: () => void;
 }) {
   const [stats, setStats] = useState<RuntimeStats | null>(null);
 
@@ -106,7 +112,22 @@ export function StatusBar({
         value={stats?.repl_enabled ? "on" : "off"}
         accent={stats?.repl_enabled}
       />
-      <div className="ml-auto text-[10px] uppercase tracking-wider">
+      <Divider />
+      <StatusCell
+        label="run"
+        value={paused ? "paused" : `×${timeWarp}`}
+        ember={paused}
+        accent={!paused && timeWarp > 1}
+      />
+      <button
+        type="button"
+        onClick={onHelp}
+        className="ml-auto text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-muted)] hover:text-[color:var(--color-penumbra-text)]"
+        title="keyboard shortcuts"
+      >
+        ?
+      </button>
+      <div className="text-[10px] uppercase tracking-wider">
         {connected ? (
           <span className="text-[color:var(--color-penumbra-cyan)]">linked</span>
         ) : (

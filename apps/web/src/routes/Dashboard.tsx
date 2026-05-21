@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { ChainExplorer } from "../chain/Explorer";
 import { AnalyticsPanel } from "../charts/AnalyticsPanel";
 import { CoachConsole } from "../coach/Console";
+import { HelpOverlay } from "../shell/HelpOverlay";
 import { StatusBar } from "../shell/StatusBar";
+import { useKeyboardShortcuts } from "../shell/useKeyboardShortcuts";
 import { usePenumbraStore } from "../streams/store";
 import { usePenumbraSocket } from "../streams/ws";
 import { ReplConsole } from "../terminal/ReplConsole";
@@ -21,6 +23,46 @@ export function Dashboard() {
   const lastFrame = usePenumbraStore((s) => s.lastFrame);
   const [bottomTab, setBottomTab] = useState<BottomTab>("coach");
   const [arenaMode, setArenaMode] = useState<ArenaMode>("graph");
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [timeWarp, setTimeWarp] = useState(1);
+
+  const onPauseToggle = useCallback(async () => {
+    const next = !paused;
+    setPaused(next);
+    try {
+      await fetch(next ? "/control/pause" : "/control/resume", { method: "POST" });
+    } catch {
+      setPaused(!next); // revert on error
+    }
+  }, [paused]);
+
+  const onTimeWarpDelta = useCallback(
+    async (factor: number) => {
+      const next = Math.max(1, Math.min(100, Math.round(timeWarp * factor)));
+      if (next === timeWarp) return;
+      setTimeWarp(next);
+      try {
+        await fetch(`/control/time-warp/${next}`, { method: "POST" });
+      } catch {
+        setTimeWarp(timeWarp);
+      }
+    },
+    [timeWarp],
+  );
+
+  const shortcutHandlers = useMemo(
+    () => ({
+      onBottomTab: setBottomTab,
+      onArenaToggle: () => setArenaMode((m) => (m === "graph" ? "3d" : "graph")),
+      onPauseToggle,
+      onTimeWarpDelta,
+      onHelpToggle: () => setHelpOpen((o) => !o),
+    }),
+    [onPauseToggle, onTimeWarpDelta],
+  );
+
+  useKeyboardShortcuts(shortcutHandlers);
 
   return (
     <div className="flex h-full flex-col">
@@ -91,8 +133,15 @@ export function Dashboard() {
         </aside>
       </main>
 
-      <StatusBar lastFrame={lastFrame} connected={connected} />
+      <StatusBar
+        lastFrame={lastFrame}
+        connected={connected}
+        paused={paused}
+        timeWarp={timeWarp}
+        onHelp={() => setHelpOpen(true)}
+      />
       <TourOverlay />
+      <HelpOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   );
 }
