@@ -106,3 +106,4 @@ huggingface_cache/
 *.tmp
 *.orig
 .cache/
+circuits/node_modules/

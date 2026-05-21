@@ -1,0 +1,16 @@
+{
+  "name": "circuits",
+  "version": "1.0.0",
+  "description": "Real Groth16 circuits compiled with **circom** + **snarkjs**. Penumbra's pure-Python verifier (`packages/crypto/penumbra_crypto/snark.py`) loads the resulting `vk.json` + `proof.json` + `public.json` and checks the pairing equation against them — no circom toolchain required at verify time.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "circomlib": "^2.0.5"
+  }
+}
