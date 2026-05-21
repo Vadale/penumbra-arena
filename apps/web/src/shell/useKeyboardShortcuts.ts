@@ -48,6 +48,10 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers): void {
         case "G":
           handlers.onArenaToggle();
           break;
+        case "w":
+        case "W":
+          handlers.onArenaToggle(); // cycles through world → graph → 3d
+          break;
         case "p":
         case "P":
           handlers.onPauseToggle();

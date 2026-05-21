@@ -1,13 +1,15 @@
 /**
- * Streaming-analytics dashboard panel — DF-density + sparklines.
+ * Streaming-analytics dashboard panel — DF-density + sparklines +
+ * click-to-zoom detail modal.
  *
- * Each cell now carries both the latest value AND its sparkline over
- * the last ~30 seconds of polls. The sparkline turns numbers into
- * shape — you can see at a glance whether a metric is climbing,
- * collapsing, or stable.
+ * Each cell carries label + value + caption + 50px sparkline. A
+ * click on the cell opens the DetailModal with a full-size chart
+ * (LineChart for time-series scalars, TopicsBar for topics).
  */
 
+import { useState } from "react";
 import { useDashboardLive } from "../streams/dashboard";
+import { DetailModal, type MetricKind } from "./DetailModal";
 import { PersistenceBarcode } from "./PersistenceBarcode";
 import { Sparkline } from "./Sparkline";
 
@@ -24,6 +26,7 @@ function Cell({
   history,
   accent,
   ember,
+  onClick,
 }: {
   label: string;
   value: string;
@@ -31,6 +34,7 @@ function Cell({
   history?: number[];
   accent?: boolean;
   ember?: boolean;
+  onClick?: () => void;
 }) {
   const valueClass = ember
     ? "text-[color:var(--color-penumbra-ember)]"
@@ -42,10 +46,15 @@ function Cell({
     ? "color-mix(in srgb, var(--color-penumbra-ember) 18%, transparent)"
     : "color-mix(in srgb, var(--color-penumbra-cyan) 18%, transparent)";
   return (
-    <div className="border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-2 py-1">
+    <button
+      type="button"
+      onClick={onClick}
+      className="group w-full border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-2 py-1 text-left hover:border-[color:var(--color-penumbra-cyan)]"
+      title={onClick ? "click for detail chart" : undefined}
+    >
       <div className="flex items-start justify-between">
         <div>
-          <div className="text-[9px] uppercase tracking-[0.15em] text-[color:var(--color-penumbra-dim)]">
+          <div className="text-[9px] uppercase tracking-[0.15em] text-[color:var(--color-penumbra-dim)] group-hover:text-[color:var(--color-penumbra-muted)]">
             {label}
           </div>
           <div className={`tabular-nums text-[13px] leading-tight ${valueClass}`}>{value}</div>
@@ -63,12 +72,14 @@ function Cell({
       {caption && (
         <div className="text-[9px] text-[color:var(--color-penumbra-dim)]">{caption}</div>
       )}
-    </div>
+    </button>
   );
 }
 
 export function AnalyticsPanel() {
   const { snap, history } = useDashboardLive();
+  const [openMetric, setOpenMetric] = useState<MetricKind | null>(null);
+
   if (snap === null) {
     return (
       <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-muted)]">
@@ -79,6 +90,8 @@ export function AnalyticsPanel() {
 
   const summary = snap.summary;
   const dpExhausted = snap.dp_budget !== null && snap.dp_budget.epsilon_remaining < 1.0;
+  const open = (m: MetricKind) => setOpenMetric(m);
+  const histories = history;
 
   return (
     <div className="space-y-2">
@@ -87,45 +100,64 @@ export function AnalyticsPanel() {
           label="traj.mean"
           value={fmt(summary?.mean ?? null)}
           caption={summary ? `n=${summary.n}` : undefined}
-          history={history.trajectory_mean}
+          history={histories.trajectory_mean}
+          onClick={() => open("trajectory_mean")}
         />
         <Cell
           label="traj.std"
           value={fmt(summary?.std ?? null)}
           caption={summary ? `iqr=${fmt(summary.iqr)}` : undefined}
-          history={history.trajectory_std}
+          history={histories.trajectory_std}
+          onClick={() => open("trajectory_std")}
         />
         <Cell
           label="hdbscan"
           value={snap.hdbscan_n_clusters !== null ? String(snap.hdbscan_n_clusters) : "—"}
           caption={snap.hdbscan_n_noise !== null ? `noise=${snap.hdbscan_n_noise}` : undefined}
-          history={history.hdbscan_clusters}
+          history={histories.hdbscan_clusters}
+          onClick={() => open("hdbscan_clusters")}
         />
         <Cell
           label="arima.next"
           value={fmt(snap.arima_next)}
           caption={snap.arima_std !== null ? `σ=${fmt(snap.arima_std)}` : undefined}
-          history={history.arima_next}
+          history={histories.arima_next}
+          onClick={() => open("arima_next")}
         />
         <Cell
           label="sinkhorn"
           value={fmt(snap.sinkhorn_cost)}
           caption="W₁"
-          history={history.sinkhorn_cost}
+          history={histories.sinkhorn_cost}
+          onClick={() => open("sinkhorn_cost")}
         />
-        <Cell label="var.95" value={fmt(snap.var95)} caption="tail risk" history={history.var95} />
+        <Cell
+          label="var.95"
+          value={fmt(snap.var95)}
+          caption="tail risk"
+          history={histories.var95}
+          onClick={() => open("var95")}
+        />
         <Cell
           label="h₀"
           value={fmt(snap.h0_total)}
           caption="components"
-          history={history.h0_total}
+          history={histories.h0_total}
+          onClick={() => open("h0_total")}
         />
-        <Cell label="h₁" value={fmt(snap.h1_total)} caption="loops" history={history.h1_total} />
+        <Cell
+          label="h₁"
+          value={fmt(snap.h1_total)}
+          caption="loops"
+          history={histories.h1_total}
+          onClick={() => open("h1_total")}
+        />
         <Cell
           label="bayes.θ"
           value={fmt(snap.bayesian_theta)}
           caption="P(high‖)"
-          history={history.bayesian_theta}
+          history={histories.bayesian_theta}
+          onClick={() => open("bayesian_theta")}
         />
         <Cell
           label="changepts"
@@ -139,9 +171,10 @@ export function AnalyticsPanel() {
               ? `rem ${fmt(snap.dp_budget.epsilon_remaining, 2)} / ${fmt(snap.dp_budget.epsilon_total, 1)}`
               : "dp off"
           }
-          history={history.dp_epsilon_spent}
+          history={histories.dp_epsilon_spent}
           ember={dpExhausted}
           accent={!!snap.dp_budget && !dpExhausted}
+          onClick={() => open("dp_epsilon_spent")}
         />
         <Cell
           label="sigs.ok"
@@ -151,9 +184,10 @@ export function AnalyticsPanel() {
               ? `${snap.signing_stats.rejected} bad · ${snap.signing_stats.n_agents} ag`
               : `${snap.signing_stats.n_agents} ag · 0 bad`
           }
-          history={history.signing_verified}
+          history={histories.signing_verified}
           ember={snap.signing_stats.rejected > 0}
           accent
+          onClick={() => open("signing_verified")}
         />
         <Cell
           label="topics"
@@ -163,7 +197,8 @@ export function AnalyticsPanel() {
               ? (Object.values(snap.topic_top_words)[0]?.slice(0, 3).join("·") ?? "")
               : "warming"
           }
-          history={history.n_topics}
+          history={histories.n_topics}
+          onClick={() => open("topics")}
         />
       </div>
 
@@ -184,6 +219,46 @@ export function AnalyticsPanel() {
           <PersistenceBarcode h0Bars={snap.h0_bars} h1Bars={snap.h1_bars} />
         </div>
       )}
+
+      <DetailModal
+        open={openMetric !== null}
+        onClose={() => setOpenMetric(null)}
+        metric={openMetric}
+        values={openMetric ? histories[mapMetricToHistoryKey(openMetric)] : undefined}
+        topicSizes={openMetric === "topics" ? snap.topic_sizes : undefined}
+        topicTopWords={openMetric === "topics" ? snap.topic_top_words : undefined}
+      />
     </div>
   );
+}
+
+function mapMetricToHistoryKey(
+  m: MetricKind,
+): keyof ReturnType<typeof useDashboardLive>["history"] {
+  switch (m) {
+    case "trajectory_mean":
+      return "trajectory_mean";
+    case "trajectory_std":
+      return "trajectory_std";
+    case "hdbscan_clusters":
+      return "hdbscan_clusters";
+    case "arima_next":
+      return "arima_next";
+    case "sinkhorn_cost":
+      return "sinkhorn_cost";
+    case "var95":
+      return "var95";
+    case "h0_total":
+      return "h0_total";
+    case "h1_total":
+      return "h1_total";
+    case "bayesian_theta":
+      return "bayesian_theta";
+    case "dp_epsilon_spent":
+      return "dp_epsilon_spent";
+    case "signing_verified":
+      return "signing_verified";
+    case "topics":
+      return "n_topics";
+  }
 }

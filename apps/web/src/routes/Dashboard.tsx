@@ -11,10 +11,11 @@ import { ReplConsole } from "../terminal/ReplConsole";
 import { Terminal } from "../terminal/Terminal";
 import { Arena } from "../three/Arena";
 import { Arena2D } from "../three/Arena2D";
+import { WorldView } from "../three/WorldView";
 import { TourOverlay } from "../tour/TourOverlay";
 
 type BottomTab = "coach" | "terminal" | "repl";
-type ArenaMode = "graph" | "3d";
+type ArenaMode = "world" | "graph" | "3d";
 
 export function Dashboard() {
   usePenumbraSocket();
@@ -22,7 +23,7 @@ export function Dashboard() {
   const connected = usePenumbraStore((s) => s.connected);
   const lastFrame = usePenumbraStore((s) => s.lastFrame);
   const [bottomTab, setBottomTab] = useState<BottomTab>("coach");
-  const [arenaMode, setArenaMode] = useState<ArenaMode>("graph");
+  const [arenaMode, setArenaMode] = useState<ArenaMode>("world");
   const [helpOpen, setHelpOpen] = useState(false);
   const [paused, setPaused] = useState(false);
   const [timeWarp, setTimeWarp] = useState(1);
@@ -54,7 +55,8 @@ export function Dashboard() {
   const shortcutHandlers = useMemo(
     () => ({
       onBottomTab: setBottomTab,
-      onArenaToggle: () => setArenaMode((m) => (m === "graph" ? "3d" : "graph")),
+      onArenaToggle: () =>
+        setArenaMode((m) => (m === "world" ? "graph" : m === "graph" ? "3d" : "world")),
       onPauseToggle,
       onTimeWarpDelta,
       onHelpToggle: () => setHelpOpen((o) => !o),
@@ -92,6 +94,10 @@ export function Dashboard() {
         <section className="flex flex-col bg-[color:var(--color-penumbra-bg)]">
           <div className="relative flex-1 border-r border-[color:var(--color-penumbra-border)]">
             <div className="absolute right-3 top-3 z-10 flex gap-1 rounded-sm border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-panel)]/90 px-2 py-1 text-[10px] uppercase tracking-wider">
+              <ArenaTab active={arenaMode === "world"} onClick={() => setArenaMode("world")}>
+                world
+              </ArenaTab>
+              <span className="text-[color:var(--color-penumbra-border)]">·</span>
               <ArenaTab active={arenaMode === "graph"} onClick={() => setArenaMode("graph")}>
                 graph
               </ArenaTab>
@@ -100,7 +106,9 @@ export function Dashboard() {
                 3d
               </ArenaTab>
             </div>
-            {arenaMode === "graph" ? <Arena2D /> : <Arena />}
+            {arenaMode === "world" && <WorldView />}
+            {arenaMode === "graph" && <Arena2D />}
+            {arenaMode === "3d" && <Arena />}
           </div>
           <div className="flex max-h-[42%] flex-col border-t border-r border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-panel)]">
             <div className="flex items-center gap-3 border-b border-[color:var(--color-penumbra-border)] px-3 py-1.5 text-[10px] uppercase tracking-[0.18em]">
