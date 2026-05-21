@@ -100,6 +100,11 @@ class EncryptedHeatmap:
     def dp_mechanism(self) -> DPMechanism | None:
         return self._dp
 
+    @property
+    def backend(self) -> HEBackend:
+        """The underlying HE backend (for snapshot/restore wiring)."""
+        return self._backend
+
     def compute(self, simulation: Simulation) -> HeatmapSample:
         """Encrypt every agent's position, sum, decrypt, optionally DP-noise."""
         accumulator: object | None = None

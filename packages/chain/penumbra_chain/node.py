@@ -20,6 +20,7 @@ attacker console.
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass, field
 
@@ -41,6 +42,8 @@ from penumbra_chain.slashing import (
     SlashingTx,
     verify_evidence,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -109,6 +112,10 @@ class Node:
                 offender_idx = idx
                 break
         if offender_idx is None:
+            logger.warning(
+                "slashing evidence references unknown offender %s",
+                evidence.offender_pubkey.hex()[:16],
+            )
             raise SlashingError("offender pubkey is not in our validator set")
 
         if evidence.offender_pubkey in self.slashed_pubkeys:

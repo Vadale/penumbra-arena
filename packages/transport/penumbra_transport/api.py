@@ -418,11 +418,7 @@ def build_app(
         state = app.state.penumbra
         orchestrator = state.orchestrator
         dp_mechanism = orchestrator.heatmap.dp_mechanism
-        # The CKKS backend lives inside the encrypted-heatmap object;
-        # reach in via its private attr because the backend protocol
-        # doesn't expose itself directly (intentional — callers go
-        # through the heatmap).
-        ckks_backend = orchestrator.heatmap._backend
+        ckks_backend = orchestrator.heatmap.backend
         try:
             path = save_world(
                 name,

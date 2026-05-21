@@ -16,16 +16,23 @@ Validators register a BLS key plus a VRF key. Every block:
 Pedagogical caveats
 - All validators here have equal stake (1 unit). Real PoS weights the
   2/3 threshold by stake.
-- Slashing for double-signing is *not* implemented — a learner exercise.
+- Slashing IS implemented (see `penumbra_chain.slashing`); equivocation
+  evidence is verifiable and `Node.slash()` removes the offender from
+  the active set.
 - We do not implement view-change / liveness-fallback when a leader
-  fails. The next block's seed simply moves on.
+  fails. In our single-process setup that's a non-issue (every
+  validator is the proposer's neighbour); a real distributed
+  deployment would need a HotStuff-style view change.
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from penumbra_crypto import bls, vrf
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,6 +153,10 @@ def finalise(
     block's finality bundle.
     """
     n = total_validators if total_validators is not None else len(validator_signatures)
+    if n <= 0:
+        # No validators ⇒ no quorum possible. Refuse rather than divide
+        # by zero or admit an "everyone-signed" block from nobody.
+        return None
     threshold = -(-quorum_numerator * n // quorum_denominator)  # ceil(n*2/3)
     message = canonical_block_sign_payload(block_hash, height)
 
@@ -154,6 +165,12 @@ def finalise(
         if bls.verify(pubkey, message, sig):
             valid.append((pubkey, sig))
     if len(valid) < threshold:
+        logger.warning(
+            "aggregate finality failed: %d valid sigs vs %d threshold (n=%d)",
+            len(valid),
+            threshold,
+            n,
+        )
         return None
     pks = tuple(pk for pk, _ in valid)
     aggregate = bls.aggregate_signatures([s for _, s in valid])
