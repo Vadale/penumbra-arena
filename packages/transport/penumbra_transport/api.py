@@ -133,6 +133,37 @@ def build_app(
         sim.config.time_warp = multiplier
         return {"time_warp": multiplier}
 
+    @app.get("/dashboard")
+    async def dashboard_snapshot() -> dict[str, object]:
+        snap = app.state.penumbra.orchestrator.latest_dashboard_snapshot
+        summary = snap.summary
+        return {
+            "tick": snap.tick,
+            "summary": (
+                None
+                if summary is None
+                else {
+                    "n": summary.n,
+                    "mean": summary.mean,
+                    "std": summary.std,
+                    "median": summary.median,
+                    "iqr": summary.iqr,
+                    "ci95_low": summary.ci95_low,
+                    "ci95_high": summary.ci95_high,
+                }
+            ),
+            "hdbscan_n_clusters": snap.hdbscan_n_clusters,
+            "hdbscan_n_noise": snap.hdbscan_n_noise,
+            "arima_next": snap.arima_next,
+            "arima_std": snap.arima_std,
+            "changepoints": list(snap.changepoints),
+            "sinkhorn_cost": snap.sinkhorn_cost,
+            "h0_total": snap.h0_total,
+            "h1_total": snap.h1_total,
+            "bayesian_theta": snap.bayesian_theta,
+            "var95": snap.var95,
+        }
+
     @app.get("/encrypted-heatmap")
     async def encrypted_heatmap() -> dict[str, object]:
         sample = app.state.penumbra.orchestrator.heatmap.latest

@@ -1,4 +1,5 @@
 import { ChainExplorer } from "../chain/Explorer";
+import { AnalyticsPanel } from "../charts/AnalyticsPanel";
 import { usePenumbraStore } from "../streams/store";
 import { usePenumbraSocket } from "../streams/ws";
 import { Arena } from "../three/Arena";
@@ -44,26 +45,15 @@ export function Dashboard() {
           )}
         </div>
       </header>
-      <main className="grid flex-1 grid-cols-[1fr_320px_320px]">
+      <main className="grid flex-1 grid-cols-[1fr_360px_320px]">
         <section className="relative bg-slate-950">
           <Arena />
         </section>
-        <aside className="border-l border-slate-800 bg-slate-900/40 p-4 text-sm">
-          <div className="mb-2 text-xs uppercase tracking-wider text-slate-400">Agents</div>
-          {lastFrame ? (
-            <ul className="grid grid-cols-2 gap-1 text-xs text-slate-300">
-              {Object.entries(lastFrame.agent_positions).map(([id, position]) => (
-                <li key={id} className="flex justify-between rounded bg-slate-800/40 px-2 py-1">
-                  <span className="text-slate-400">#{id}</span>
-                  <span className="font-mono">node {position}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className="text-xs text-slate-500">No frame received yet.</div>
-          )}
+        <aside className="overflow-y-auto border-l border-slate-800 bg-slate-900/40 p-4 text-sm">
+          <div className="mb-2 text-xs uppercase tracking-wider text-slate-400">Analytics</div>
+          <AnalyticsPanel />
         </aside>
-        <aside className="border-l border-slate-800 bg-slate-900/40 p-4 text-sm">
+        <aside className="overflow-y-auto border-l border-slate-800 bg-slate-900/40 p-4 text-sm">
           <div className="mb-2 text-xs uppercase tracking-wider text-slate-400">Chain</div>
           <ChainExplorer />
         </aside>

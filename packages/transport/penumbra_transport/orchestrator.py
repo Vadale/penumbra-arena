@@ -19,6 +19,9 @@ import logging
 import time
 from dataclasses import dataclass, field
 
+import numpy as np
+
+from penumbra_analytics.dashboard_pipeline import DashboardPipeline, DashboardSnapshot
 from penumbra_chain.block import MatchOutcome
 from penumbra_chain.node import Node
 from penumbra_core.agent import Agent
@@ -33,19 +36,23 @@ logger = logging.getLogger(__name__)
 
 BLOCK_INTERVAL_SECONDS_DEFAULT = 10.0
 HEATMAP_INTERVAL_SECONDS_DEFAULT = 1.0
+ANALYTICS_INTERVAL_SECONDS_DEFAULT = 1.0
 
 
 @dataclass(slots=True)
 class Orchestrator:
-    """Owns a Simulation + a chain Node + an encrypted-heatmap builder."""
+    """Owns Simulation + chain Node + encrypted heatmap + analytics pipeline."""
 
     simulation: Simulation
     node: Node
     heatmap: EncryptedHeatmap
+    pipeline: DashboardPipeline
     block_interval: float = BLOCK_INTERVAL_SECONDS_DEFAULT
     heatmap_interval: float = HEATMAP_INTERVAL_SECONDS_DEFAULT
+    analytics_interval: float = ANALYTICS_INTERVAL_SECONDS_DEFAULT
     _block_task: asyncio.Task[None] | None = field(default=None, init=False)
     _heatmap_task: asyncio.Task[None] | None = field(default=None, init=False)
+    _analytics_task: asyncio.Task[None] | None = field(default=None, init=False)
     _started_at: float | None = field(default=None, init=False)
     _last_block_height: int = field(default=-1, init=False)
 
@@ -53,9 +60,16 @@ class Orchestrator:
     def build(cls, simulation: Simulation, *, n_validators: int = 4) -> Orchestrator:
         node = Node.boot(n_validators=n_validators)
         heatmap = EncryptedHeatmap.for_simulation(get_backend(), simulation)
-        orchestrator = cls(simulation=simulation, node=node, heatmap=heatmap)
+        pipeline = DashboardPipeline()
+        orchestrator = cls(
+            simulation=simulation, node=node, heatmap=heatmap, pipeline=pipeline
+        )
         simulation.on_match_end = orchestrator._on_match_end
         return orchestrator
+
+    @property
+    def latest_dashboard_snapshot(self) -> DashboardSnapshot:
+        return self.pipeline.snapshot
 
     async def start(self) -> None:
         if self._block_task is not None and not self._block_task.done():
@@ -65,9 +79,12 @@ class Orchestrator:
             self._block_production_loop(), name="penumbra-block-loop"
         )
         self._heatmap_task = asyncio.create_task(self._heatmap_loop(), name="penumbra-heatmap-loop")
+        self._analytics_task = asyncio.create_task(
+            self._analytics_loop(), name="penumbra-analytics-loop"
+        )
 
     async def stop(self) -> None:
-        for attr in ("_block_task", "_heatmap_task"):
+        for attr in ("_block_task", "_heatmap_task", "_analytics_task"):
             task = getattr(self, attr)
             if task is None:
                 continue
@@ -100,6 +117,29 @@ class Orchestrator:
                     await asyncio.to_thread(self.heatmap.compute, self.simulation)
                 except Exception:
                     logger.exception("encrypted-heatmap compute raised; continuing")
+        except asyncio.CancelledError:
+            raise
+
+    async def _analytics_loop(self) -> None:
+        """Feed the dashboard pipeline at 1 Hz and re-run any due consumer."""
+        try:
+            while True:
+                await asyncio.sleep(self.analytics_interval)
+                try:
+                    positions = np.asarray(
+                        [a.position for a in self.simulation.agents], dtype=np.float64
+                    )
+                    heatmap_density = (
+                        self.heatmap.latest.density if self.heatmap.latest is not None else None
+                    )
+                    self.pipeline.observe(
+                        tick=self.simulation.tick_counter,
+                        positions=positions,
+                        heatmap=heatmap_density,
+                    )
+                    await asyncio.to_thread(self.pipeline.recompute)
+                except Exception:
+                    logger.exception("analytics pipeline raised; continuing")
         except asyncio.CancelledError:
             raise
 
