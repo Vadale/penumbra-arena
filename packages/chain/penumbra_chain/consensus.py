@@ -102,13 +102,37 @@ def verify_leader(
     return vrf.verify(leader.vrf_pubkey, seed, claimed_output)
 
 
-def sign_block_hash(secret: ValidatorSecret, block_hash: bytes) -> bytes:
-    """Each validator's BLS signature over the block hash."""
-    return bls.sign(secret.bls_secret, block_hash)
+BLOCK_SIG_DOMAIN_TAG: bytes = b"penumbra-block-sig:v1|"
+"""Domain-separation tag prefixed to every block signature.
+
+Audit closure (A4): without this prefix, a BLS signature collected for
+finality at height H could be repurposed as half of a slashing-evidence
+pair against a hash that happens to coincide with another block's hash
+at the same height. Mixing this tag into the signed message means a
+sig collected for finality cannot be transplanted to ANY other
+protocol surface — slashing evidence reconstructs the same prefix and
+won't accept a sig with a different (or missing) tag.
+"""
+
+
+def canonical_block_sign_payload(block_hash: bytes, height: int) -> bytes:
+    """Stable bytes a validator signs to finalise a block at `height`.
+
+    Audit closure (A1): height is now part of the signed message, so a
+    legitimate signature at height N cannot be replayed as evidence of
+    misbehaviour at height M ≠ N.
+    """
+    return BLOCK_SIG_DOMAIN_TAG + height.to_bytes(8, "big") + block_hash
+
+
+def sign_block_hash(secret: ValidatorSecret, block_hash: bytes, height: int) -> bytes:
+    """Each validator's BLS signature over `(domain_tag, height, block_hash)`."""
+    return bls.sign(secret.bls_secret, canonical_block_sign_payload(block_hash, height))
 
 
 def finalise(
     block_hash: bytes,
+    height: int,
     validator_signatures: list[tuple[bytes, bytes]],  # (pubkey, sig) pairs
     quorum_numerator: int = 2,
     quorum_denominator: int = 3,
@@ -116,21 +140,23 @@ def finalise(
 ) -> tuple[tuple[bytes, ...], bytes] | None:
     """Aggregate ≥ ⌈2/3 N⌉ valid signatures into one. Returns (pks, agg) or None.
 
-    All validators sign the same block hash, so we use BLS
-    FastAggregateVerify against the aggregate public-key set. The
-    returned list of pubkeys becomes part of the block's finality bundle.
+    Every validator signs the canonical payload (domain-tag || height ||
+    block_hash); we use BLS FastAggregateVerify against the aggregate
+    public-key set. The returned list of pubkeys becomes part of the
+    block's finality bundle.
     """
     n = total_validators if total_validators is not None else len(validator_signatures)
     threshold = -(-quorum_numerator * n // quorum_denominator)  # ceil(n*2/3)
+    message = canonical_block_sign_payload(block_hash, height)
 
     valid: list[tuple[bytes, bytes]] = []
     for pubkey, sig in validator_signatures:
-        if bls.verify(pubkey, block_hash, sig):
+        if bls.verify(pubkey, message, sig):
             valid.append((pubkey, sig))
     if len(valid) < threshold:
         return None
     pks = tuple(pk for pk, _ in valid)
     aggregate = bls.aggregate_signatures([s for _, s in valid])
-    if not bls.fast_aggregate_verify(list(pks), block_hash, aggregate):
+    if not bls.fast_aggregate_verify(list(pks), message, aggregate):
         return None
     return pks, aggregate

@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from penumbra_core.rng import bootstrap
 from penumbra_core.simulation import Simulation, SimulationConfig
@@ -171,24 +171,48 @@ def build_app(
         return {"time_warp": multiplier}
 
     @app.post("/chain/slash")
-    async def chain_slash(payload: dict[str, str]) -> dict[str, object]:
+    async def chain_slash(payload: dict[str, object], request: Request) -> dict[str, object]:
         """Submit slashing evidence against a validator.
 
         Body: hex-encoded SlashingEvidence
-          {offender_pubkey, block_a_hash, sig_a, block_b_hash, sig_b}
-        On success returns the SlashingTx height_observed + new active count.
+          {offender_pubkey, height, block_a_hash, sig_a, block_b_hash, sig_b}
+        Each sig must be over `domain_tag || height || block_hash` (see
+        `consensus.canonical_block_sign_payload`).
+
+        Audit closure A5: this endpoint is gated by a shared bearer
+        token in the `PENUMBRA_SLASHING_ADMIN_TOKEN` env var. If unset,
+        all calls return 403 (the demo path
+        `/chain/_demo/self-slash` is what an interactive learner uses).
         """
+        import hmac as _hmac
+        import os as _os
+
         from penumbra_chain.slashing import SlashingError, SlashingEvidence
+
+        admin_token = _os.environ.get("PENUMBRA_SLASHING_ADMIN_TOKEN")
+        if not admin_token:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "POST /chain/slash is disabled: set PENUMBRA_SLASHING_ADMIN_TOKEN "
+                    "in the backend env and pass `Authorization: Bearer <token>`"
+                ),
+            )
+        provided = request.headers.get("authorization", "")
+        scheme, _, given_token = provided.partition(" ")
+        if scheme.lower() != "bearer" or not _hmac.compare_digest(given_token, admin_token):
+            raise HTTPException(status_code=401, detail="invalid or missing bearer token")
 
         try:
             evidence = SlashingEvidence(
-                offender_pubkey=bytes.fromhex(payload["offender_pubkey"]),
-                block_a_hash=bytes.fromhex(payload["block_a_hash"]),
-                sig_a=bytes.fromhex(payload["sig_a"]),
-                block_b_hash=bytes.fromhex(payload["block_b_hash"]),
-                sig_b=bytes.fromhex(payload["sig_b"]),
+                offender_pubkey=bytes.fromhex(str(payload["offender_pubkey"])),
+                height=int(payload["height"]),  # type: ignore[arg-type]
+                block_a_hash=bytes.fromhex(str(payload["block_a_hash"])),
+                sig_a=bytes.fromhex(str(payload["sig_a"])),
+                block_b_hash=bytes.fromhex(str(payload["block_b_hash"])),
+                sig_b=bytes.fromhex(str(payload["sig_b"])),
             )
-        except (KeyError, ValueError) as exc:
+        except (KeyError, ValueError, TypeError) as exc:
             raise HTTPException(status_code=400, detail=f"bad evidence payload: {exc}") from exc
 
         node = app.state.penumbra.orchestrator.node
@@ -234,14 +258,21 @@ def build_app(
         target_idx = min(node.active_indices)
         secret = node.secrets[target_idx]
         pub = node.validators[target_idx].bls_pubkey
+        # Use a plausible "block height the offender double-signed at"
+        # for the canonical sign payload. node.height + 1 mimics "at
+        # the very next block they were going to propose".
+        from penumbra_chain.consensus import canonical_block_sign_payload
+
+        evidence_height = node.height + 1
         h_a = hashlib.sha256(b"demo-self-slash:branch-a").digest()
         h_b = hashlib.sha256(b"demo-self-slash:branch-b").digest()
         evidence = SlashingEvidence(
             offender_pubkey=pub,
+            height=evidence_height,
             block_a_hash=h_a,
-            sig_a=bls.sign(secret.bls_secret, h_a),
+            sig_a=bls.sign(secret.bls_secret, canonical_block_sign_payload(h_a, evidence_height)),
             block_b_hash=h_b,
-            sig_b=bls.sign(secret.bls_secret, h_b),
+            sig_b=bls.sign(secret.bls_secret, canonical_block_sign_payload(h_b, evidence_height)),
         )
         tx = node.slash(evidence)
         return {

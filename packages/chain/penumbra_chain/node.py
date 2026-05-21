@@ -161,11 +161,17 @@ class Node:
             slashings=slashings_to_include,
         )
 
+        block_height = block.header.height
         sigs = [
-            (v.bls_pubkey, sign_block_hash(s, block.hash()))
+            (v.bls_pubkey, sign_block_hash(s, block.hash(), block_height))
             for v, s in zip(active_validators, active_secrets, strict=True)
         ]
-        result = finalise(block.hash(), sigs, total_validators=len(active_validators))
+        result = finalise(
+            block.hash(),
+            block_height,
+            sigs,
+            total_validators=len(active_validators),
+        )
         if result is None:
             raise QuorumFailedError("could not finalise block: insufficient valid signatures")
         pubkeys, aggregate = result

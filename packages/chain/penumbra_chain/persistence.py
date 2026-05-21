@@ -232,6 +232,7 @@ def _outcome_from_json(row: dict[str, object]) -> MatchOutcome:
 def _slashing_to_json(tx: SlashingTx) -> dict[str, object]:
     return {
         "offender_pubkey": tx.evidence.offender_pubkey.hex(),
+        "evidence_height": tx.evidence.height,
         "block_a_hash": tx.evidence.block_a_hash.hex(),
         "sig_a": tx.evidence.sig_a.hex(),
         "block_b_hash": tx.evidence.block_b_hash.hex(),
@@ -244,6 +245,7 @@ def _slashing_from_json(row: dict[str, object]) -> SlashingTx:
     return SlashingTx(
         evidence=SlashingEvidence(
             offender_pubkey=bytes.fromhex(str(row["offender_pubkey"])),
+            height=int(row["evidence_height"]),  # type: ignore[arg-type]
             block_a_hash=bytes.fromhex(str(row["block_a_hash"])),
             sig_a=bytes.fromhex(str(row["sig_a"])),
             block_b_hash=bytes.fromhex(str(row["block_b_hash"])),
@@ -331,6 +333,7 @@ def _write_pending_slashings(slashings: list[SlashingTx], path: Path) -> None:
         {
             "evidence": {
                 "offender_pubkey": tx.evidence.offender_pubkey.hex(),
+                "height": tx.evidence.height,
                 "block_a_hash": tx.evidence.block_a_hash.hex(),
                 "sig_a": tx.evidence.sig_a.hex(),
                 "block_b_hash": tx.evidence.block_b_hash.hex(),
@@ -351,6 +354,7 @@ def _read_pending_slashings(path: Path) -> list[SlashingTx]:
         SlashingTx(
             evidence=SlashingEvidence(
                 offender_pubkey=bytes.fromhex(item["evidence"]["offender_pubkey"]),
+                height=int(item["evidence"]["height"]),
                 block_a_hash=bytes.fromhex(item["evidence"]["block_a_hash"]),
                 sig_a=bytes.fromhex(item["evidence"]["sig_a"]),
                 block_b_hash=bytes.fromhex(item["evidence"]["block_b_hash"]),

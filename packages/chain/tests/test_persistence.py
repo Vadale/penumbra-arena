@@ -35,15 +35,18 @@ def test_save_restore_roundtrip_with_blocks_and_slash() -> None:
     pubkey = node.validators[2].bls_pubkey
     h_a = hashlib.sha256(b"x").digest()
     h_b = hashlib.sha256(b"y").digest()
+    from penumbra_chain.consensus import canonical_block_sign_payload
     from penumbra_chain.slashing import SlashingEvidence
 
+    evidence_height = 5
     node.slash(
         SlashingEvidence(
             offender_pubkey=pubkey,
+            height=evidence_height,
             block_a_hash=h_a,
-            sig_a=bls.sign(secret.bls_secret, h_a),
+            sig_a=bls.sign(secret.bls_secret, canonical_block_sign_payload(h_a, evidence_height)),
             block_b_hash=h_b,
-            sig_b=bls.sign(secret.bls_secret, h_b),
+            sig_b=bls.sign(secret.bls_secret, canonical_block_sign_payload(h_b, evidence_height)),
         )
     )
 

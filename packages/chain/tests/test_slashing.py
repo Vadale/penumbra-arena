@@ -28,15 +28,18 @@ def _outcome(match_id: int) -> MatchOutcome:
     )
 
 
-def _build_evidence_for(validator_idx: int, node: Node) -> SlashingEvidence:
-    """Equivocation evidence: same validator signs two distinct block hashes."""
+def _build_evidence_for(validator_idx: int, node: Node, height: int = 42) -> SlashingEvidence:
+    """Equivocation evidence: same validator signs two distinct block hashes at `height`."""
+    from penumbra_chain.consensus import canonical_block_sign_payload
+
     secret = node.secrets[validator_idx]
     block_a_hash = hashlib.sha256(b"block-a").digest()
     block_b_hash = hashlib.sha256(b"block-b").digest()
-    sig_a = bls.sign(secret.bls_secret, block_a_hash)
-    sig_b = bls.sign(secret.bls_secret, block_b_hash)
+    sig_a = bls.sign(secret.bls_secret, canonical_block_sign_payload(block_a_hash, height))
+    sig_b = bls.sign(secret.bls_secret, canonical_block_sign_payload(block_b_hash, height))
     return SlashingEvidence(
         offender_pubkey=node.validators[validator_idx].bls_pubkey,
+        height=height,
         block_a_hash=block_a_hash,
         sig_a=sig_a,
         block_b_hash=block_b_hash,
@@ -48,12 +51,57 @@ def test_is_valid_evidence_rejects_same_hashes() -> None:
     h = hashlib.sha256(b"x").digest()
     ev = SlashingEvidence(
         offender_pubkey=b"\x00" * bls.PUBLIC_KEY_BYTES,
+        height=10,
         block_a_hash=h,
         sig_a=b"\x00" * bls.SIGNATURE_BYTES,
         block_b_hash=h,
         sig_b=b"\x00" * bls.SIGNATURE_BYTES,
     )
     assert not is_valid_evidence(ev)
+
+
+def test_verify_evidence_rejects_old_style_sigs_without_height_binding() -> None:
+    """Audit closure A1+A4: a sig over raw block_hash (no domain tag, no height)
+    must NOT verify under the new canonical-payload scheme."""
+    node = Node.boot(n_validators=4)
+    secret = node.secrets[0]
+    pub = node.validators[0].bls_pubkey
+    h_a = hashlib.sha256(b"block-a").digest()
+    h_b = hashlib.sha256(b"block-b").digest()
+    # OLD-style: sig over the bare hash, no domain tag, no height.
+    stale_a = bls.sign(secret.bls_secret, h_a)
+    stale_b = bls.sign(secret.bls_secret, h_b)
+    ev = SlashingEvidence(
+        offender_pubkey=pub,
+        height=42,
+        block_a_hash=h_a,
+        sig_a=stale_a,
+        block_b_hash=h_b,
+        sig_b=stale_b,
+    )
+    assert not verify_evidence(ev)
+
+
+def test_verify_evidence_rejects_wrong_height() -> None:
+    """A1: a sig collected for height 42 must NOT count as evidence at height 100."""
+    from penumbra_chain.consensus import canonical_block_sign_payload
+
+    node = Node.boot(n_validators=4)
+    secret = node.secrets[0]
+    pub = node.validators[0].bls_pubkey
+    h_a = hashlib.sha256(b"block-a").digest()
+    h_b = hashlib.sha256(b"block-b").digest()
+    sig_a_at_42 = bls.sign(secret.bls_secret, canonical_block_sign_payload(h_a, 42))
+    sig_b_at_42 = bls.sign(secret.bls_secret, canonical_block_sign_payload(h_b, 42))
+    ev_wrong_height = SlashingEvidence(
+        offender_pubkey=pub,
+        height=100,  # claim the equivocation was at 100, but sigs are for 42
+        block_a_hash=h_a,
+        sig_a=sig_a_at_42,
+        block_b_hash=h_b,
+        sig_b=sig_b_at_42,
+    )
+    assert not verify_evidence(ev_wrong_height)
 
 
 def test_verify_evidence_accepts_real_sigs() -> None:
@@ -69,6 +117,7 @@ def test_verify_evidence_rejects_tampered_sig() -> None:
     bad_sig_a[0] ^= 0xFF
     tampered = SlashingEvidence(
         offender_pubkey=ev.offender_pubkey,
+        height=ev.height,
         block_a_hash=ev.block_a_hash,
         sig_a=bytes(bad_sig_a),
         block_b_hash=ev.block_b_hash,
@@ -117,6 +166,7 @@ def test_slash_rejects_bad_evidence() -> None:
     h = hashlib.sha256(b"x").digest()
     bad_ev = SlashingEvidence(
         offender_pubkey=node.validators[0].bls_pubkey,
+        height=10,
         block_a_hash=h,
         sig_a=b"\x00" * bls.SIGNATURE_BYTES,
         block_b_hash=hashlib.sha256(b"y").digest(),

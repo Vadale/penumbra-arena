@@ -132,19 +132,20 @@ def test_finality_requires_two_thirds() -> None:
         validators.append(ident)
         secrets.append(secret)
     block_hash = hashlib.sha256(b"block").digest()
+    height = 7
     # Only 3 validators sign — below threshold.
     sigs_short = [
-        (v.bls_pubkey, sign_block_hash(s, block_hash))
+        (v.bls_pubkey, sign_block_hash(s, block_hash, height))
         for v, s in list(zip(validators, secrets, strict=True))[:3]
     ]
-    assert finalise(block_hash, sigs_short, total_validators=6) is None
+    assert finalise(block_hash, height, sigs_short, total_validators=6) is None
 
     # 4 sign — meets the ceiling.
     sigs_ok = [
-        (v.bls_pubkey, sign_block_hash(s, block_hash))
+        (v.bls_pubkey, sign_block_hash(s, block_hash, height))
         for v, s in list(zip(validators, secrets, strict=True))[:4]
     ]
-    result = finalise(block_hash, sigs_ok, total_validators=6)
+    result = finalise(block_hash, height, sigs_ok, total_validators=6)
     assert result is not None
 
 
@@ -156,14 +157,15 @@ def test_finality_rejects_invalid_signature() -> None:
         validators.append(ident)
         secrets.append(secret)
     block_hash = hashlib.sha256(b"x").digest()
+    height = 11
     sigs = [
-        (v.bls_pubkey, sign_block_hash(s, block_hash))
+        (v.bls_pubkey, sign_block_hash(s, block_hash, height))
         for v, s in zip(validators, secrets, strict=True)
     ]
     # Replace one signature with garbage — only 3 valid sigs remain
     # which is below ceil(2*4/3) = 3 — wait, that's *exactly* 3.
     sigs[-1] = (sigs[-1][0], b"\x00" * 96)
-    result = finalise(block_hash, sigs, total_validators=4)
+    result = finalise(block_hash, height, sigs, total_validators=4)
     assert result is not None  # 3 valid = threshold
 
 
