@@ -20,6 +20,7 @@ dependencies = [
   "bertopic>=0.17.4",
   "sentence-transformers>=3.0",
   "umap-learn>=0.5.12",
+  "arch>=7.0",
 ]
 
 [tool.uv.sources]

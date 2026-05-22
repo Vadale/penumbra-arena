@@ -16,25 +16,35 @@ import { useEffect } from "react";
 import type {
   ArimaForecast as ArimaForecastData,
   BayesianPosterior as BayesianPosteriorData,
+  CausalEstimate as CausalEstimateData,
   ClusterScatter as ClusterScatterData,
   EconomySnapshot as EconomySnapshotData,
+  GarchResult as GarchResultData,
   GrangerMatrix as GrangerMatrixData,
   LogitResult as LogitResultData,
   MonteCarloFan as MCFanData,
   PCAResult,
   RegressionFit,
+  SpectralReport as SpectralReportData,
+  SurvivalCurve as SurvivalCurveData,
+  VARImpulseResponse as VARImpulseResponseData,
 } from "../streams/dashboard";
 import { ArimaChart } from "./ArimaChart";
 import { BayesianDensity } from "./BayesianDensity";
+import { CausalChart } from "./CausalChart";
 import { ClusterScatter } from "./ClusterScatter";
 import { EconomyChart } from "./EconomyChart";
+import { GarchChart } from "./GarchChart";
 import { GrangerMatrix } from "./GrangerMatrix";
 import { LineChart } from "./LineChart";
 import { LogitChart } from "./LogitChart";
 import { MonteCarloFan } from "./MonteCarloFan";
 import { PCAScree } from "./PCAScree";
 import { RegressionChart } from "./RegressionChart";
+import { SpectralChart } from "./SpectralChart";
+import { SurvivalChart } from "./SurvivalChart";
 import { TopicsBar } from "./TopicsBar";
+import { VarIrfChart } from "./VarIrfChart";
 
 export type MetricKind =
   | "trajectory_mean"
@@ -52,7 +62,12 @@ export type MetricKind =
   | "pca"
   | "logit"
   | "granger"
-  | "economy";
+  | "economy"
+  | "survival"
+  | "spectral"
+  | "causal"
+  | "var_irf"
+  | "garch";
 
 interface Props {
   open: boolean;
@@ -70,6 +85,12 @@ interface Props {
   bayesian?: BayesianPosteriorData | null;
   granger?: GrangerMatrixData | null;
   economy?: EconomySnapshotData | null;
+  survival?: SurvivalCurveData | null;
+  spectral?: SpectralReportData | null;
+  causal?: CausalEstimateData | null;
+  varIrf?: VARImpulseResponseData | null;
+  garch?: GarchResultData | null;
+  qqPoints?: [number, number][];
 }
 
 const META: Record<MetricKind, { label: string; description: string; yUnit?: string }> = {
@@ -152,6 +173,31 @@ const META: Record<MetricKind, { label: string; description: string; yUnit?: str
     description:
       "Every city stocks 10 of 30 catalogue products (food, hygiene, tools, luxury, medicine). When an agent arrives at a city it Bernoulli(p=.06)-rolls each item; a hit fires a Geometric(1/1.5) quantity purchase. The aggregates here feed regression/Granger/etc with a second semantically distinct stream, so the live charts stop being just a function of the trajectory norm.",
   },
+  survival: {
+    label: "Kaplan-Meier — match duration",
+    description:
+      "Non-parametric estimate of P(match still running at tick t). Each match is observed if it ended with a winner ('death'); censored if it was cut for any other reason. The cyan band is the pointwise 95% CI. The dashed ember line marks the median survival time. Pedagogically: KM is what you reach for whenever you have time-to-event data with right-censoring, which is most real-world reliability + medical data.",
+  },
+  spectral: {
+    label: "Laplacian spectrum + Fiedler vector",
+    description:
+      "Bottom eigenvalues of the arena's normalised Laplacian L_sym = I - D^{-1/2} A D^{-1/2}. The smallest (λ₂, Fiedler value) measures algebraic connectivity — 0 means disconnected, large means a robust mesh. The Fiedler EIGENVECTOR gives the optimal continuous relaxation of the min-cut partition: sign(v_i) tells you which 'side' of the graph node i lives on. Bars: top eigenvalues. Lower: per-node Fiedler vector colored by sign.",
+  },
+  causal: {
+    label: "Causal — IPW + AIPW ATE",
+    description:
+      "Average Treatment Effect of 'agent purchased ≥1 luxury item in the window' on the agent's trajectory L2 distance. Two estimators side by side: IPW (Rosenbaum-Rubin propensity reweighting) and AIPW (doubly robust). The histogram shows the propensity-score distributions per group — visual check of the positivity / overlap assumption (treated and control should have overlapping support).",
+  },
+  var_irf: {
+    label: "VAR — impulse response grid",
+    description:
+      "Fit a Vector AutoRegression VAR(p) over (traj, vol, disp). Each cell (i, j) shows how a 1-σ shock in series i at t=0 propagates into series j over the next 10 steps. Diagonal cells (ember) show how a shock persists in its own series; off-diagonal cells (cyan) show the cross-series spillover. Pedagogically: IRFs make the IMPLIED dynamics of the fit explicit, which raw VAR coefficients hide.",
+  },
+  garch: {
+    label: "GARCH(1, 1) — conditional volatility",
+    description:
+      "σ²_t = ω + α·ε²_{t-1} + β·σ²_{t-1} fit on the log-returns of the trajectory norm. The cyan band is ±σ_t (the model's evolving volatility), the white line is the observed log-returns. Persistence = α + β; values close to 1.0 indicate near-integrated GARCH (shocks decay very slowly). Pedagogically: this is THE workhorse for conditional volatility in finance, and the right baseline before you reach for stochastic-vol models.",
+  },
 };
 
 export function DetailModal({
@@ -170,6 +216,12 @@ export function DetailModal({
   bayesian,
   granger,
   economy,
+  survival,
+  spectral,
+  causal,
+  varIrf,
+  garch,
+  qqPoints,
 }: Props) {
   useEffect(() => {
     if (!open) return;
@@ -190,7 +242,7 @@ export function DetailModal({
       return <TopicsBar topicSizes={topicSizes ?? {}} topWords={topicTopWords ?? {}} />;
     }
     if (metric === "trajectory_mean" && regression) {
-      return <RegressionChart fit={regression} />;
+      return <RegressionChart fit={regression} qqPoints={qqPoints} />;
     }
     if (metric === "hdbscan_clusters" && clusterScatter) {
       return <ClusterScatter data={clusterScatter} />;
@@ -215,6 +267,21 @@ export function DetailModal({
     }
     if (metric === "economy" && economy) {
       return <EconomyChart data={economy} />;
+    }
+    if (metric === "survival" && survival) {
+      return <SurvivalChart data={survival} />;
+    }
+    if (metric === "spectral" && spectral) {
+      return <SpectralChart data={spectral} />;
+    }
+    if (metric === "causal" && causal) {
+      return <CausalChart data={causal} />;
+    }
+    if (metric === "var_irf" && varIrf) {
+      return <VarIrfChart data={varIrf} />;
+    }
+    if (metric === "garch" && garch) {
+      return <GarchChart data={garch} />;
     }
     return <LineChart values={values ?? []} label={meta.label} yUnit={meta.yUnit} />;
   })();

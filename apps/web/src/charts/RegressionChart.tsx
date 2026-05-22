@@ -11,13 +11,15 @@ import type { RegressionFit } from "../streams/dashboard";
 
 interface Props {
   fit: RegressionFit;
+  /** Q-Q plot points (theoretical, sample) for the same fit's residuals. */
+  qqPoints?: [number, number][];
   width?: number;
   height?: number;
 }
 
 const M = { top: 12, right: 16, bottom: 30, left: 50 };
 
-export function RegressionChart({ fit, width = 560, height = 320 }: Props) {
+export function RegressionChart({ fit, qqPoints, width = 560, height = 320 }: Props) {
   const { points, slope, intercept, r_squared, n, sigma } = fit;
   if (points.length < 2) {
     return (
@@ -150,6 +152,15 @@ export function RegressionChart({ fit, width = 560, height = 320 }: Props) {
         </text>
       </svg>
 
+      {qqPoints && qqPoints.length >= 5 && (
+        <div className="mt-3">
+          <div className="mb-1 text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
+            Q-Q plot of residuals (vs N(0, 1))
+          </div>
+          <QQPlot points={qqPoints} />
+        </div>
+      )}
+
       <div className="mt-2 grid grid-cols-5 gap-2 text-[10px]">
         <Stat label="slope β" value={slope} digits={4} accent />
         <Stat label="intercept α" value={intercept} digits={2} />
@@ -158,6 +169,58 @@ export function RegressionChart({ fit, width = 560, height = 320 }: Props) {
         <Stat label="n" value={n} digits={0} />
       </div>
     </div>
+  );
+}
+
+function QQPlot({ points }: { points: [number, number][] }) {
+  const w = 560;
+  const h = 160;
+  const inset = { top: 8, right: 8, bottom: 18, left: 28 };
+  const xs = points.map((p) => p[0]);
+  const ys = points.map((p) => p[1]);
+  const xMin = Math.min(...xs, -3);
+  const xMax = Math.max(...xs, 3);
+  const yMin = Math.min(...ys, xMin);
+  const yMax = Math.max(...ys, xMax);
+  const sx = (v: number) =>
+    inset.left + ((v - xMin) / (xMax - xMin || 1)) * (w - inset.left - inset.right);
+  const sy = (v: number) =>
+    inset.top + (1 - (v - yMin) / (yMax - yMin || 1)) * (h - inset.top - inset.bottom);
+  return (
+    <svg width="100%" viewBox={`0 0 ${w} ${h}`} role="img" aria-label="Q-Q plot of residuals">
+      {/* 45° reference line */}
+      <line
+        x1={sx(Math.max(xMin, yMin))}
+        y1={sy(Math.max(xMin, yMin))}
+        x2={sx(Math.min(xMax, yMax))}
+        y2={sy(Math.min(xMax, yMax))}
+        stroke="var(--color-penumbra-ember)"
+        strokeWidth={0.8}
+        strokeDasharray="3 3"
+      />
+      {points.map(([tx, sv]) => (
+        <circle
+          key={`qq-${tx.toFixed(4)}-${sv.toFixed(4)}`}
+          cx={sx(tx)}
+          cy={sy(sv)}
+          r={1.8}
+          fill="var(--color-penumbra-cyan)"
+          opacity={0.75}
+        />
+      ))}
+      <text x={inset.left} y={h - 4} fontSize={9} fill="var(--color-penumbra-muted)">
+        theoretical (N(0,1))
+      </text>
+      <text
+        x={w - inset.right}
+        y={h - 4}
+        fontSize={9}
+        textAnchor="end"
+        fill="var(--color-penumbra-muted)"
+      >
+        sample residuals
+      </text>
+    </svg>
   );
 }
 

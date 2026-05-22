@@ -93,8 +93,53 @@ export interface EconomySnapshot {
   total_purchases: number;
   total_revenue: number;
   category_counts: Record<string, number>;
-  top_products: [string, number, number][]; // (name, units, revenue)
-  basket_histogram: [number, number][]; // (size, count)
+  top_products: [string, number, number][];
+  basket_histogram: [number, number][];
+}
+
+export interface SurvivalCurve {
+  times: number[];
+  survival: number[];
+  confidence_low: number[];
+  confidence_high: number[];
+  n_events: number;
+  n_censored: number;
+  median_time: number | null;
+}
+
+export interface SpectralReport {
+  eigenvalues: number[];
+  fiedler_value: number;
+  n_nodes: number;
+  n_edges: number;
+  fiedler_vector: number[];
+}
+
+export interface CausalEstimate {
+  n_treated: number;
+  n_control: number;
+  ipw_ate: number;
+  ipw_se: number;
+  aipw_ate: number;
+  aipw_se: number;
+  propensity_treated: number[];
+  propensity_control: number[];
+}
+
+export interface VARImpulseResponse {
+  series_names: string[];
+  horizon: number;
+  lag_order: number;
+  irf: number[][][]; // [step][shock_series][response_series]
+}
+
+export interface GarchResult {
+  omega: number;
+  alpha: number;
+  beta: number;
+  persistence: number;
+  log_returns: number[];
+  conditional_volatility: number[];
 }
 
 export interface DashboardSnapshot {
@@ -126,6 +171,12 @@ export interface DashboardSnapshot {
   bayesian_posterior: BayesianPosterior | null;
   granger: GrangerMatrix | null;
   economy: EconomySnapshot | null;
+  survival: SurvivalCurve | null;
+  spectral: SpectralReport | null;
+  causal: CausalEstimate | null;
+  var_irf: VARImpulseResponse | null;
+  garch: GarchResult | null;
+  qq_points: [number, number][]; // Q-Q plot points (theoretical, sample) for OLS residuals.
 }
 
 const POLL_MS = 500;

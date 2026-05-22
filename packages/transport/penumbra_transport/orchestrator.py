@@ -203,6 +203,11 @@ class Orchestrator:
             ).digest(),
         )
         self.node.submit_outcome(outcome)
+        # Feed the survival consumer: duration in ticks, observed=True
+        # iff the match ended because a winner was found.
+        duration = max(1, outcome.end_tick - outcome.started_tick)
+        observed = match.status.value == "won"
+        self.pipeline.record_match_outcome(duration, observed)
 
     def _sample_utterances(self) -> list[str]:
         """One utterance per agent, sampled from a templated corpus by action.

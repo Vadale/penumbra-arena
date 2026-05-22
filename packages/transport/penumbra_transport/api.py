@@ -504,6 +504,67 @@ def build_app(
                     "basket_histogram": [list(p) for p in snap.economy.basket_histogram],
                 }
             ),
+            "survival": (
+                None
+                if snap.survival is None
+                else {
+                    "times": list(snap.survival.times),
+                    "survival": list(snap.survival.survival),
+                    "confidence_low": list(snap.survival.confidence_low),
+                    "confidence_high": list(snap.survival.confidence_high),
+                    "n_events": snap.survival.n_events,
+                    "n_censored": snap.survival.n_censored,
+                    "median_time": snap.survival.median_time,
+                }
+            ),
+            "spectral": (
+                None
+                if snap.spectral is None
+                else {
+                    "eigenvalues": list(snap.spectral.eigenvalues),
+                    "fiedler_value": snap.spectral.fiedler_value,
+                    "n_nodes": snap.spectral.n_nodes,
+                    "n_edges": snap.spectral.n_edges,
+                    "fiedler_vector": list(snap.spectral.fiedler_vector),
+                }
+            ),
+            "causal": (
+                None
+                if snap.causal is None
+                else {
+                    "n_treated": snap.causal.n_treated,
+                    "n_control": snap.causal.n_control,
+                    "ipw_ate": snap.causal.ipw_ate,
+                    "ipw_se": snap.causal.ipw_se,
+                    "aipw_ate": snap.causal.aipw_ate,
+                    "aipw_se": snap.causal.aipw_se,
+                    "propensity_treated": list(snap.causal.propensity_treated),
+                    "propensity_control": list(snap.causal.propensity_control),
+                }
+            ),
+            "var_irf": (
+                None
+                if snap.var_irf is None
+                else {
+                    "series_names": list(snap.var_irf.series_names),
+                    "horizon": snap.var_irf.horizon,
+                    "lag_order": snap.var_irf.lag_order,
+                    "irf": [[list(row) for row in step] for step in snap.var_irf.irf],
+                }
+            ),
+            "garch": (
+                None
+                if snap.garch is None
+                else {
+                    "omega": snap.garch.omega,
+                    "alpha": snap.garch.alpha,
+                    "beta": snap.garch.beta,
+                    "persistence": snap.garch.persistence,
+                    "log_returns": list(snap.garch.log_returns),
+                    "conditional_volatility": list(snap.garch.conditional_volatility),
+                }
+            ),
+            "qq_points": [list(p) for p in snap.qq_points],
         }
 
     @app.get("/encrypted-heatmap")

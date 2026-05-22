@@ -25,13 +25,16 @@ from penumbra_analytics import (
     bayesian,
     clustering,
     descriptive,
-    inferential,
     monte_carlo,
     time_series,
     topics,
     topology,
 )
 from penumbra_analytics import transport as analytics_transport
+
+# Tier 2 modules: live consumers below feed each of these.
+# They existed but were dead code before this commit — now they
+# all have a path from the streaming pipeline to a dashboard chart.
 
 logger = logging.getLogger(__name__)
 
@@ -164,6 +167,95 @@ class EconomySnapshot:
 
 
 @dataclass(slots=True)
+class SurvivalCurve:
+    """Kaplan-Meier curve of match durations.
+
+    Concept taught: time-to-event with right-censoring. A match that
+    ended with a winner is an OBSERVED death (event=1); a match
+    cancelled or still running counts as censored. We expose the
+    step function + 95% pointwise CI for the chart.
+    """
+
+    times: tuple[float, ...]
+    survival: tuple[float, ...]
+    confidence_low: tuple[float, ...]
+    confidence_high: tuple[float, ...]
+    n_events: int
+    n_censored: int
+    median_time: float | None  # median survival or None if not reached
+
+
+@dataclass(slots=True)
+class SpectralReport:
+    """Bottom eigenvalues + Fiedler value of the arena Laplacian.
+
+    Concept taught: a graph's algebraic connectivity (Fiedler λ₂) is
+    a continuous measure of how well-connected it is — small values
+    mean a near-cut, large values mean a robust mesh.
+    """
+
+    eigenvalues: tuple[float, ...]  # bottom 5 of the normalised Laplacian
+    fiedler_value: float
+    n_nodes: int
+    n_edges: int
+    fiedler_vector: tuple[float, ...]  # one entry per node (for the spectrum bar chart)
+
+
+@dataclass(slots=True)
+class CausalEstimate:
+    """IPW + AIPW ATE estimates with their bootstrap SEs.
+
+    Treatment = "agent purchased a LUXURY item in the recent window".
+    Outcome = the agent's trajectory L2 distance from origin over the
+    same window. Covariate = recent average position.
+    """
+
+    n_treated: int
+    n_control: int
+    ipw_ate: float
+    ipw_se: float
+    aipw_ate: float
+    aipw_se: float
+    propensity_treated: tuple[float, ...]
+    propensity_control: tuple[float, ...]
+
+
+@dataclass(slots=True)
+class VARImpulseResponse:
+    """Impulse responses from a VAR(p) on a few key derived series.
+
+    Concept taught: in a vector autoregression, the IRF traces how
+    a one-σ shock to series i propagates through every other series
+    over the next h steps.
+    """
+
+    series_names: tuple[str, ...]
+    horizon: int
+    lag_order: int
+    # irf[h][i][j] = response of series j at step h to a unit shock
+    # in series i at step 0. Includes the impulse step (h=0).
+    irf: tuple[tuple[tuple[float, ...], ...], ...]
+
+
+@dataclass(slots=True)
+class GarchResult:
+    """GARCH(1, 1) fit on trajectory log-returns.
+
+    Concept taught: real-world financial returns are NOT i.i.d. —
+    volatility CLUSTERS. GARCH models conditional variance as
+    σ²_t = ω + α·ε²_{t-1} + β·σ²_{t-1}, learning the persistence
+    of shocks.
+    """
+
+    omega: float
+    alpha: float
+    beta: float
+    persistence: float  # α + β; close to 1 = high persistence
+    log_returns: tuple[float, ...]  # the series we fitted on
+    conditional_volatility: tuple[float, ...]  # σ_t
+
+
+@dataclass(slots=True)
 class GrangerMatrix:
     """Pairwise Granger-causality p-values between K derived series.
 
@@ -211,6 +303,15 @@ class DashboardSnapshot:
     bayesian_posterior: BayesianPosterior | None = None
     granger: GrangerMatrix | None = None
     economy: EconomySnapshot | None = None
+    survival: SurvivalCurve | None = None
+    spectral: SpectralReport | None = None
+    causal: CausalEstimate | None = None
+    var_irf: VARImpulseResponse | None = None
+    garch: GarchResult | None = None
+    qq_points: tuple[tuple[float, float], ...] = ()
+    # Q-Q lives on the regression chart (theoretical-vs-sample
+    # quantiles of OLS residuals); the field is empty until the
+    # regression consumer has run.
 
 
 @dataclass(slots=True)
@@ -249,6 +350,12 @@ class DashboardPipeline:
             "bayesian_posterior": 10.0,
             "granger": 12.0,
             "economy": 3.0,
+            # Tier 2: heavier consumers, run less often.
+            "survival": 15.0,
+            "spectral": 8.0,
+            "causal": 12.0,
+            "var_irf": 12.0,
+            "garch": 10.0,
         }
     )
 
@@ -258,6 +365,13 @@ class DashboardPipeline:
     _utterances: deque[str] = field(default_factory=lambda: deque(maxlen=400))
     _purchases: deque[object] = field(default_factory=lambda: deque(maxlen=2000))
     _purchases_by_tick: deque[int] = field(default_factory=lambda: deque(maxlen=2000))
+    # Match outcomes feed the survival consumer. Each entry is
+    # (duration_ticks, observed_event). Capped at 256 so the curve
+    # adapts to recent dynamics rather than the whole run history.
+    _match_outcomes: deque[tuple[int, bool]] = field(default_factory=lambda: deque(maxlen=256))
+    # The live arena Graph — set by the orchestrator on construction
+    # so the spectral consumer can run without going through the API.
+    _arena_graph: object | None = field(default=None)
     _last_run: dict[str, float] = field(default_factory=dict)
     _snapshot: DashboardSnapshot = field(default_factory=lambda: DashboardSnapshot(tick=-1))
 
@@ -392,6 +506,34 @@ class DashboardPipeline:
             self._snapshot.economy = self._compute_economy()
             self._last_run["economy"] = now
 
+        if self._due(now, "survival") and len(self._match_outcomes) >= 5:
+            self._snapshot.survival = self._compute_survival()
+            self._last_run["survival"] = now
+
+        if self._due(now, "spectral") and self._arena_graph is not None:
+            self._snapshot.spectral = self._compute_spectral()
+            self._last_run["spectral"] = now
+
+        if (
+            self._due(now, "causal")
+            and len(self._purchases) >= 40
+            and len(self._trajectory_lengths) >= 50
+        ):
+            self._snapshot.causal = self._compute_causal()
+            self._last_run["causal"] = now
+
+        if self._due(now, "var_irf") and len(self._trajectory_lengths) >= 60:
+            self._snapshot.var_irf = self._compute_var_irf()
+            self._last_run["var_irf"] = now
+
+        if self._due(now, "garch") and len(self._trajectory_lengths) >= 80:
+            self._snapshot.garch = self._compute_garch()
+            self._last_run["garch"] = now
+
+        # Q-Q points on regression residuals — cheap, always run with regression.
+        if self._snapshot.regression is not None:
+            self._snapshot.qq_points = self._compute_qq_points()
+
         if self._due(now, "topics") and len(self._utterances) >= 40:
             # Stress-test fix A/B: explicit gc after BERTopic; in early
             # measurements RSS climbed ~9 GB/h because BERTopic + UMAP +
@@ -453,6 +595,23 @@ class DashboardPipeline:
             top_products=tuple(top_products),
             basket_histogram=tuple(sorted(baskets.items())),
         )
+
+    def record_match_outcome(self, duration_ticks: int, event_observed: bool) -> None:
+        """Append one match outcome to the survival buffer.
+
+        `event_observed=True` ⇒ the match ended because an agent
+        reached a goal (the analogue of 'death'); False ⇒ the match
+        was cut off / cancelled (right-censored).
+        """
+        self._match_outcomes.append((int(duration_ticks), bool(event_observed)))
+
+    def set_arena_graph(self, graph: object) -> None:
+        """Wire the live arena graph into the spectral consumer.
+
+        Typed as `object` to keep the analytics package independent
+        of networkx in its signatures; runtime expects nx.Graph.
+        """
+        self._arena_graph = graph
 
     def record_purchases(self, purchases: list[object]) -> None:
         """Append a batch of Purchase events to the rolling buffer.
@@ -811,6 +970,241 @@ class DashboardPipeline:
             n_obs=n,
         )
 
+    def _compute_survival(self) -> SurvivalCurve | None:
+        """Kaplan-Meier on recent match outcomes.
+
+        Censored = match cut by `expired` reason; observed = `won`.
+        Concept taught: KM is the non-parametric MLE of the survival
+        function S(t) = P(T > t) under right-censoring.
+        """
+        from penumbra_analytics import survival
+
+        outcomes = list(self._match_outcomes)
+        if len(outcomes) < 5:
+            return None
+        durations = np.array([d for d, _ in outcomes], dtype=np.float64)
+        events = np.array([e for _, e in outcomes], dtype=np.bool_)
+        if events.sum() == 0:  # KM needs at least one observed event
+            return None
+        try:
+            curve = survival.kaplan_meier(durations, events)
+        except (ValueError, RuntimeError):
+            logger.debug("KM fit failed", exc_info=True)
+            return None
+        # Median survival: the smallest t where S(t) ≤ 0.5.
+        median: float | None = None
+        for t, s in zip(curve.times, curve.survival, strict=True):
+            if s <= 0.5:
+                median = float(t)
+                break
+        return SurvivalCurve(
+            times=tuple(float(t) for t in curve.times),
+            survival=tuple(float(s) for s in curve.survival),
+            confidence_low=tuple(float(c) for c in curve.confidence_low),
+            confidence_high=tuple(float(c) for c in curve.confidence_high),
+            n_events=int(events.sum()),
+            n_censored=int(len(events) - events.sum()),
+            median_time=median,
+        )
+
+    def _compute_spectral(self) -> SpectralReport | None:
+        """Bottom-5 eigenvalues + Fiedler vector of the arena Laplacian.
+
+        Concept taught: λ₂ (Fiedler) measures algebraic connectivity;
+        the Fiedler EIGENVECTOR is the optimal continuous relaxation
+        of the min-cut partition — sign(v_i) splits the graph in two.
+        """
+        from penumbra_analytics import linalg as analytics_linalg
+
+        graph = self._arena_graph
+        if graph is None:
+            return None
+        try:
+            n_nodes = graph.number_of_nodes()  # type: ignore[attr-defined]
+            n_edges = graph.number_of_edges()  # type: ignore[attr-defined]
+            if n_nodes < 4:
+                return None
+            spec = analytics_linalg.spectral_embedding(graph, k=4)  # type: ignore[arg-type]
+            fiedler = analytics_linalg.algebraic_connectivity(graph)  # type: ignore[arg-type]
+        except (ValueError, RuntimeError):
+            logger.debug("spectral compute failed", exc_info=True)
+            return None
+        # Fiedler vector = first column of the embedding (after the
+        # constant has been dropped by spectral_embedding).
+        fiedler_vec = spec.embedding[:, 0]
+        return SpectralReport(
+            eigenvalues=tuple(float(v) for v in spec.eigenvalues),
+            fiedler_value=float(fiedler),
+            n_nodes=int(n_nodes),
+            n_edges=int(n_edges),
+            fiedler_vector=tuple(float(v) for v in fiedler_vec),
+        )
+
+    def _compute_causal(self) -> CausalEstimate | None:
+        """IPW + AIPW ATE: luxury-buyer treatment on trajectory norm.
+
+        Builds a panel of (agent_id × window) observations:
+        - treatment T = 1 iff the agent bought ≥1 luxury item in window
+        - outcome Y = agent's trajectory L2 over the same window
+        - covariate X = the agent's mean position over window
+        """
+        from penumbra_core.economy import PRODUCT_CATALOG
+
+        from penumbra_analytics import causal as analytics_causal
+
+        positions = list(self._positions)
+        purchases = list(self._purchases)
+        if len(positions) < 30 or not purchases:
+            return None
+        # Build per-agent aggregates over the window.
+        position_matrix = np.stack(positions[-60:])  # (T, A)
+        n_agents = position_matrix.shape[1]
+        outcome = np.linalg.norm(position_matrix, axis=0)  # ‖x_a‖₂ across time
+        covariate = position_matrix.mean(axis=0)  # average position per agent
+        luxury_ids = {p.id for p in PRODUCT_CATALOG if p.category == "luxury"}
+        treatment = np.zeros(n_agents, dtype=np.int64)
+        for p in purchases:
+            pid = int(getattr(p, "product_id", -1))
+            aid = int(getattr(p, "agent_id", -1))
+            if pid in luxury_ids and 0 <= aid < n_agents:
+                treatment[aid] = 1
+        n_treated = int(treatment.sum())
+        n_control = int(n_agents - n_treated)
+        if n_treated < 3 or n_control < 3:
+            return None
+        try:
+            propensity = analytics_causal.estimate_propensity(treatment, covariate.reshape(-1, 1))
+            ipw = analytics_causal.ipw_ate(outcome.astype(np.float64), treatment, propensity)
+            aipw = analytics_causal.aipw_ate(
+                outcome.astype(np.float64), treatment, covariate.reshape(-1, 1)
+            )
+        except (ValueError, np.linalg.LinAlgError):
+            logger.debug("causal estimation failed", exc_info=True)
+            return None
+        return CausalEstimate(
+            n_treated=n_treated,
+            n_control=n_control,
+            ipw_ate=float(ipw.ate),
+            ipw_se=float(ipw.se),
+            aipw_ate=float(aipw.ate),
+            aipw_se=float(aipw.se),
+            propensity_treated=tuple(float(p) for p in propensity[treatment == 1]),
+            propensity_control=tuple(float(p) for p in propensity[treatment == 0]),
+        )
+
+    def _compute_var_irf(self) -> VARImpulseResponse | None:
+        """Fit VAR(2) on (traj, vol, dispersion) and compute IRF.
+
+        Returns the impulse-response matrix for the next 10 steps:
+        irf[h][i][j] = response of j at step h to a 1-σ shock in i.
+        """
+        from statsmodels.tsa.api import VAR
+
+        traj = np.asarray(list(self._trajectory_lengths)[-100:], dtype=np.float64)
+        if len(traj) < 40:
+            return None
+        diff = np.concatenate([[0.0], np.abs(np.diff(traj))])
+        positions_list = list(self._positions)[-100:]
+        if not positions_list:
+            return None
+        dispersion = np.array(
+            [float(len({int(p) for p in row.tolist()})) for row in positions_list],
+            dtype=np.float64,
+        )
+        n = min(len(traj), len(diff), len(dispersion))
+        if n < 40:
+            return None
+        series = np.column_stack([traj[-n:], diff[-n:], dispersion[-n:]])
+        names = ("traj", "vol", "disp")
+        try:
+            model = VAR(series)
+            fit = model.fit(maxlags=2, ic=None)
+            irf = fit.irf(periods=10)
+            irfs = np.asarray(irf.irfs)  # shape (11, n_series, n_series)
+        except (ValueError, np.linalg.LinAlgError, ImportError):
+            logger.debug("VAR/IRF failed", exc_info=True)
+            return None
+        # Re-pack: irf[h][i][j] = response of j to shock in i at step h.
+        # statsmodels orientation is irfs[h, j, i] (response, shock). Convert.
+        h, k, _ = irfs.shape
+        out_irf: list[tuple[tuple[float, ...], ...]] = []
+        for step in range(h):
+            row_per_shock = []
+            for i in range(k):
+                responses = tuple(float(irfs[step, j, i]) for j in range(k))
+                row_per_shock.append(responses)
+            out_irf.append(tuple(row_per_shock))
+        return VARImpulseResponse(
+            series_names=names,
+            horizon=h - 1,
+            lag_order=int(fit.k_ar),
+            irf=tuple(out_irf),
+        )
+
+    def _compute_garch(self) -> GarchResult | None:
+        """Fit GARCH(1, 1) on the log-returns of the trajectory norm.
+
+        Returns the estimated coefficients + the in-sample
+        conditional volatility series.
+        """
+        from arch import arch_model
+
+        traj = np.asarray(list(self._trajectory_lengths)[-200:], dtype=np.float64)
+        if len(traj) < 60 or np.any(traj <= 0):
+            return None
+        # Centred log-returns (×100 so the optimiser doesn't underflow).
+        returns = np.diff(np.log(traj)) * 100.0
+        if len(returns) < 30 or np.std(returns) < 1e-6:
+            return None
+        try:
+            am = arch_model(returns, mean="Zero", vol="GARCH", p=1, q=1, rescale=False)
+            res = am.fit(disp="off", show_warning=False)
+        except (ValueError, RuntimeError):
+            logger.debug("GARCH fit failed", exc_info=True)
+            return None
+        # arch's res.params is a pandas Series; .get returns Any | None,
+        # which pyright sees as possibly None.
+        omega = float(res.params.get("omega", 0.0) or 0.0)  # type: ignore[arg-type]
+        alpha = float(res.params.get("alpha[1]", 0.0) or 0.0)  # type: ignore[arg-type]
+        beta = float(res.params.get("beta[1]", 0.0) or 0.0)  # type: ignore[arg-type]
+        cond_vol = np.asarray(res.conditional_volatility, dtype=np.float64)
+        return GarchResult(
+            omega=omega,
+            alpha=alpha,
+            beta=beta,
+            persistence=alpha + beta,
+            log_returns=tuple(float(r) for r in returns),
+            conditional_volatility=tuple(float(v) for v in cond_vol),
+        )
+
+    def _compute_qq_points(self) -> tuple[tuple[float, float], ...]:
+        """Q-Q plot points for OLS residuals vs N(0, σ).
+
+        Uses the residuals from the latest regression compute. Returns
+        (theoretical_quantile, sample_quantile) sorted by theoretical.
+        """
+        from scipy.stats import norm
+
+        reg = self._snapshot.regression
+        if reg is None or len(reg.points) < 5:
+            return ()
+        # Recompute residuals from raw points and the fit.
+        residuals = np.array(
+            [y - (reg.intercept + reg.slope * x) for x, y in reg.points],
+            dtype=np.float64,
+        )
+        residuals.sort()
+        n = len(residuals)
+        # Standardise to unit variance for the visual.
+        sigma = float(np.std(residuals, ddof=1))
+        if sigma < 1e-9:
+            return ()
+        standardised = residuals / sigma
+        # Hazen plotting positions (i - 0.5) / n, classic for Q-Q.
+        quantiles = np.array([(i + 0.5) / n for i in range(n)], dtype=np.float64)
+        theoretical = norm.ppf(quantiles)
+        return tuple((float(t), float(s)) for t, s in zip(theoretical, standardised, strict=True))
+
     # ── internals ───────────────────────────────────────────────────
 
     def _due(self, now: float, key: str) -> bool:
@@ -842,8 +1236,3 @@ def _bars_payload(diagram: NDArray[np.float64]) -> tuple[tuple[float, float], ..
     # Sort by descending lifetime so the most persistent bars come first.
     bars.sort(key=lambda b: b[0] - b[1])  # negative lifetime → longest first
     return tuple(bars)
-
-
-def _unused_inferential_import() -> object:
-    """statsmodels'/inferential's import dependency for downstream consumers."""
-    return inferential  # keeps the linter from complaining about the unused import

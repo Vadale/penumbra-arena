@@ -246,6 +246,66 @@ export function AnalyticsPanel() {
           accent
           onClick={() => open("economy")}
         />
+        <Cell
+          label="KM median"
+          value={
+            snap.survival && snap.survival.median_time !== null
+              ? fmt(snap.survival.median_time, 0)
+              : "—"
+          }
+          caption={
+            snap.survival
+              ? `${snap.survival.n_events} ev · ${snap.survival.n_censored} cens`
+              : "warming"
+          }
+          accent
+          onClick={() => open("survival")}
+        />
+        <Cell
+          label="fiedler λ₂"
+          value={snap.spectral ? fmt(snap.spectral.fiedler_value, 4) : "—"}
+          caption={
+            snap.spectral
+              ? `${snap.spectral.n_nodes} nodes · ${snap.spectral.n_edges} edges`
+              : "warming"
+          }
+          accent
+          onClick={() => open("spectral")}
+        />
+        <Cell
+          label="ATE (IPW)"
+          value={snap.causal ? fmt(snap.causal.ipw_ate, 2) : "—"}
+          caption={
+            snap.causal
+              ? `±${snap.causal.ipw_se.toFixed(2)} · ${snap.causal.n_treated}t/${snap.causal.n_control}c`
+              : "warming"
+          }
+          accent
+          onClick={() => open("causal")}
+        />
+        <Cell
+          label="VAR p"
+          value={snap.var_irf ? String(snap.var_irf.lag_order) : "—"}
+          caption={
+            snap.var_irf
+              ? `${snap.var_irf.series_names.length}-var · h=${snap.var_irf.horizon}`
+              : "warming"
+          }
+          accent
+          onClick={() => open("var_irf")}
+        />
+        <Cell
+          label="GARCH α+β"
+          value={snap.garch ? fmt(snap.garch.persistence, 3) : "—"}
+          caption={
+            snap.garch
+              ? `ω=${snap.garch.omega.toFixed(3)} · α=${snap.garch.alpha.toFixed(2)}`
+              : "warming"
+          }
+          ember={!!snap.garch && snap.garch.persistence > 0.98}
+          accent={!!snap.garch && snap.garch.persistence <= 0.98}
+          onClick={() => open("garch")}
+        />
       </div>
 
       {summary && (
@@ -270,15 +330,24 @@ export function AnalyticsPanel() {
         open={openMetric !== null}
         onClose={() => setOpenMetric(null)}
         metric={openMetric}
-        values={
-          openMetric &&
-          openMetric !== "pca" &&
-          openMetric !== "logit" &&
-          openMetric !== "granger" &&
-          openMetric !== "economy"
-            ? histories[mapMetricToHistoryKey(openMetric)]
-            : undefined
-        }
+        values={(() => {
+          if (!openMetric) return undefined;
+          // Metrics with a dedicated rich chart don't need the line.
+          switch (openMetric) {
+            case "pca":
+            case "logit":
+            case "granger":
+            case "economy":
+            case "survival":
+            case "spectral":
+            case "causal":
+            case "var_irf":
+            case "garch":
+              return undefined;
+            default:
+              return histories[mapMetricToHistoryKey(openMetric)];
+          }
+        })()}
         topicSizes={openMetric === "topics" ? snap.topic_sizes : undefined}
         topicTopWords={openMetric === "topics" ? snap.topic_top_words : undefined}
         regression={snap.regression}
@@ -290,13 +359,30 @@ export function AnalyticsPanel() {
         bayesian={snap.bayesian_posterior}
         granger={snap.granger}
         economy={snap.economy}
+        survival={snap.survival}
+        spectral={snap.spectral}
+        causal={snap.causal}
+        varIrf={snap.var_irf}
+        garch={snap.garch}
+        qqPoints={snap.qq_points}
       />
     </div>
   );
 }
 
 function mapMetricToHistoryKey(
-  m: Exclude<MetricKind, "pca" | "logit" | "granger" | "economy">,
+  m: Exclude<
+    MetricKind,
+    | "pca"
+    | "logit"
+    | "granger"
+    | "economy"
+    | "survival"
+    | "spectral"
+    | "causal"
+    | "var_irf"
+    | "garch"
+  >,
 ): keyof ReturnType<typeof useDashboardLive>["history"] {
   switch (m) {
     case "trajectory_mean":
