@@ -56,16 +56,8 @@ export function MempoolChart() {
   return (
     <div className="font-mono space-y-3">
       <div className="grid grid-cols-2 gap-2 text-[10px]">
-        <Stat
-          label="pending outcomes"
-          value={data.n_outcomes}
-          accent={data.n_outcomes > 0}
-        />
-        <Stat
-          label="pending slashings"
-          value={data.n_slashings}
-          ember={data.n_slashings > 0}
-        />
+        <Stat label="pending outcomes" value={data.n_outcomes} accent={data.n_outcomes > 0} />
+        <Stat label="pending slashings" value={data.n_slashings} ember={data.n_slashings > 0} />
       </div>
 
       <div>
@@ -87,7 +79,10 @@ export function MempoolChart() {
             </thead>
             <tbody>
               {data.outcomes.map((o) => (
-                <tr key={`m-${o.match_id}`} className="border-t border-[color:var(--color-penumbra-border)]">
+                <tr
+                  key={`m-${o.match_id}`}
+                  className="border-t border-[color:var(--color-penumbra-border)]"
+                >
                   <td className="py-0.5 text-[color:var(--color-penumbra-cyan)]">#{o.match_id}</td>
                   <td className="py-0.5 text-[color:var(--color-penumbra-text)]">
                     {o.winner !== null ? `agent ${o.winner}` : "—"}
@@ -121,7 +116,10 @@ export function MempoolChart() {
           </div>
           <table className="w-full text-[10px]">
             {data.slashings.map((s) => (
-              <tr key={`s-${s.offender_short}-${s.height}`} className="border-t border-[color:var(--color-penumbra-border)]">
+              <tr
+                key={`s-${s.offender_short}-${s.height}`}
+                className="border-t border-[color:var(--color-penumbra-border)]"
+              >
                 <td className="py-0.5 text-[color:var(--color-penumbra-ember)]">
                   offender {s.offender_short}…
                 </td>

@@ -212,6 +212,8 @@ class MAPPO:
 
         total_actor_loss = 0.0
         total_critic_loss = 0.0
+        total_entropy = 0.0
+        total_kl = 0.0
 
         for _ in range(cfg.ppo_epochs):
             indices = torch.randperm(t_steps, device=self.device)
@@ -246,10 +248,18 @@ class MAPPO:
 
                 total_actor_loss += float(actor_loss.item())
                 total_critic_loss += float(critic_loss.item())
+                # entropy + approx KL of new vs old policy (Schulman approx).
+                total_entropy += float(dist.entropy().mean().item())
+                with torch.no_grad():
+                    approx_kl = (old_log_probs_mb - new_log_probs).mean()
+                    total_kl += float(approx_kl.item())
 
+        norm = max(cfg.ppo_epochs, 1)
         return {
-            "actor_loss": total_actor_loss / max(cfg.ppo_epochs, 1),
-            "critic_loss": total_critic_loss / max(cfg.ppo_epochs, 1),
+            "actor_loss": total_actor_loss / norm,
+            "critic_loss": total_critic_loss / norm,
+            "entropy": total_entropy / norm,
+            "kl": total_kl / norm,
         }
 
     # ── checkpoint I/O ─────────────────────────────────────────────────

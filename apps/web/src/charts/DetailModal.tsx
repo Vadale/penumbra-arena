@@ -57,19 +57,22 @@ import { LineChart } from "./LineChart";
 import { LogitChart } from "./LogitChart";
 import { MempoolChart } from "./MempoolChart";
 import { MonteCarloFan } from "./MonteCarloFan";
-import { SlashingChart } from "./SlashingChart";
-import { VRFLeaderChart } from "./VRFLeaderChart";
-import { ZKVerifyChart } from "./ZKVerifyChart";
 import { PCAScree } from "./PCAScree";
 import { PermutationChart } from "./PermutationChart";
 import { PolicyInspector } from "./PolicyInspector";
 import { RegressionChart } from "./RegressionChart";
+import { RewardShapingChart } from "./RewardShapingChart";
 import { ROCChart } from "./ROCChart";
+import { SlashingChart } from "./SlashingChart";
 import { SpectralChart } from "./SpectralChart";
 import { SurvivalChart } from "./SurvivalChart";
 import { TopicsBar } from "./TopicsBar";
+import { TrainingCurves } from "./TrainingCurves";
+import { ValueMapChart } from "./ValueMapChart";
 import { VarIrfChart } from "./VarIrfChart";
+import { VRFLeaderChart } from "./VRFLeaderChart";
 import { WealthChart } from "./WealthChart";
+import { ZKVerifyChart } from "./ZKVerifyChart";
 
 export type MetricKind =
   | "trajectory_mean"
@@ -108,7 +111,10 @@ export type MetricKind =
   | "mempool"
   | "zk_verify"
   | "bls_aggregate"
-  | "slashing";
+  | "slashing"
+  | "training_curves"
+  | "value_map"
+  | "reward_shaping";
 
 interface Props {
   open: boolean;
@@ -328,6 +334,21 @@ const META: Record<MetricKind, { label: string; description: string; yUnit?: str
     description:
       "Pick an active validator and the demo server signs two CONFLICTING block hashes with that validator's secret key, then files the SlashingEvidence. The chain folds the result into the next block — the offender's pubkey moves into slashed_pubkeys, active_indices shrinks, and future blocks finalise with the remaining quorum. This is gated behind PENUMBRA_DEMO_SELF_SLASH=1 so production-shaped runs can't accidentally enable it.",
   },
+  training_curves: {
+    label: "Live MAPPO training — start/stop + curves",
+    description:
+      "Click START and a background asyncio task begins running PPO updates against the SAME actor that drives the live arena. Each iteration: rollout 64 steps in an internal env, compute GAE advantages, run 4 PPO epochs, append (actor_loss, critic_loss, entropy, KL, mean_reward) to the curves below. The live policy mutates in real time.",
+  },
+  value_map: {
+    label: "Critic V(s) + per-node policy entropy",
+    description:
+      "V(s) (top stat) is the critic's estimate of expected future return for the current global state. The per-node bars show the average actor entropy of agents at that node — low entropy = confident decision, high entropy (ember) = uncertain.",
+  },
+  reward_shaping: {
+    label: "Reward shaping — tune the objective live",
+    description:
+      "Sliders mutate the shared RewardWeights singleton used by the training env. Background PPO picks up new values on its NEXT iteration. Try crowding=-0.05 (penalise the swarm clumping) and watch the policy spread the agents out.",
+  },
 };
 
 export function DetailModal({
@@ -471,6 +492,15 @@ export function DetailModal({
     }
     if (metric === "slashing") {
       return <SlashingChart />;
+    }
+    if (metric === "training_curves") {
+      return <TrainingCurves />;
+    }
+    if (metric === "value_map") {
+      return <ValueMapChart />;
+    }
+    if (metric === "reward_shaping") {
+      return <RewardShapingChart />;
     }
     return <LineChart values={values ?? []} label={meta.label} yUnit={meta.yUnit} />;
   })();

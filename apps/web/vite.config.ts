@@ -32,6 +32,7 @@ export default defineConfig({
       "/arena": API_HTTP,
       "/repl": API_HTTP,
       "/learning": API_HTTP,
+      "/crypto": API_HTTP,
       "/ws": { target: API_WS, ws: true },
     },
   },

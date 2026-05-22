@@ -456,6 +456,27 @@ export function AnalyticsPanel() {
           ember
           onClick={() => open("slashing")}
         />
+        <Cell
+          label="training"
+          value="live PPO"
+          caption="start / stop / curves"
+          accent
+          onClick={() => open("training_curves")}
+        />
+        <Cell
+          label="V(s)"
+          value="critic"
+          caption="value + entropy map"
+          accent
+          onClick={() => open("value_map")}
+        />
+        <Cell
+          label="reward"
+          value="shape"
+          caption="tune objective live"
+          accent
+          onClick={() => open("reward_shaping")}
+        />
       </div>
 
       {summary && (
@@ -509,6 +530,9 @@ export function AnalyticsPanel() {
             case "zk_verify":
             case "bls_aggregate":
             case "slashing":
+            case "training_curves":
+            case "value_map":
+            case "reward_shaping":
               return undefined;
             default:
               return histories[mapMetricToHistoryKey(openMetric)];
@@ -573,6 +597,9 @@ function mapMetricToHistoryKey(
     | "zk_verify"
     | "bls_aggregate"
     | "slashing"
+    | "training_curves"
+    | "value_map"
+    | "reward_shaping"
   >,
 ): keyof ReturnType<typeof useDashboardLive>["history"] {
   switch (m) {

@@ -74,7 +74,12 @@ export function VRFLeaderChart() {
         <div className="mb-1 text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
           validator set + leader frequency (recent {data.recent.length} blocks)
         </div>
-        <svg viewBox={`0 0 560 ${data.validators.length * 22 + 6}`} width="100%" role="img" aria-label="validators">
+        <svg
+          viewBox={`0 0 560 ${data.validators.length * 22 + 6}`}
+          width="100%"
+          role="img"
+          aria-label="validators"
+        >
           {data.validators.map((v) => {
             const y = v.index * 22 + 4;
             const c = counts.get(v.index) ?? 0;
@@ -86,11 +91,7 @@ export function VRFLeaderChart() {
                   y={y + 11}
                   fontSize={10}
                   dominantBaseline="central"
-                  fill={
-                    v.slashed
-                      ? "var(--color-penumbra-ember)"
-                      : "var(--color-penumbra-muted)"
-                  }
+                  fill={v.slashed ? "var(--color-penumbra-ember)" : "var(--color-penumbra-muted)"}
                 >
                   v{v.index} · bls {v.bls_short}…
                 </text>
@@ -137,11 +138,20 @@ export function VRFLeaderChart() {
           </thead>
           <tbody>
             {[...data.recent].reverse().map((b) => (
-              <tr key={`b-${b.height}`} className="border-t border-[color:var(--color-penumbra-border)]">
+              <tr
+                key={`b-${b.height}`}
+                className="border-t border-[color:var(--color-penumbra-border)]"
+              >
                 <td className="py-0.5 text-[color:var(--color-penumbra-cyan)]">#{b.height}</td>
-                <td className="py-0.5 text-[color:var(--color-penumbra-text)]">v{b.leader_index}</td>
-                <td className="py-0.5 tabular-nums text-[color:var(--color-penumbra-muted)]">{b.leader_short}…</td>
-                <td className="py-0.5 tabular-nums text-[color:var(--color-penumbra-dim)]">{b.vrf_beta_short}…</td>
+                <td className="py-0.5 text-[color:var(--color-penumbra-text)]">
+                  v{b.leader_index}
+                </td>
+                <td className="py-0.5 tabular-nums text-[color:var(--color-penumbra-muted)]">
+                  {b.leader_short}…
+                </td>
+                <td className="py-0.5 tabular-nums text-[color:var(--color-penumbra-dim)]">
+                  {b.vrf_beta_short}…
+                </td>
               </tr>
             ))}
           </tbody>
@@ -149,7 +159,8 @@ export function VRFLeaderChart() {
       </div>
 
       <div className="text-[10px] text-[color:var(--color-penumbra-dim)]">
-        next election seed = <span className="text-[color:var(--color-penumbra-muted)]">{data.next_seed}…</span>
+        next election seed ={" "}
+        <span className="text-[color:var(--color-penumbra-muted)]">{data.next_seed}…</span>
       </div>
     </div>
   );

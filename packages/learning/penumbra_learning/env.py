@@ -17,6 +17,7 @@ Reward shaping:
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, ClassVar, cast
 
 import numpy as np
@@ -32,6 +33,27 @@ from pettingzoo import ParallelEnv
 NEIGHBOURS_K = 6
 OBS_PER_NEIGHBOUR = 3
 PAD_VALUE = -1.0
+
+
+@dataclass(slots=True)
+class RewardWeights:
+    """Tunable reward components used by the env on every step.
+
+    The user can mutate these at runtime via /learning/reward-weights;
+    the live trainer picks the new values up at the next iteration
+    because the env reads them through a shared singleton.
+    """
+
+    goal_reward: float = 1.0
+    step_penalty: float = -0.01
+    illegal_move_penalty: float = -0.1
+    crowding_penalty: float = 0.0  # per agent on the same node, applied to all of them
+
+
+# Module-level singleton — the simplest way to share live-mutable weights
+# between the API endpoint and N PenumbraEnv instances. The endpoint
+# mutates fields in place; envs read them at step() time.
+REWARD_WEIGHTS = RewardWeights()
 
 
 class PenumbraEnv(ParallelEnv):  # type: ignore[misc]
@@ -102,7 +124,7 @@ class PenumbraEnv(ParallelEnv):  # type: ignore[misc]
         assert self._sim is not None, "call reset() before step()"
         sim = self._sim
 
-        rewards: dict[str, float] = dict.fromkeys(self.agents, -0.01)
+        rewards: dict[str, float] = dict.fromkeys(self.agents, REWARD_WEIGHTS.step_penalty)
         # Snapshot pre-step positions / goals to score legality and wins.
         pre_positions = {i: sim.agents[i].position for i in range(self._n_agents)}
         goal_set_pre = set(sim.arena.goals)
@@ -126,7 +148,17 @@ class PenumbraEnv(ParallelEnv):  # type: ignore[misc]
         post_goals = set(sim.arena.goals)
         for i, agent_str in enumerate(self.possible_agents):
             if sim.agents[i].position in post_goals or sim.agents[i].position in goal_set_pre:
-                rewards[agent_str] += 1.0
+                rewards[agent_str] += REWARD_WEIGHTS.goal_reward
+        # Anti-crowding penalty: count agents per node, apply weighted
+        # penalty proportional to (count - 1).
+        if REWARD_WEIGHTS.crowding_penalty != 0.0:
+            counts: dict[int, int] = {}
+            for i in range(self._n_agents):
+                counts[sim.agents[i].position] = counts.get(sim.agents[i].position, 0) + 1
+            for i, agent_str in enumerate(self.possible_agents):
+                excess = max(0, counts[sim.agents[i].position] - 1)
+                if excess > 0:
+                    rewards[agent_str] += REWARD_WEIGHTS.crowding_penalty * excess
 
         terminated = dict.fromkeys(self.agents, sim.current_match.is_over)
         truncated = dict.fromkeys(self.agents, False)
@@ -177,7 +209,7 @@ class PenumbraEnv(ParallelEnv):  # type: ignore[misc]
             return
         neighbours = self._neighbour_index.get(agent_idx, [])
         if action >= len(neighbours):
-            rewards[agent_str] -= 0.1  # illegal move penalty; stay put
+            rewards[agent_str] += REWARD_WEIGHTS.illegal_move_penalty
             return
         target = neighbours[action]
         cost = sim.arena.cost_of(pre_position, target)

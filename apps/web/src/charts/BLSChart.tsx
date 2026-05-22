@@ -105,8 +105,8 @@ export function BLSChart() {
       </div>
 
       <div className="text-[9px] text-[color:var(--color-penumbra-dim)]">
-        block_hash = {data.block_hash.slice(0, 24)}… · fast_aggregate_verify (same
-        message) on BLS12-381 G1/G2.
+        block_hash = {data.block_hash.slice(0, 24)}… · fast_aggregate_verify (same message) on
+        BLS12-381 G1/G2.
       </div>
     </div>
   );
@@ -126,15 +126,7 @@ function Verdict({ verified }: { verified: boolean }) {
   );
 }
 
-function Stat({
-  label,
-  value,
-  accent,
-}: {
-  label: string;
-  value: string;
-  accent?: boolean;
-}) {
+function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
     <div className="border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-2 py-1">
       <div className="text-[8px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">

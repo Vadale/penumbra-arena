@@ -63,6 +63,7 @@ class AppState:
     loop: TickLoop
     orchestrator: Orchestrator
     mappo_runtime: object | None = None  # MappoRuntime when MAPPO loaded
+    live_trainer: object | None = None  # LiveTrainer when MAPPO loaded
 
 
 def build_app(
@@ -106,16 +107,32 @@ def build_app(
             else None,
         )
         await orchestrator.start()
+        live_trainer: object | None = None
+        if mappo_runtime is not None:
+            try:
+                from penumbra_learning.live_trainer import build_live_trainer
+
+                live_trainer = build_live_trainer(mappo_runtime.agent_net)  # type: ignore[attr-defined]
+            except Exception:
+                logger.exception("failed to build live trainer; continuing without it")
         app.state.penumbra = AppState(
             simulation=sim,
             hub=hub,
             loop=loop,
             orchestrator=orchestrator,
             mappo_runtime=mappo_runtime,
+            live_trainer=live_trainer,
         )
         try:
             yield
         finally:
+            if live_trainer is not None:
+                live_trainer.stop()  # type: ignore[attr-defined]
+                task = getattr(live_trainer, "_task", None)
+                if task is not None and not task.done():
+                    task.cancel()
+                    with contextlib.suppress(Exception):
+                        await task
             await orchestrator.stop()
             await loop.stop()
 
@@ -365,6 +382,7 @@ def build_app(
                 {"label": "byzantine equivocation", "command": "pna byzantine-cmd"},
                 {"label": "DP reconstruction", "command": "pna dp-reconstruct"},
                 {"label": "linkability", "command": "pna linkability-cmd"},
+                {"label": "timing side-channel", "command": "pna timing --samples 30"},
             ],
             "shell": [
                 {"label": "lessons", "command": "psh lessons"},
@@ -883,6 +901,153 @@ def build_app(
         runtime.enabled = bool(enabled)  # type: ignore[attr-defined]
         return {"enabled": runtime.enabled}  # type: ignore[attr-defined]
 
+    @app.get("/learning/reward-weights")
+    async def learning_reward_weights() -> dict[str, object]:
+        from penumbra_learning.env import REWARD_WEIGHTS
+
+        return {
+            "available": True,
+            "goal_reward": float(REWARD_WEIGHTS.goal_reward),
+            "step_penalty": float(REWARD_WEIGHTS.step_penalty),
+            "illegal_move_penalty": float(REWARD_WEIGHTS.illegal_move_penalty),
+            "crowding_penalty": float(REWARD_WEIGHTS.crowding_penalty),
+        }
+
+    @app.post("/learning/reward-weights")
+    async def learning_set_reward_weights(payload: dict[str, float]) -> dict[str, object]:
+        from penumbra_learning.env import REWARD_WEIGHTS
+
+        for key in ("goal_reward", "step_penalty", "illegal_move_penalty", "crowding_penalty"):
+            if key in payload:
+                setattr(REWARD_WEIGHTS, key, float(payload[key]))
+        return {
+            "goal_reward": float(REWARD_WEIGHTS.goal_reward),
+            "step_penalty": float(REWARD_WEIGHTS.step_penalty),
+            "illegal_move_penalty": float(REWARD_WEIGHTS.illegal_move_penalty),
+            "crowding_penalty": float(REWARD_WEIGHTS.crowding_penalty),
+        }
+
+    @app.get("/learning/value-map")
+    async def learning_value_map() -> dict[str, object]:
+        """Per-agent V(s) for the live policy + observation entropy.
+
+        For each LIVE agent, compute the critic's V(state) at its
+        current global observation, and the actor's distribution
+        entropy at its local observation. The dashboard overlays
+        these on the world map so the user can see where the policy
+        thinks the swarm should be.
+        """
+        runtime = app.state.penumbra.mappo_runtime
+        sim_local: Simulation = app.state.penumbra.simulation
+        if runtime is None:
+            return {"available": False}
+        agent_net = runtime.agent_net  # type: ignore[attr-defined]
+        from penumbra_learning.env import (
+            NEIGHBOURS_K,
+            OBS_PER_NEIGHBOUR,
+            PAD_VALUE,
+        )
+
+        feats_all: list[np.ndarray] = []
+        for ag in sim_local.agents:
+            obs = ag.observe(sim_local.arena, tick=sim_local.tick_counter)
+            neighbours = sorted(obs.neighbour_costs.keys())
+            goals = set(obs.visible_goals)
+            f: list[float] = []
+            for j in range(NEIGHBOURS_K):
+                if j < len(neighbours):
+                    n = neighbours[j]
+                    cost = float(obs.neighbour_costs[n])
+                    is_goal = 1.0 if n in goals else 0.0
+                    f.extend([cost, is_goal, is_goal])
+                else:
+                    f.extend([PAD_VALUE, PAD_VALUE, PAD_VALUE])
+            feats_all.append(np.asarray(f, dtype=np.float32))
+        del OBS_PER_NEIGHBOUR
+        feats_arr = np.stack(feats_all, axis=0)
+        # Actor entropy per agent (uses live temperature).
+        probs = agent_net.action_probabilities(feats_arr, temperature=runtime.temperature)  # type: ignore[attr-defined]
+        # H(p) = -Σ p log p
+        with np.errstate(divide="ignore", invalid="ignore"):
+            entropies = -np.where(probs > 0, probs * np.log(probs), 0).sum(axis=1)
+        # Centralised critic: pad/truncate to expected dimension.
+        cfg = agent_net.config  # type: ignore[attr-defined]
+        expected = int(cfg.obs_dim * cfg.n_agents)
+        flat = feats_arr.reshape(-1).astype(np.float32, copy=False)
+        if flat.size < expected:
+            padded = np.full((expected,), PAD_VALUE, dtype=np.float32)
+            padded[: flat.size] = flat
+            flat = padded
+        else:
+            flat = flat[:expected]
+        v_state = agent_net.value_estimate(flat)  # type: ignore[attr-defined]
+        return {
+            "available": True,
+            "v_state": float(v_state),
+            "per_agent": [
+                {
+                    "agent_id": int(i),
+                    "node": int(sim_local.agents[i].position),
+                    "entropy": float(entropies[i]),
+                    "top_prob": float(np.max(probs[i])),
+                }
+                for i in range(len(sim_local.agents))
+            ],
+            "temperature": float(runtime.temperature),  # type: ignore[attr-defined]
+        }
+
+    @app.get("/learning/training/status")
+    async def learning_training_status() -> dict[str, object]:
+        trainer = app.state.penumbra.live_trainer
+        if trainer is None:
+            return {"available": False}
+        return {
+            "available": True,
+            "enabled": bool(trainer.enabled),  # type: ignore[attr-defined]
+            "iteration": int(trainer.iteration),  # type: ignore[attr-defined]
+            "n_env_agents": int(trainer.n_env_agents),  # type: ignore[attr-defined]
+            "rollout_length": int(trainer.rollout_length),  # type: ignore[attr-defined]
+        }
+
+    @app.post("/learning/training/start")
+    async def learning_training_start() -> dict[str, object]:
+        trainer = app.state.penumbra.live_trainer
+        if trainer is None:
+            raise HTTPException(status_code=404, detail="live trainer unavailable")
+        trainer.start()  # type: ignore[attr-defined]
+        return {"enabled": True, "iteration": int(trainer.iteration)}  # type: ignore[attr-defined]
+
+    @app.post("/learning/training/stop")
+    async def learning_training_stop() -> dict[str, object]:
+        trainer = app.state.penumbra.live_trainer
+        if trainer is None:
+            raise HTTPException(status_code=404, detail="live trainer unavailable")
+        trainer.stop()  # type: ignore[attr-defined]
+        return {"enabled": False, "iteration": int(trainer.iteration)}  # type: ignore[attr-defined]
+
+    @app.get("/learning/training/curves")
+    async def learning_training_curves() -> dict[str, object]:
+        trainer = app.state.penumbra.live_trainer
+        if trainer is None or not getattr(trainer, "history", None):
+            return {"available": False, "samples": []}
+        samples = [
+            {
+                "iteration": s.iteration,
+                "actor_loss": s.actor_loss,
+                "critic_loss": s.critic_loss,
+                "entropy": s.entropy,
+                "kl": s.kl,
+                "mean_reward": s.mean_reward,
+            }
+            for s in list(trainer.history)  # type: ignore[attr-defined]
+        ]
+        return {
+            "available": True,
+            "samples": samples,
+            "enabled": bool(trainer.enabled),  # type: ignore[attr-defined]
+            "iteration": int(trainer.iteration),  # type: ignore[attr-defined]
+        }
+
     @app.get("/learning/action-histogram")
     async def action_histogram() -> dict[str, object]:
         """Distribution of actions chosen this tick by the live policy."""
@@ -948,7 +1113,7 @@ def build_app(
             {
                 "index": i,
                 "bls_short": v.bls_pubkey.hex()[:16],
-                "vrf_short": v.vrf_pubkey.hex()[:16],
+                "vrf_short": format(int(v.vrf_pubkey), "x")[:16],
                 "slashed": v.bls_pubkey in node.slashed_pubkeys,
             }
             for i, v in enumerate(node.validators)
@@ -1033,32 +1198,37 @@ def build_app(
                 target.header.height,  # type: ignore[attr-defined]
             )
             ok = fast_aggregate_verify(
-                list(target.finality.pubkeys),  # type: ignore[attr-defined]
+                list(target.validator_pubkeys),  # type: ignore[attr-defined]
                 payload_bytes,
-                target.finality.aggregate,  # type: ignore[attr-defined]
+                target.aggregate_signature,  # type: ignore[attr-defined]
             )
         except Exception:
             ok = False
         return {
             "block_hash": block_hash,
             "block_height": int(target.header.height),  # type: ignore[attr-defined]
-            "n_signers": len(target.finality.pubkeys),  # type: ignore[attr-defined]
-            "aggregate_short": target.finality.aggregate.hex()[:32],  # type: ignore[attr-defined]
+            "n_signers": len(target.validator_pubkeys),  # type: ignore[attr-defined]
+            "aggregate_short": target.aggregate_signature.hex()[:32],  # type: ignore[attr-defined]
             "signers": [
                 p.hex()[:16]
-                for p in target.finality.pubkeys  # type: ignore[attr-defined]
+                for p in target.validator_pubkeys  # type: ignore[attr-defined]
             ],
             "verified": ok,
         }
 
+    _zk_cache: dict[str, object] = {}
+
     @app.get("/crypto/zk/legal-path")
     async def crypto_zk_verify() -> dict[str, object]:
-        """Verify the shipped Groth16 legal-path proof using our pure-Python verifier.
+        """Verify the shipped Groth16 legal-path proof.
 
-        The pedagogical demo: a real ZK proof — 'I know a 2-hop walk
-        in the published 4×4 adjacency matrix from start to goal' —
-        rendered with side-by-side honest-vs-tampered verification.
+        py_ecc Groth16 is slow (~15s for 3 verifies on M4). We cache
+        the result so the dashboard hits the cold path once per server
+        boot. The artifacts are static and the verifier is
+        deterministic, so caching is safe.
         """
+        if _zk_cache:
+            return dict(_zk_cache)
         import json
         from pathlib import Path
 
@@ -1070,25 +1240,29 @@ def build_app(
         public_path = artifacts / "legal_path_public.json"
         if not all(p.is_file() for p in (vk_path, proof_path, public_path)):
             return {"available": False, "reason": "circuits/artifacts missing"}
-        vk = load_verifying_key(json.loads(vk_path.read_text()))
-        proof = load_proof(json.loads(proof_path.read_text()))
-        public = [int(s) for s in json.loads(public_path.read_text())]
-        honest_ok = verify(vk, proof, public)
-        # Tamper the goal (last public input) and re-run.
-        tampered = [*public[:-1], (public[-1] + 1) % 4]
-        tampered_ok = verify(vk, proof, tampered)
-        # Tamper one adjacency bit too.
-        adj_tampered = list(public)
-        adj_tampered[3] = 1 - adj_tampered[3]
-        adj_ok = verify(vk, proof, adj_tampered)
-        return {
-            "available": True,
-            "circuit": "legal_path 2-hop",
-            "n_public_inputs": len(public),
-            "honest": {"inputs": public, "verified": bool(honest_ok)},
-            "tamper_goal": {"inputs": tampered, "verified": bool(tampered_ok)},
-            "tamper_adjacency": {"inputs": adj_tampered, "verified": bool(adj_ok)},
-        }
+
+        def _run() -> dict[str, object]:
+            vk = load_verifying_key(json.loads(vk_path.read_text()))
+            proof = load_proof(json.loads(proof_path.read_text()))
+            public = [int(s) for s in json.loads(public_path.read_text())]
+            honest_ok = verify(vk, proof, public)
+            tampered = [*public[:-1], (public[-1] + 1) % 4]
+            tampered_ok = verify(vk, proof, tampered)
+            adj_tampered = list(public)
+            adj_tampered[3] = 1 - adj_tampered[3]
+            adj_ok = verify(vk, proof, adj_tampered)
+            return {
+                "available": True,
+                "circuit": "legal_path 2-hop",
+                "n_public_inputs": len(public),
+                "honest": {"inputs": public, "verified": bool(honest_ok)},
+                "tamper_goal": {"inputs": tampered, "verified": bool(tampered_ok)},
+                "tamper_adjacency": {"inputs": adj_tampered, "verified": bool(adj_ok)},
+            }
+
+        result = await asyncio.to_thread(_run)
+        _zk_cache.update(result)
+        return dict(_zk_cache)
 
     @app.get("/chain/latest")
     async def chain_latest() -> dict[str, object]:

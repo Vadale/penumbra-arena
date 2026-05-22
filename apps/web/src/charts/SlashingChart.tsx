@@ -63,10 +63,10 @@ export function SlashingChart() {
   return (
     <div className="font-mono space-y-3">
       <div className="text-[10px] text-[color:var(--color-penumbra-dim)]">
-        Submit equivocation evidence against a validator. The demo endpoint
-        signs two CONFLICTING block hashes with the chosen validator's secret,
-        files them as a SlashingEvidence, and the chain folds the result into
-        the next block (validator pubkey banned + active_indices updated).
+        Submit equivocation evidence against a validator. The demo endpoint signs two CONFLICTING
+        block hashes with the chosen validator's secret, files them as a SlashingEvidence, and the
+        chain folds the result into the next block (validator pubkey banned + active_indices
+        updated).
       </div>
 
       <div>
@@ -111,9 +111,8 @@ export function SlashingChart() {
             slashed v{lastResult.validator_index} ({lastResult.offender_short}…)
           </div>
           <div className="text-[color:var(--color-penumbra-muted)]">
-            evidence height = {lastResult.height} · total slashed ={" "}
-            {lastResult.slashed} · active validators remaining ={" "}
-            {lastResult.active_after}
+            evidence height = {lastResult.height} · total slashed = {lastResult.slashed} · active
+            validators remaining = {lastResult.active_after}
           </div>
         </div>
       )}
