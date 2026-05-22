@@ -11,11 +11,12 @@ import { ReplConsole } from "../terminal/ReplConsole";
 import { Terminal } from "../terminal/Terminal";
 import { Arena } from "../three/Arena";
 import { Arena2D } from "../three/Arena2D";
+import { TileMap } from "../three/TileMap";
 import { WorldView } from "../three/WorldView";
 import { TourOverlay } from "../tour/TourOverlay";
 
 type BottomTab = "coach" | "terminal" | "repl";
-type ArenaMode = "world" | "graph" | "3d";
+type ArenaMode = "map" | "world" | "graph" | "3d";
 
 export function Dashboard() {
   usePenumbraSocket();
@@ -23,7 +24,7 @@ export function Dashboard() {
   const connected = usePenumbraStore((s) => s.connected);
   const lastFrame = usePenumbraStore((s) => s.lastFrame);
   const [bottomTab, setBottomTab] = useState<BottomTab>("coach");
-  const [arenaMode, setArenaMode] = useState<ArenaMode>("world");
+  const [arenaMode, setArenaMode] = useState<ArenaMode>("map");
   const [helpOpen, setHelpOpen] = useState(false);
   const [paused, setPaused] = useState(false);
   const [timeWarp, setTimeWarp] = useState(1);
@@ -56,7 +57,9 @@ export function Dashboard() {
     () => ({
       onBottomTab: setBottomTab,
       onArenaToggle: () =>
-        setArenaMode((m) => (m === "world" ? "graph" : m === "graph" ? "3d" : "world")),
+        setArenaMode((m) =>
+          m === "map" ? "world" : m === "world" ? "graph" : m === "graph" ? "3d" : "map",
+        ),
       onPauseToggle,
       onTimeWarpDelta,
       onHelpToggle: () => setHelpOpen((o) => !o),
@@ -94,6 +97,10 @@ export function Dashboard() {
         <section className="flex flex-col bg-[color:var(--color-penumbra-bg)]">
           <div className="relative flex-1 border-r border-[color:var(--color-penumbra-border)]">
             <div className="absolute right-3 top-3 z-10 flex gap-1 rounded-sm border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-panel)]/90 px-2 py-1 text-[10px] uppercase tracking-wider">
+              <ArenaTab active={arenaMode === "map"} onClick={() => setArenaMode("map")}>
+                map
+              </ArenaTab>
+              <span className="text-[color:var(--color-penumbra-border)]">·</span>
               <ArenaTab active={arenaMode === "world"} onClick={() => setArenaMode("world")}>
                 world
               </ArenaTab>
@@ -106,6 +113,7 @@ export function Dashboard() {
                 3d
               </ArenaTab>
             </div>
+            {arenaMode === "map" && <TileMap />}
             {arenaMode === "world" && <WorldView />}
             {arenaMode === "graph" && <Arena2D />}
             {arenaMode === "3d" && <Arena />}
