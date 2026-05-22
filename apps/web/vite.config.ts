@@ -29,6 +29,8 @@ export default defineConfig({
       "/dp": API_HTTP,
       "/agents": API_HTTP,
       "/world": API_HTTP,
+      "/arena": API_HTTP,
+      "/repl": API_HTTP,
       "/ws": { target: API_WS, ws: true },
     },
   },
