@@ -85,6 +85,7 @@ class Orchestrator:
     _last_block_height: int = field(default=-1, init=False)
     _last_signed_tick: int = field(default=-1, init=False)
     purchase_clock: object | None = field(default=None, init=False)
+    market: object | None = field(default=None, init=False)
 
     @classmethod
     def build(
@@ -121,15 +122,17 @@ class Orchestrator:
             keystore=keystore,
         )
         simulation.on_match_end = orchestrator._on_match_end
-        # Build city inventories from the arena's nodes + simulation
-        # seed so the assortment is deterministic per world.
-        from penumbra_core.economy import PurchaseClock, city_inventories
+        # Build the live market: per-agent wallets, per-city inventory +
+        # treasury + dynamic ask prices, production rates. The orchestrator
+        # drives one Market.tick per analytics tick (sell + buy events
+        # produce a Trade stream the pipeline records).
+        from penumbra_core.economy import Market
 
-        inventories = city_inventories(
+        orchestrator.market = Market.build(
             nodes=list(simulation.arena.graph.nodes()),
+            n_agents=len(simulation.agents),
             seed=int(simulation.seeded.master),
         )
-        orchestrator.purchase_clock = PurchaseClock(inventories=inventories)
         return orchestrator
 
     def sign_and_verify_moves(self) -> None:
@@ -285,17 +288,25 @@ class Orchestrator:
                         heatmap=heatmap_density,
                         utterances=utterances,
                     )
-                    # Settle city-arrival purchases for this tick.
-                    if self.purchase_clock is not None:
+                    # Drive one market tick: production + price update +
+                    # settle sells & buys for any agent that just moved.
+                    if self.market is not None:
                         agent_positions = {a.id: a.position for a in self.simulation.agents}
                         rng = self.simulation.seeded.numpy_for("economy")
-                        events = self.purchase_clock.settle_tick(  # type: ignore[attr-defined]
+                        trades = self.market.tick(  # type: ignore[attr-defined]
                             tick=self.simulation.tick_counter,
                             agent_positions=agent_positions,
                             rng=rng,
                         )
-                        if events:
-                            self.pipeline.record_purchases(events)
+                        # Stream every Trade into the pipeline; the legacy
+                        # record_purchases consumer reads the buy side too.
+                        self.pipeline.record_trades(  # type: ignore[attr-defined]
+                            trades=trades,
+                            money_supply=self.market.money_supply(),  # type: ignore[attr-defined]
+                            price_index=self.market.price_index(),  # type: ignore[attr-defined]
+                            wealth=self.market.wealth_distribution(),  # type: ignore[attr-defined]
+                            tick=self.simulation.tick_counter,
+                        )
                     await asyncio.to_thread(self.pipeline.recompute)
                     # Sign + verify the current tick's moves. The protocol
                     # demo is per-tick even though analytics is per-second

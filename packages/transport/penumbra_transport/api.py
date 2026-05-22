@@ -623,6 +623,51 @@ def build_app(
                     "n_permutations": snap.permutation.n_permutations,
                 }
             ),
+            "candles": [
+                {
+                    "product_id": cs.product_id,
+                    "product_name": cs.product_name,
+                    "category": cs.category,
+                    "candles": [
+                        {
+                            "bucket": c.bucket,
+                            "open": c.open,
+                            "high": c.high,
+                            "low": c.low,
+                            "close": c.close,
+                            "volume": c.volume,
+                        }
+                        for c in cs.candles
+                    ],
+                    "total_volume": cs.total_volume,
+                    "bucket_ticks": cs.bucket_ticks,
+                }
+                for cs in snap.candles
+            ],
+            "inflation": (
+                None
+                if snap.inflation is None
+                else {
+                    "cpi": [list(p) for p in snap.inflation.cpi],
+                    "money_supply": [list(p) for p in snap.inflation.money_supply],
+                    "n_samples": snap.inflation.n_samples,
+                }
+            ),
+            "wealth": (
+                None
+                if snap.wealth is None
+                else {
+                    "lorenz_x": list(snap.wealth.lorenz_x),
+                    "lorenz_y": list(snap.wealth.lorenz_y),
+                    "gini": snap.wealth.gini,
+                    "p10": snap.wealth.p10,
+                    "p50": snap.wealth.p50,
+                    "p90": snap.wealth.p90,
+                    "p99": snap.wealth.p99,
+                    "total_wealth": snap.wealth.total_wealth,
+                    "n_agents": snap.wealth.n_agents,
+                }
+            ),
         }
 
     @app.get("/encrypted-heatmap")

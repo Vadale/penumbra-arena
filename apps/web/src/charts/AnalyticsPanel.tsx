@@ -355,6 +355,51 @@ export function AnalyticsPanel() {
           accent={!!snap.permutation && snap.permutation.p_two_sided >= 0.05}
           onClick={() => open("permutation")}
         />
+        <Cell
+          label="candles"
+          value={
+            snap.candles && snap.candles.length > 0
+              ? String(snap.candles.reduce((s, c) => s + c.candles.length, 0))
+              : "—"
+          }
+          caption={
+            snap.candles && snap.candles.length > 0
+              ? `${snap.candles.length} products · ${snap.candles[0]?.product_name ?? ""}`
+              : "warming"
+          }
+          accent
+          onClick={() => open("candles")}
+        />
+        <Cell
+          label="CPI"
+          value={
+            snap.inflation && snap.inflation.cpi.length > 0
+              ? (snap.inflation.cpi[snap.inflation.cpi.length - 1]?.[1] ?? 1).toFixed(3)
+              : "—"
+          }
+          caption={(() => {
+            const inf = snap.inflation;
+            if (!inf || inf.cpi.length < 2) return "warming";
+            const cpiNow = inf.cpi[inf.cpi.length - 1]?.[1] ?? 1;
+            const cpiBase = inf.cpi[0]?.[1] ?? 1;
+            const pct = ((cpiNow - cpiBase) / cpiBase) * 100;
+            return `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}% since t=${inf.cpi[0]?.[0] ?? 0}`;
+          })()}
+          accent
+          onClick={() => open("inflation")}
+        />
+        <Cell
+          label="Gini"
+          value={snap.wealth ? snap.wealth.gini.toFixed(3) : "—"}
+          caption={
+            snap.wealth
+              ? `${snap.wealth.n_agents} ag · p90 ${snap.wealth.p90.toFixed(1)}`
+              : "warming"
+          }
+          ember={!!snap.wealth && snap.wealth.gini > 0.45}
+          accent={!!snap.wealth && snap.wealth.gini <= 0.45}
+          onClick={() => open("wealth")}
+        />
       </div>
 
       {summary && (
@@ -397,6 +442,9 @@ export function AnalyticsPanel() {
             case "roc":
             case "correlations":
             case "permutation":
+            case "candles":
+            case "inflation":
+            case "wealth":
               return undefined;
             default:
               return histories[mapMetricToHistoryKey(openMetric)];
@@ -425,6 +473,9 @@ export function AnalyticsPanel() {
         roc={snap.roc}
         correlations={snap.correlations}
         permutation={snap.permutation}
+        candles={snap.candles}
+        inflation={snap.inflation}
+        wealth={snap.wealth}
       />
     </div>
   );
@@ -447,6 +498,9 @@ function mapMetricToHistoryKey(
     | "roc"
     | "correlations"
     | "permutation"
+    | "candles"
+    | "inflation"
+    | "wealth"
   >,
 ): keyof ReturnType<typeof useDashboardLive>["history"] {
   switch (m) {

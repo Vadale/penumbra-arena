@@ -184,6 +184,42 @@ export interface PermutationReport {
   n_permutations: number;
 }
 
+export interface CandleBar {
+  bucket: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export interface CandleSeries {
+  product_id: number;
+  product_name: string;
+  category: string;
+  candles: CandleBar[];
+  total_volume: number;
+  bucket_ticks: number;
+}
+
+export interface InflationSeries {
+  cpi: [number, number][]; // (tick, index)
+  money_supply: [number, number][];
+  n_samples: number;
+}
+
+export interface WealthReport {
+  lorenz_x: number[];
+  lorenz_y: number[];
+  gini: number;
+  p10: number;
+  p50: number;
+  p90: number;
+  p99: number;
+  total_wealth: number;
+  n_agents: number;
+}
+
 export interface DashboardSnapshot {
   tick: number;
   summary: DashboardSummary | null;
@@ -225,6 +261,9 @@ export interface DashboardSnapshot {
   roc: ROCData | null;
   correlations: CorrelationMatrix | null;
   permutation: PermutationReport | null;
+  candles: CandleSeries[];
+  inflation: InflationSeries | null;
+  wealth: WealthReport | null;
 }
 
 const POLL_MS = 500;

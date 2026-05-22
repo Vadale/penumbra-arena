@@ -18,12 +18,14 @@ import type {
   ArimaForecast as ArimaForecastData,
   AutocorrelationReport as AutocorrelationReportData,
   BayesianPosterior as BayesianPosteriorData,
+  CandleSeries as CandleSeriesData,
   CausalEstimate as CausalEstimateData,
   ClusterScatter as ClusterScatterData,
   CorrelationMatrix as CorrelationMatrixData,
   EconomySnapshot as EconomySnapshotData,
   GarchResult as GarchResultData,
   GrangerMatrix as GrangerMatrixData,
+  InflationSeries as InflationSeriesData,
   LogitResult as LogitResultData,
   MonteCarloFan as MCFanData,
   PCAResult,
@@ -33,17 +35,20 @@ import type {
   SpectralReport as SpectralReportData,
   SurvivalCurve as SurvivalCurveData,
   VARImpulseResponse as VARImpulseResponseData,
+  WealthReport as WealthReportData,
 } from "../streams/dashboard";
 import { ACFChart } from "./ACFChart";
 import { ANOVAChart } from "./ANOVAChart";
 import { ArimaChart } from "./ArimaChart";
 import { BayesianDensity } from "./BayesianDensity";
+import { CandlestickChart } from "./CandlestickChart";
 import { CausalChart } from "./CausalChart";
 import { ClusterScatter } from "./ClusterScatter";
 import { CorrelationHeatmap } from "./CorrelationHeatmap";
 import { EconomyChart } from "./EconomyChart";
 import { GarchChart } from "./GarchChart";
 import { GrangerMatrix } from "./GrangerMatrix";
+import { InflationChart } from "./InflationChart";
 import { LineChart } from "./LineChart";
 import { LogitChart } from "./LogitChart";
 import { MonteCarloFan } from "./MonteCarloFan";
@@ -55,6 +60,7 @@ import { SpectralChart } from "./SpectralChart";
 import { SurvivalChart } from "./SurvivalChart";
 import { TopicsBar } from "./TopicsBar";
 import { VarIrfChart } from "./VarIrfChart";
+import { WealthChart } from "./WealthChart";
 
 export type MetricKind =
   | "trajectory_mean"
@@ -82,7 +88,10 @@ export type MetricKind =
   | "autocorrelation"
   | "roc"
   | "correlations"
-  | "permutation";
+  | "permutation"
+  | "candles"
+  | "inflation"
+  | "wealth";
 
 interface Props {
   open: boolean;
@@ -112,6 +121,9 @@ interface Props {
   roc?: ROCDataType | null;
   correlations?: CorrelationMatrixData | null;
   permutation?: PermutationReportData | null;
+  candles?: CandleSeriesData[];
+  inflation?: InflationSeriesData | null;
+  wealth?: WealthReportData | null;
 }
 
 const META: Record<MetricKind, { label: string; description: string; yUnit?: string }> = {
@@ -244,6 +256,21 @@ const META: Record<MetricKind, { label: string; description: string; yUnit?: str
     description:
       "Shuffle the treatment labels n times and recompute the simple ATE under each shuffle; the histogram is the empirical null distribution. The white vertical line is the OBSERVED ATE on real treatment assignments. Two-sided p = P(|null| ≥ |observed|). Pedagogically: a permutation p-value makes ZERO parametric assumptions — it's exact under the null exchangeability hypothesis.",
   },
+  candles: {
+    label: "Candlestick — OHLC per product",
+    description:
+      "For the top-3 most-traded products, group trades into 20-tick buckets and draw a candle: body open→close (cyan if up, ember if down), wick low→high. Volume is the total quantity traded in the bucket. Click a product chip above to switch. Pedagogically: candlesticks are the standard way to read price action — body length + colour show net move, wick length shows intra-period volatility.",
+  },
+  inflation: {
+    label: "CPI + money supply",
+    description:
+      "Twin-axis line chart. Cyan = CPI (Laspeyres index over all stocked products, base = 1.0). Ember = total coins in agent wallets + city treasuries (money is CONSERVED in this market — no minting). When CPI rises while money supply is flat, the inflation is pure supply/demand on a fixed M. Pedagogically: this isolates the relative-price mechanism from the monetary one — most textbook treatments conflate them.",
+  },
+  wealth: {
+    label: "Wealth distribution — Lorenz + Gini",
+    description:
+      "Lorenz curve: cumulative agent share (x) vs cumulative wealth share (y). The ember 45° line is perfect equality; the cyan curve is the actual distribution; the shaded area between them is the Gini half-area (Gini = 2 × area). Gini = 0 means everyone owns the same; Gini = 1 means one agent owns everything. The percentile readouts (p10/p50/p90/p99) make the tail visible — a Gini around 0.3 with p99 much higher than p90 signals fat-tailed wealth.",
+  },
 };
 
 export function DetailModal({
@@ -274,6 +301,9 @@ export function DetailModal({
   roc,
   correlations,
   permutation,
+  candles,
+  inflation,
+  wealth,
 }: Props) {
   useEffect(() => {
     if (!open) return;
@@ -351,6 +381,15 @@ export function DetailModal({
     }
     if (metric === "permutation" && permutation) {
       return <PermutationChart data={permutation} />;
+    }
+    if (metric === "candles" && candles && candles.length > 0) {
+      return <CandlestickChart series={candles} />;
+    }
+    if (metric === "inflation" && inflation) {
+      return <InflationChart data={inflation} />;
+    }
+    if (metric === "wealth" && wealth) {
+      return <WealthChart data={wealth} />;
     }
     return <LineChart values={values ?? []} label={meta.label} yUnit={meta.yUnit} />;
   })();

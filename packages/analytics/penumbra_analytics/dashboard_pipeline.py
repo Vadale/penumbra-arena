@@ -339,6 +339,54 @@ class PermutationReport:
 
 
 @dataclass(slots=True)
+class CandleBar:
+    """One OHLC candle: open/high/low/close + volume in the bucket."""
+
+    bucket: int  # tick at the start of the bucket
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: int  # total units traded in the window
+
+
+@dataclass(slots=True)
+class CandleSeries:
+    """Per-product OHLC candles + meta for the most-traded products."""
+
+    product_id: int
+    product_name: str
+    category: str
+    candles: tuple[CandleBar, ...]
+    total_volume: int  # over the window
+    bucket_ticks: int  # how many ticks each candle aggregates
+
+
+@dataclass(slots=True)
+class InflationSeries:
+    """CPI-like price index history and money supply history."""
+
+    cpi: tuple[tuple[int, float], ...]  # (tick, index)
+    money_supply: tuple[tuple[int, float], ...]  # (tick, total coins in system)
+    n_samples: int
+
+
+@dataclass(slots=True)
+class WealthReport:
+    """Lorenz curve + Gini coefficient + wealth quantile snapshot."""
+
+    lorenz_x: tuple[float, ...]  # cumulative share of population
+    lorenz_y: tuple[float, ...]  # cumulative share of wealth
+    gini: float
+    p10: float
+    p50: float
+    p90: float
+    p99: float
+    total_wealth: float
+    n_agents: int
+
+
+@dataclass(slots=True)
 class DashboardSnapshot:
     """The current state of every registered consumer."""
 
@@ -385,6 +433,9 @@ class DashboardSnapshot:
     # Fitted residuals for the residual-vs-fitted diagnostic. Each
     # entry is (fitted_value, residual). Empty until regression runs.
     residual_vs_fitted: tuple[tuple[float, float], ...] = ()
+    candles: tuple[CandleSeries, ...] = ()
+    inflation: InflationSeries | None = None
+    wealth: WealthReport | None = None
     # Q-Q lives on the regression chart (theoretical-vs-sample
     # quantiles of OLS residuals); the field is empty until the
     # regression consumer has run.
@@ -436,6 +487,9 @@ class DashboardPipeline:
             "autocorrelation": 6.0,
             "correlations": 6.0,
             "permutation": 15.0,
+            "candles": 4.0,
+            "inflation": 4.0,
+            "wealth": 5.0,
         }
     )
 
@@ -445,6 +499,16 @@ class DashboardPipeline:
     _utterances: deque[str] = field(default_factory=lambda: deque(maxlen=400))
     _purchases: deque[object] = field(default_factory=lambda: deque(maxlen=2000))
     _purchases_by_tick: deque[int] = field(default_factory=lambda: deque(maxlen=2000))
+    # Full Trade stream (buy + sell). Each entry is duck-typed: tick,
+    # agent_id, node_id, product_id, category, side, quantity,
+    # unit_price, total_value.
+    _trades: deque[object] = field(default_factory=lambda: deque(maxlen=4000))
+    # Time series of CPI + money supply + latest wealth snapshot.
+    _cpi_history: deque[tuple[int, float]] = field(default_factory=lambda: deque(maxlen=300))
+    _money_supply_history: deque[tuple[int, float]] = field(
+        default_factory=lambda: deque(maxlen=300)
+    )
+    _latest_wealth: tuple[float, ...] = field(default_factory=tuple)
     # Match outcomes feed the survival consumer. Each entry is
     # (duration_ticks, observed_event). Capped at 256 so the curve
     # adapts to recent dynamics rather than the whole run history.
@@ -639,6 +703,18 @@ class DashboardPipeline:
         if self._snapshot.logit is not None and self._snapshot.roc is None:
             self._snapshot.roc = self._compute_roc()
 
+        if self._due(now, "candles") and len(self._trades) >= 20:
+            self._snapshot.candles = self._compute_candles()
+            self._last_run["candles"] = now
+
+        if self._due(now, "inflation") and len(self._cpi_history) >= 2:
+            self._snapshot.inflation = self._compute_inflation()
+            self._last_run["inflation"] = now
+
+        if self._due(now, "wealth") and len(self._latest_wealth) >= 5:
+            self._snapshot.wealth = self._compute_wealth()
+            self._last_run["wealth"] = now
+
         if self._due(now, "topics") and len(self._utterances) >= 40:
             # Stress-test fix A/B: explicit gc after BERTopic; in early
             # measurements RSS climbed ~9 GB/h because BERTopic + UMAP +
@@ -717,6 +793,29 @@ class DashboardPipeline:
         of networkx in its signatures; runtime expects nx.Graph.
         """
         self._arena_graph = graph
+
+    def record_trades(
+        self,
+        *,
+        trades: list[object],
+        money_supply: float,
+        price_index: float,
+        wealth: tuple[float, ...],
+        tick: int,
+    ) -> None:
+        """Append a tick's worth of buy/sell events + economy aggregates."""
+        for t in trades:
+            self._trades.append(t)
+            self._purchases_by_tick.append(int(getattr(t, "tick", tick)))
+            # Keep the legacy `_purchases` deque populated with buy events
+            # so existing consumers (causal, EconomySnapshot) still work.
+            if getattr(t, "side", "buy") == "buy":
+                self._purchases.append(t)
+        self._cpi_history.append((int(tick), float(price_index)))
+        self._money_supply_history.append((int(tick), float(money_supply)))
+        self._latest_wealth = wealth
+        if not self._latest_wealth:
+            logger.info("record_trades got empty wealth (tick=%s, trades=%s)", tick, len(trades))
 
     def record_purchases(self, purchases: list[object]) -> None:
         """Append a batch of Purchase events to the rolling buffer.
@@ -1498,6 +1597,122 @@ class DashboardPipeline:
             null_samples=tuple(float(v) for v in null_samples),
             p_two_sided=p_two,
             n_permutations=n_perm,
+        )
+
+    def _compute_candles(self) -> tuple[CandleSeries, ...]:
+        """Per-product OHLC candles for the top-3 most-traded products.
+
+        Bucket ticks into windows of `bucket_size`; within each bucket
+        compute open (first trade price), high (max), low (min), close
+        (last), and volume (sum quantity).
+        """
+        from penumbra_core.economy import PRODUCT_CATALOG
+
+        if not self._trades:
+            return ()
+        recent = list(self._trades)[-1500:]
+        # Group by product_id; pick top 3 by total volume.
+        volume_by_pid: dict[int, int] = {}
+        trades_by_pid: dict[int, list[object]] = {}
+        for t in recent:
+            pid = int(getattr(t, "product_id", -1))
+            qty = int(getattr(t, "quantity", 0))
+            volume_by_pid[pid] = volume_by_pid.get(pid, 0) + qty
+            trades_by_pid.setdefault(pid, []).append(t)
+        if not volume_by_pid:
+            return ()
+        top_pids = sorted(volume_by_pid, key=lambda p: -volume_by_pid[p])[:3]
+        bucket_size = 20  # ticks per candle
+        out: list[CandleSeries] = []
+        for pid in top_pids:
+            ts = sorted(trades_by_pid[pid], key=lambda t: int(getattr(t, "tick", 0)))
+            buckets: dict[int, list[object]] = {}
+            for t in ts:
+                tick = int(getattr(t, "tick", 0))
+                bucket = (tick // bucket_size) * bucket_size
+                buckets.setdefault(bucket, []).append(t)
+            candles: list[CandleBar] = []
+            for bucket in sorted(buckets.keys()):
+                bts = buckets[bucket]
+                prices = [float(getattr(t, "unit_price", 0.0)) for t in bts]
+                if not prices:
+                    continue
+                qty_total = sum(int(getattr(t, "quantity", 0)) for t in bts)
+                candles.append(
+                    CandleBar(
+                        bucket=bucket,
+                        open=prices[0],
+                        high=max(prices),
+                        low=min(prices),
+                        close=prices[-1],
+                        volume=qty_total,
+                    )
+                )
+            if not candles:
+                continue
+            product = PRODUCT_CATALOG[pid] if 0 <= pid < len(PRODUCT_CATALOG) else None
+            out.append(
+                CandleSeries(
+                    product_id=pid,
+                    product_name=product.name if product else f"#{pid}",
+                    category=product.category if product else "?",
+                    candles=tuple(candles[-30:]),
+                    total_volume=int(volume_by_pid[pid]),
+                    bucket_ticks=bucket_size,
+                )
+            )
+        return tuple(out)
+
+    def _compute_inflation(self) -> InflationSeries | None:
+        if len(self._cpi_history) < 2:
+            return None
+        return InflationSeries(
+            cpi=tuple(self._cpi_history),
+            money_supply=tuple(self._money_supply_history),
+            n_samples=len(self._cpi_history),
+        )
+
+    def _compute_wealth(self) -> WealthReport | None:
+        """Lorenz curve + Gini from the latest wealth snapshot."""
+        try:
+            wealth = list(self._latest_wealth)
+            if len(wealth) < 5:
+                return None
+            arr = np.asarray(sorted(wealth), dtype=np.float64)
+            n = arr.size
+            total = float(arr.sum())
+            if total <= 0:
+                return None
+            # Lorenz curve: cumulative population share vs cumulative wealth share.
+            cum = np.cumsum(arr)
+            lorenz_x = np.arange(1, n + 1) / n
+            lorenz_y = cum / total
+            # Gini = 1 - 2 × area under Lorenz (trapezoid rule).
+            # numpy 2.x renamed trapz → trapezoid; both exist with the
+            # latter being preferred.
+            trapezoid = getattr(np, "trapezoid", None) or getattr(np, "trapz", None)
+            if trapezoid is None:
+                return None
+            area = float(trapezoid(lorenz_y, lorenz_x))
+            gini = float(1.0 - 2.0 * area)
+            # Percentile snapshot.
+            p10 = float(np.percentile(arr, 10))
+            p50 = float(np.percentile(arr, 50))
+            p90 = float(np.percentile(arr, 90))
+            p99 = float(np.percentile(arr, 99))
+        except Exception:
+            logger.warning("wealth consumer failed", exc_info=True)
+            return None
+        return WealthReport(
+            lorenz_x=tuple(float(v) for v in lorenz_x),
+            lorenz_y=tuple(float(v) for v in lorenz_y),
+            gini=max(0.0, min(1.0, gini)),
+            p10=p10,
+            p50=p50,
+            p90=p90,
+            p99=p99,
+            total_wealth=total,
+            n_agents=n,
         )
 
     def _compute_residual_vs_fitted(self) -> tuple[tuple[float, float], ...]:
