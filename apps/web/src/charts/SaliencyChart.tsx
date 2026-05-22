@@ -40,7 +40,7 @@ export function SaliencyChart() {
     };
   }, [agentId]);
 
-  if (!data || !data.available) {
+  if (!data?.available) {
     return (
       <div className="font-mono text-xs text-[color:var(--color-penumbra-muted)]">
         saliency unavailable (MAPPO not loaded)

@@ -43,7 +43,7 @@ export function ValueMapChart() {
     };
   }, []);
 
-  if (!data || !data.available || !data.per_agent) {
+  if (!data?.available || !data.per_agent) {
     return (
       <div className="font-mono text-xs text-[color:var(--color-penumbra-muted)]">
         value map unavailable (MAPPO not loaded)
@@ -87,7 +87,7 @@ export function ValueMapChart() {
         />
         <Stat
           label="mean top-prob"
-          value={(meanTop * 100).toFixed(1) + "%"}
+          value={`${(meanTop * 100).toFixed(1)}%`}
           accent
           caption="actor confidence"
         />

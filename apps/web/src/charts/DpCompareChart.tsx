@@ -46,7 +46,7 @@ export function DpCompareChart({ width = 560 }: Props) {
     };
   }, []);
 
-  if (!data || !data.ready || !data.clean || !data.noised) {
+  if (!data?.ready || !data.clean || !data.noised) {
     return (
       <div className="flex h-full w-full items-center justify-center text-xs text-[color:var(--color-penumbra-muted)]">
         DP comparison warming up

@@ -41,7 +41,7 @@ export function ZKVerifyChart() {
     // any transient error during initial mount.
     const t = window.setInterval(() => void run(), 8000);
     return () => window.clearInterval(t);
-  }, []);
+  }, [run]);
 
   if (!data) {
     return (

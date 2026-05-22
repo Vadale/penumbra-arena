@@ -53,7 +53,15 @@ def persistence_from_points(
             h0=np.zeros((0, 2), dtype=np.float64),
             h1=np.zeros((0, 2), dtype=np.float64),
         )
-    result = ripser(points, maxdim=max_dim)
+    # ripser warns "input has more columns than rows" when the point
+    # cloud has more agents than embedding dims — which is exactly our
+    # case. The warning is cosmetic; we acknowledge it but don't want
+    # it spamming live-server logs at 1Hz.
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=UserWarning, module=r"ripser")
+        result = ripser(points, maxdim=max_dim)
     diagrams = result["dgms"]
     return PersistenceDiagram(
         h0=np.asarray(diagrams[0], dtype=np.float64),

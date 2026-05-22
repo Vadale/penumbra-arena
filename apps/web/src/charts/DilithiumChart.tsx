@@ -1,125 +1,106 @@
 /**
- * Kyber (ML-KEM-768) KEM handshake demo.
+ * Dilithium agent signature inspector.
  *
- * Generates a fresh keypair, encapsulates a shared secret against
- * the public key, decapsulates with the secret key, and demonstrates
- * implicit rejection by tampering one byte of the ciphertext.
+ * Pick an agent → sign a sample message → verify honest + tampered.
  */
 
 import { useEffect, useState } from "react";
 
-interface KyberPayload {
+interface Payload {
   available: boolean;
   algorithm?: string;
+  agent_id?: number;
   public_key_size?: number;
   secret_key_size?: number;
-  ciphertext_size?: number;
-  shared_secret_size?: number;
+  signature_size?: number;
+  message_size?: number;
   public_key_short?: string;
-  ciphertext_short?: string;
-  shared_secret_short?: string;
-  honest_match?: boolean;
-  tampered_match?: boolean;
+  signature_short?: string;
+  honest_verifies?: boolean;
+  tampered_verifies?: boolean;
 }
 
-export function KyberKEMChart() {
-  const [data, setData] = useState<KyberPayload | null>(null);
+export function DilithiumChart() {
+  const [agentId, setAgentId] = useState(0);
+  const [data, setData] = useState<Payload | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const grab = async () => {
+  const run = async () => {
     setBusy(true);
     try {
-      const res = await fetch("/crypto/kyber/demo");
-      if (res.ok) setData((await res.json()) as KyberPayload);
+      const res = await fetch(`/crypto/dilithium/inspect/${agentId}`);
+      if (res.ok) setData((await res.json()) as Payload);
     } catch {}
     setBusy(false);
   };
 
   useEffect(() => {
-    void grab();
-  }, [grab]);
+    void run();
+    // biome-ignore lint/correctness/useExhaustiveDependencies: re-run when agent changes
+  }, [run]);
 
   if (!data?.available) {
     return (
       <div className="font-mono text-xs text-[color:var(--color-penumbra-muted)]">
-        {busy ? "running KEM…" : "Kyber unavailable"}
+        {busy ? "signing…" : "Dilithium unavailable"}
       </div>
     );
   }
 
   return (
     <div className="font-mono space-y-3">
+      <div className="flex items-center gap-2 text-[10px]">
+        <label className="uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
+          agent
+        </label>
+        <input
+          type="number"
+          min={0}
+          max={49}
+          value={agentId}
+          onChange={(e) => setAgentId(Math.max(0, Math.min(49, Number(e.target.value))))}
+          className="w-16 border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-1 text-[11px] text-[color:var(--color-penumbra-text)]"
+        />
+      </div>
+
       <div className="grid grid-cols-4 gap-2 text-[10px]">
         <Stat label="algorithm" value={data.algorithm ?? "—"} accent />
         <Stat label="pubkey" value={`${data.public_key_size ?? 0} B`} accent />
-        <Stat label="ciphertext" value={`${data.ciphertext_size ?? 0} B`} accent />
-        <button
-          type="button"
-          onClick={grab}
-          disabled={busy}
-          className="border border-[color:var(--color-penumbra-cyan)] bg-[color:var(--color-penumbra-cyan-bg)] px-2 py-1 text-[10px] uppercase text-[color:var(--color-penumbra-cyan)] disabled:opacity-50"
-        >
-          {busy ? "running…" : "re-run KEM"}
-        </button>
+        <Stat label="sk" value={`${data.secret_key_size ?? 0} B`} />
+        <Stat label="sig" value={`${data.signature_size ?? 0} B`} accent />
       </div>
 
-      <Block
-        label="public key (Alice publishes)"
-        value={data.public_key_short ?? ""}
-        size={data.public_key_size ?? 0}
-      />
-      <Block
-        label="ciphertext (Bob → Alice)"
-        value={data.ciphertext_short ?? ""}
-        size={data.ciphertext_size ?? 0}
-      />
-      <Block
-        label="shared secret (32 B, derived by BOTH sides)"
-        value={data.shared_secret_short ?? ""}
-        size={data.shared_secret_size ?? 0}
-        accent
-      />
+      <Block label="public key" value={data.public_key_short ?? ""} />
+      <Block label="signature" value={data.signature_short ?? ""} accent />
 
       <div className="grid grid-cols-2 gap-2">
         <Verdict
-          label="honest decaps"
-          ok={data.honest_match ?? false}
-          caption="encaps/decaps round-trip should match"
+          label="honest verify"
+          ok={data.honest_verifies ?? false}
+          caption="signed by holder of secret"
         />
         <Verdict
-          label="tampered ct decaps"
-          ok={data.tampered_match ?? true}
+          label="tampered message"
+          ok={data.tampered_verifies ?? true}
           inverted
-          caption="ML-KEM implicit rejection — should NOT match"
+          caption="message+'!' must fail"
         />
       </div>
 
       <div className="text-[9px] text-[color:var(--color-penumbra-dim)]">
-        ML-KEM-768 (NIST FIPS 203 / formerly Kyber-3). Categoria-3 security level (~AES-192).
-        Post-quantum: resists Shor-style attacks because it's based on Module-LWE, not factoring/DL.
+        ML-DSA-65 (NIST FIPS 204 / formerly Dilithium-3). Post-quantum signature based on Module-LWE
+        + Module-SIS. Penumbra signs every agent move with this — clicking another agent shows their
+        unique public key.
       </div>
     </div>
   );
 }
 
-function Block({
-  label,
-  value,
-  size,
-  accent,
-}: {
-  label: string;
-  value: string;
-  size: number;
-  accent?: boolean;
-}) {
+function Block({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
     <div>
-      <div className="mb-1 flex justify-between text-[10px]">
-        <span className="uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
-          {label}
-        </span>
-        <span className="tabular-nums text-[color:var(--color-penumbra-muted)]">{size} bytes</span>
+      <div className="mb-1 text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
+        {label}
       </div>
       <div
         className={`border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] p-2 text-[11px] break-all ${accent ? "text-[color:var(--color-penumbra-cyan)]" : "text-[color:var(--color-penumbra-text)]"}`}
@@ -141,7 +122,6 @@ function Verdict({
   caption: string;
   inverted?: boolean;
 }) {
-  // When `inverted` is true, ok=false is the GOOD outcome.
   const passing = inverted ? !ok : ok;
   return (
     <div
@@ -158,7 +138,7 @@ function Verdict({
             : "text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-ember)]"
         }
       >
-        {label}: {ok ? "match" : "no match"}
+        {label}: {ok ? "ACCEPT" : "REJECT"}
       </div>
       <div className="text-[9px] text-[color:var(--color-penumbra-dim)]">{caption}</div>
     </div>

@@ -21,6 +21,7 @@ References
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -61,7 +62,14 @@ def sinkhorn_plan(
             np.arange(m, dtype=np.float64).reshape(-1, 1)
             - np.arange(n, dtype=np.float64).reshape(1, -1)
         )
-    plan_raw = ot.sinkhorn(source_norm, target_norm, cost_matrix, reg, numItermax=max_iter)
+    # POT's Sinkhorn emits a RuntimeWarning on divide-by-zero when one
+    # of the marginals has zero mass in a row — that's expected on a
+    # sparse heatmap and the result is still well-defined (the
+    # zero-mass rows contribute nothing). Suppress just here.
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=RuntimeWarning)
+        warnings.filterwarnings("ignore", category=UserWarning, module=r"ot\.")
+        plan_raw = ot.sinkhorn(source_norm, target_norm, cost_matrix, reg, numItermax=max_iter)
     plan = np.asarray(plan_raw, dtype=np.float64)
     cost = float(np.sum(plan * cost_matrix))
     return TransportPlan(plan=plan, cost=cost, iters=max_iter)

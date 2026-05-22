@@ -108,6 +108,17 @@ def build_app(
             else None,
         )
         await orchestrator.start()
+
+        # Warm the ZK verifier cache in the background so the first
+        # /crypto/zk/legal-path call doesn't pay the 15s py_ecc cold
+        # path. Fire-and-forget — if it fails (artifacts missing) the
+        # endpoint will report it normally.
+        async def _warm_zk_cache() -> None:
+            with contextlib.suppress(Exception):
+                await asyncio.to_thread(_zk_verify_sync)
+
+        app.state.zk_warmup_task = asyncio.create_task(_warm_zk_cache(), name="penumbra-zk-warmup")
+
         live_trainer: object | None = None
         if mappo_runtime is not None:
             try:
@@ -1219,15 +1230,8 @@ def build_app(
 
     _zk_cache: dict[str, object] = {}
 
-    @app.get("/crypto/zk/legal-path")
-    async def crypto_zk_verify() -> dict[str, object]:
-        """Verify the shipped Groth16 legal-path proof.
-
-        py_ecc Groth16 is slow (~15s for 3 verifies on M4). We cache
-        the result so the dashboard hits the cold path once per server
-        boot. The artifacts are static and the verifier is
-        deterministic, so caching is safe.
-        """
+    def _zk_verify_sync() -> dict[str, object]:
+        """Pure-sync ZK verifier — also used by lifespan warm-up."""
         if _zk_cache:
             return dict(_zk_cache)
         import json
@@ -1241,29 +1245,180 @@ def build_app(
         public_path = artifacts / "legal_path_public.json"
         if not all(p.is_file() for p in (vk_path, proof_path, public_path)):
             return {"available": False, "reason": "circuits/artifacts missing"}
-
-        def _run() -> dict[str, object]:
-            vk = load_verifying_key(json.loads(vk_path.read_text()))
-            proof = load_proof(json.loads(proof_path.read_text()))
-            public = [int(s) for s in json.loads(public_path.read_text())]
-            honest_ok = verify(vk, proof, public)
-            tampered = [*public[:-1], (public[-1] + 1) % 4]
-            tampered_ok = verify(vk, proof, tampered)
-            adj_tampered = list(public)
-            adj_tampered[3] = 1 - adj_tampered[3]
-            adj_ok = verify(vk, proof, adj_tampered)
-            return {
-                "available": True,
-                "circuit": "legal_path 2-hop",
-                "n_public_inputs": len(public),
-                "honest": {"inputs": public, "verified": bool(honest_ok)},
-                "tamper_goal": {"inputs": tampered, "verified": bool(tampered_ok)},
-                "tamper_adjacency": {"inputs": adj_tampered, "verified": bool(adj_ok)},
-            }
-
-        result = await asyncio.to_thread(_run)
+        vk = load_verifying_key(json.loads(vk_path.read_text()))
+        proof = load_proof(json.loads(proof_path.read_text()))
+        public = [int(s) for s in json.loads(public_path.read_text())]
+        honest_ok = verify(vk, proof, public)
+        tampered = [*public[:-1], (public[-1] + 1) % 4]
+        tampered_ok = verify(vk, proof, tampered)
+        adj_tampered = list(public)
+        adj_tampered[3] = 1 - adj_tampered[3]
+        adj_ok = verify(vk, proof, adj_tampered)
+        result: dict[str, object] = {
+            "available": True,
+            "circuit": "legal_path 2-hop",
+            "n_public_inputs": len(public),
+            "honest": {"inputs": public, "verified": bool(honest_ok)},
+            "tamper_goal": {"inputs": tampered, "verified": bool(tampered_ok)},
+            "tamper_adjacency": {"inputs": adj_tampered, "verified": bool(adj_ok)},
+        }
         _zk_cache.update(result)
         return dict(_zk_cache)
+
+    @app.get("/crypto/zk/legal-path")
+    async def crypto_zk_verify() -> dict[str, object]:
+        """Verify the shipped Groth16 legal-path proof.
+
+        py_ecc Groth16 is slow (~15s for 3 verifies on M4); the cache
+        is warmed at server startup, so this endpoint is essentially
+        instant for the dashboard.
+        """
+        return await asyncio.to_thread(_zk_verify_sync)
+
+    @app.get("/crypto/vdf/demo")
+    async def crypto_vdf_demo(delay: int = 50000) -> dict[str, object]:
+        """Run a Wesolowski VDF round + verify + show timing.
+
+        Delay defaults to 50k squarings (~50ms on M4). The point: VDF
+        compute time scales LINEARLY (no parallelism speedup); verify
+        is O(log delay). The asymmetry is what makes it useful for
+        unbiasable randomness — proposers can't pre-compute the
+        output significantly faster than wall-clock time.
+        """
+        import secrets
+        import time
+
+        from penumbra_crypto import vdf
+
+        delay = max(1000, min(int(delay), 1_000_000))
+        x = int.from_bytes(secrets.token_bytes(8), "big") % 10**18 + 1
+        t0 = time.perf_counter()
+        evaluation = await asyncio.to_thread(vdf.prove, x, delay)
+        compute_ms = (time.perf_counter() - t0) * 1000
+        t1 = time.perf_counter()
+        honest_ok = vdf.verify(evaluation)
+        verify_ms = (time.perf_counter() - t1) * 1000
+        # Tamper: flip a bit of y and verify should reject.
+        tampered = vdf.VDFEvaluation(
+            x=evaluation.x,
+            y=evaluation.y ^ 1,
+            proof=evaluation.proof,
+            delay=evaluation.delay,
+        )
+        tampered_ok = vdf.verify(tampered)
+        return {
+            "available": True,
+            "algorithm": "Wesolowski VDF",
+            "delay": delay,
+            "x_short": format(evaluation.x, "x")[:24],
+            "y_short": format(evaluation.y, "x")[:24],
+            "proof_short": format(evaluation.proof, "x")[:24],
+            "compute_ms": compute_ms,
+            "verify_ms": verify_ms,
+            "compute_to_verify_ratio": compute_ms / max(verify_ms, 1e-6),
+            "honest_verifies": bool(honest_ok),
+            "tampered_verifies": bool(tampered_ok),
+        }
+
+    @app.get("/crypto/dilithium/inspect/{agent_id}")
+    async def crypto_dilithium_inspect(agent_id: int) -> dict[str, object]:
+        """Inspect a Dilithium agent signature for a sample message.
+
+        Penumbra signs every agent move with Dilithium under the hood;
+        here we expose ONE sign+verify + tampered-message rejection
+        for any agent in the live keystore.
+        """
+        keystore = app.state.penumbra.orchestrator.keystore
+        if agent_id < 0 or agent_id >= len(keystore.keypairs):
+            raise HTTPException(status_code=404, detail=f"no agent {agent_id}")
+        from penumbra_crypto.pq import sign, verify
+
+        kp = keystore.keypairs[agent_id]
+        message = b"penumbra-sample-message-for-inspection"
+        sig = sign(kp.secret_key, message)
+        honest_ok = verify(kp.public_key, message, sig)
+        tampered_ok = verify(kp.public_key, message + b"!", sig)
+        return {
+            "available": True,
+            "algorithm": "ML-DSA-65 (Dilithium-3)",
+            "agent_id": int(agent_id),
+            "public_key_size": len(kp.public_key),
+            "secret_key_size": len(kp.secret_key),
+            "signature_size": len(sig),
+            "message_size": len(message),
+            "public_key_short": kp.public_key.hex()[:32],
+            "signature_short": sig.hex()[:48],
+            "honest_verifies": bool(honest_ok),
+            "tampered_verifies": bool(tampered_ok),
+        }
+
+    @app.get("/crypto/shamir/demo")
+    async def crypto_shamir_demo(n: int = 5, t: int = 3, secret: int = 0) -> dict[str, object]:
+        """Split a secret with Shamir (n, t) and reconstruct from various subsets.
+
+        Pedagogically: any t shares recover the secret; any t-1 shares
+        recover NOTHING (information-theoretic guarantee). We verify
+        both: reconstruct from t-of-n succeeds; reconstruct from
+        (t-1)-of-n returns garbage.
+        """
+        import secrets as pysecrets
+
+        from penumbra_crypto.educational import shamir
+
+        n = max(2, min(int(n), 12))
+        t = max(2, min(int(t), n))
+        if secret <= 0:
+            secret = int.from_bytes(pysecrets.token_bytes(8), "big") % 10**12 + 1
+        shares = shamir.split(secret, n=n, t=t)
+        # Reconstruct from a t-subset.
+        ok_recovered = shamir.reconstruct(shares[:t])
+        # And from a (t-1) subset — should NOT match (still returns a value but it's noise).
+        noise_recovered = shamir.reconstruct(shares[: t - 1]) if t >= 2 else -1
+        return {
+            "available": True,
+            "algorithm": f"Shamir (n={n}, t={t})",
+            "secret": int(secret),
+            "n_shares": n,
+            "threshold": t,
+            "shares": [{"x": int(s.x), "y_short": format(int(s.y), "x")[:24]} for s in shares],
+            "recovered_from_t": int(ok_recovered),
+            "recovered_matches": bool(ok_recovered == secret),
+            "recovered_from_t_minus_1": int(noise_recovered),
+            "leaks_at_t_minus_1": bool(noise_recovered == secret),
+        }
+
+    @app.get("/crypto/tfhe/demo")
+    async def crypto_tfhe_demo() -> dict[str, object]:
+        """Show LWE encryption + a single homomorphic NOT gate.
+
+        Pedagogical educational TFHE (LWE-based bit encryption). We
+        encrypt two bits, NOT one of them, decrypt both — and the
+        NOTted bit matches the expected boolean negation.
+        """
+        from penumbra_crypto.educational import tfhe_boolean as tfhe
+
+        key = tfhe.LWEKey.generate()
+        ct_a = tfhe.encrypt(key, 1)
+        ct_b = tfhe.encrypt(key, 0)
+        not_a = tfhe.homomorphic_not(ct_a)
+        xor_ab = tfhe.homomorphic_xor(ct_a, ct_b)
+        d_a = tfhe.decrypt(key, ct_a)
+        d_b = tfhe.decrypt(key, ct_b)
+        d_not_a = tfhe.decrypt(key, not_a)
+        d_xor = tfhe.decrypt(key, xor_ab)
+        return {
+            "available": True,
+            "algorithm": "LWE TFHE (educational)",
+            "key_dim": len(key.s),
+            "a_plain": 1,
+            "b_plain": 0,
+            "decrypt_a": int(d_a),
+            "decrypt_b": int(d_b),
+            "not_a_decrypts_to": int(d_not_a),
+            "xor_decrypts_to": int(d_xor),
+            "not_correct": bool(d_not_a == 0),
+            "xor_correct": bool(d_xor == 1),
+        }
 
     @app.get("/learning/gat-attention")
     async def learning_gat_attention() -> dict[str, object]:
@@ -1494,7 +1649,7 @@ def build_app(
                 ct_size = len(raw)
                 ct_bytes_preview = raw[:32].hex()
         except Exception:
-            pass
+            logger.debug("CKKS ciphertext serialisation failed", exc_info=True)
         return {
             "available": True,
             "backend": type(backend).__name__,

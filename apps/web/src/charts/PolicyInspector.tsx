@@ -38,7 +38,7 @@ export function PolicyInspector({ initialAgent = 0, nAgents = 50 }: Props) {
     };
   }, [agentId]);
 
-  if (!data || !data.available) {
+  if (!data?.available) {
     return (
       <div className="font-mono text-xs text-[color:var(--color-penumbra-muted)]">
         {data?.reason ?? "MAPPO not loaded — set PENUMBRA_MAPPO_CHECKPOINT and restart."}

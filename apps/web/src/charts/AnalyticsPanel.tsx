@@ -512,6 +512,48 @@ export function AnalyticsPanel() {
           accent
           onClick={() => open("multi_checkpoint")}
         />
+        <Cell
+          label="VDF"
+          value="Wesolowski"
+          caption="compute vs verify"
+          accent
+          onClick={() => open("vdf")}
+        />
+        <Cell
+          label="Dilithium"
+          value="agent sig"
+          caption="PQ signature"
+          accent
+          onClick={() => open("dilithium")}
+        />
+        <Cell
+          label="Shamir"
+          value="(n, t)"
+          caption="secret sharing"
+          accent
+          onClick={() => open("shamir")}
+        />
+        <Cell
+          label="TFHE"
+          value="LWE bits"
+          caption="homomorphic gates"
+          accent
+          onClick={() => open("tfhe")}
+        />
+        <Cell
+          label="snapshots"
+          value="world"
+          caption="save / load state"
+          accent
+          onClick={() => open("world_snapshot")}
+        />
+        <Cell
+          label="arena 2D"
+          value="graph"
+          caption="force-directed"
+          accent
+          onClick={() => open("arena_graph")}
+        />
       </div>
 
       {summary && (
@@ -573,6 +615,12 @@ export function AnalyticsPanel() {
             case "ckks_compare":
             case "kyber_kem":
             case "multi_checkpoint":
+            case "vdf":
+            case "dilithium":
+            case "shamir":
+            case "tfhe":
+            case "world_snapshot":
+            case "arena_graph":
               return undefined;
             default:
               return histories[mapMetricToHistoryKey(openMetric)];
@@ -645,6 +693,12 @@ function mapMetricToHistoryKey(
     | "ckks_compare"
     | "kyber_kem"
     | "multi_checkpoint"
+    | "vdf"
+    | "dilithium"
+    | "shamir"
+    | "tfhe"
+    | "world_snapshot"
+    | "arena_graph"
   >,
 ): keyof ReturnType<typeof useDashboardLive>["history"] {
   switch (m) {

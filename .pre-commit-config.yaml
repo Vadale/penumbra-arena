@@ -42,3 +42,16 @@ repos:
         language: system
         pass_filenames: false
         types: [python]
+
+      # Biome runs INSIDE pre-commit (not as a separate manual step)
+      # so its auto-fixes go through pre-commit's "fail + restage"
+      # flow rather than landing in the working tree AFTER the
+      # commit already snapshotted the index. Without this hook,
+      # frontend reformatting silently dropped staged-but-modified
+      # files from the resulting commit.
+      - id: biome
+        name: biome (web)
+        entry: bash -c 'cd apps/web && pnpm exec biome check --write --no-errors-on-unmatched src'
+        language: system
+        pass_filenames: false
+        files: ^apps/web/src/.*\.(ts|tsx|js|jsx|json)$

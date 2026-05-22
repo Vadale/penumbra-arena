@@ -41,6 +41,7 @@ import { useActionHistogram } from "../streams/learning";
 import { ACFChart } from "./ACFChart";
 import { ActionHistogramChart } from "./ActionHistogramChart";
 import { ANOVAChart } from "./ANOVAChart";
+import { ArenaGraphChart } from "./ArenaGraphChart";
 import { ArimaChart } from "./ArimaChart";
 import { BayesianDensity } from "./BayesianDensity";
 import { BLSChart } from "./BLSChart";
@@ -49,6 +50,7 @@ import { CausalChart } from "./CausalChart";
 import { CKKSCompareChart } from "./CKKSCompareChart";
 import { ClusterScatter } from "./ClusterScatter";
 import { CorrelationHeatmap } from "./CorrelationHeatmap";
+import { DilithiumChart } from "./DilithiumChart";
 import { DpCompareChart } from "./DpCompareChart";
 import { EconomyChart } from "./EconomyChart";
 import { GATAttentionChart } from "./GATAttentionChart";
@@ -68,15 +70,19 @@ import { RegressionChart } from "./RegressionChart";
 import { RewardShapingChart } from "./RewardShapingChart";
 import { ROCChart } from "./ROCChart";
 import { SaliencyChart } from "./SaliencyChart";
+import { ShamirChart } from "./ShamirChart";
 import { SlashingChart } from "./SlashingChart";
 import { SpectralChart } from "./SpectralChart";
 import { SurvivalChart } from "./SurvivalChart";
+import { TFHEChart } from "./TFHEChart";
 import { TopicsBar } from "./TopicsBar";
 import { TrainingCurves } from "./TrainingCurves";
 import { ValueMapChart } from "./ValueMapChart";
 import { VarIrfChart } from "./VarIrfChart";
+import { VDFChart } from "./VDFChart";
 import { VRFLeaderChart } from "./VRFLeaderChart";
 import { WealthChart } from "./WealthChart";
+import { WorldSnapshotChart } from "./WorldSnapshotChart";
 import { ZKVerifyChart } from "./ZKVerifyChart";
 
 export type MetricKind =
@@ -124,7 +130,13 @@ export type MetricKind =
   | "saliency"
   | "ckks_compare"
   | "kyber_kem"
-  | "multi_checkpoint";
+  | "multi_checkpoint"
+  | "vdf"
+  | "dilithium"
+  | "shamir"
+  | "tfhe"
+  | "world_snapshot"
+  | "arena_graph";
 
 interface Props {
   open: boolean;
@@ -384,6 +396,36 @@ const META: Record<MetricKind, { label: string; description: string; yUnit?: str
     description:
       "Load a second MAPPO checkpoint into a side slot, then both policies are evaluated on the same live observations. KL divergence + top-action agreement quantify how different the two are. A common workflow: train two seeds, load both, see whether they agree on dominant actions despite different reward trajectories.",
   },
+  vdf: {
+    label: "Wesolowski VDF — compute vs verify",
+    description:
+      "Verifiable Delay Function. The Eval phase is INHERENTLY SEQUENTIAL — T modular squarings, no parallel speedup possible. The verify phase is fast (one modular exponentiation per side of the equation π^prime · x^r ≡ y mod p). The compute/verify RATIO is what makes VDFs useful as wall-clock-time tokens for unbiasable randomness (no proposer can pre-compute the result significantly ahead of time).",
+  },
+  dilithium: {
+    label: "Dilithium — agent signature inspector",
+    description:
+      "Every agent in Penumbra signs its moves with ML-DSA-65 (Dilithium-3). Pick any agent → see its public key, sign a sample message, verify honest+tampered. Post-quantum guarantee comes from Module-LWE + Module-SIS hardness — resists Shor.",
+  },
+  shamir: {
+    label: "Shamir secret sharing (n, t)",
+    description:
+      "A secret S becomes N shares such that ANY T of them recover S exactly, but T-1 shares recover NOTHING (information-theoretic, not computational). Verified live: t-of-n reconstruction matches; (t-1)-of-n returns garbage. Adjust n and t to see the polynomial change degree.",
+  },
+  tfhe: {
+    label: "Educational TFHE (LWE) bit gates",
+    description:
+      "LWE encrypts one bit per ciphertext (a, b) where b = ⟨a, s⟩ + scale·bit + noise. Homomorphic NOT and XOR are just arithmetic on the ciphertext components. Decryption round-trip + gate correctness verified live. Production TFHE adds bootstrapping to reset the noise after each gate.",
+  },
+  world_snapshot: {
+    label: "World snapshots — save/load full state",
+    description:
+      "Capture the full perpetual simulation state (chain head, agent positions + policies, encrypted heatmap state, market wallets, RNG cursor) under a name. Load any snapshot to roll back. This is the persistence layer that makes the perpetual loop debuggable — you can experiment, branch, restore.",
+  },
+  arena_graph: {
+    label: "Arena graph — force-directed view",
+    description:
+      "The same nodes + edges + goals you see on the world map, laid out with a Fruchterman-Reingold relaxation so the connectivity STRUCTURE is visible (clusters, bottlenecks, isolated subgraphs). Ember = goals, edge thickness ∝ cost. Recomputed every 6s as topology mutates.",
+  },
 };
 
 export function DetailModal({
@@ -551,6 +593,24 @@ export function DetailModal({
     }
     if (metric === "multi_checkpoint") {
       return <MultiCheckpointChart />;
+    }
+    if (metric === "vdf") {
+      return <VDFChart />;
+    }
+    if (metric === "dilithium") {
+      return <DilithiumChart />;
+    }
+    if (metric === "shamir") {
+      return <ShamirChart />;
+    }
+    if (metric === "tfhe") {
+      return <TFHEChart />;
+    }
+    if (metric === "world_snapshot") {
+      return <WorldSnapshotChart />;
+    }
+    if (metric === "arena_graph") {
+      return <ArenaGraphChart />;
     }
     return <LineChart values={values ?? []} label={meta.label} yUnit={meta.yUnit} />;
   })();

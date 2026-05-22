@@ -192,7 +192,7 @@ function MappoControls() {
     };
   }, []);
 
-  if (!runtime || !runtime.available) {
+  if (!runtime?.available) {
     return <StatusCell label="mappo" value="off" ember />;
   }
 

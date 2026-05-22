@@ -32,7 +32,7 @@ export function MultiCheckpointChart() {
       const res = await fetch(`/learning/multi-checkpoint/${pickPath}`, { method: "POST" });
       const payload = await res.json();
       setMessage(res.ok ? `loaded ${payload.path}` : `error: ${payload.detail ?? res.status}`);
-    } catch (e) {
+    } catch (_e) {
       setMessage(`network error`);
     }
     setBusy(false);
@@ -80,7 +80,7 @@ export function MultiCheckpointChart() {
         )}
       </div>
 
-      {!data || !data.available ? (
+      {!data?.available ? (
         <div className="text-[10px] text-[color:var(--color-penumbra-dim)]">
           {data?.reason ?? "load a second checkpoint to start comparing"}
         </div>
