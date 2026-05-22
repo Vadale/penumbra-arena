@@ -98,6 +98,73 @@ class PCAResult:
 
 
 @dataclass(slots=True)
+class ArimaForecast:
+    """ARIMA one-step forecast with the recent series and a 95% PI.
+
+    Renders: the historical series leading up to NOW, plus the
+    forecast point and ±1.96·σ band so the prediction interval is
+    visible rather than just a number.
+    """
+
+    history: tuple[float, ...]  # last N observations
+    next_value: float
+    next_std: float
+
+
+@dataclass(slots=True)
+class LogitResult:
+    """Logistic regression P(Y=1 | x) where Y = (traj_t > median).
+
+    The natural propensity demo on Penumbra data: given the
+    previous-tick trajectory norm x, what's the probability the
+    next tick exceeds the rolling median? Closed-form sigmoid.
+    """
+
+    intercept: float
+    slope: float
+    # Sampled curve for plotting: list of (x, sigmoid(α + β·x)).
+    curve: tuple[tuple[float, float], ...]
+    # Empirical (x, treated) for the scatter underlying the fit.
+    points: tuple[tuple[float, int], ...]
+    n: int
+    pseudo_r2: float  # McFadden's pseudo-R² — log-likelihood ratio vs null
+
+
+@dataclass(slots=True)
+class BayesianPosterior:
+    """Beta posterior over θ (closed form) + full density curve.
+
+    With Beta(1, 1) prior + Binomial(n, θ) likelihood + s successes
+    the posterior is Beta(1+s, 1+n-s). We expose α + β + the PDF
+    sampled at 100 points so the frontend renders a real density,
+    not just the mean.
+    """
+
+    alpha: float
+    beta: float
+    mean: float
+    std: float
+    credible_low: float  # 2.5% quantile
+    credible_high: float  # 97.5% quantile
+    curve: tuple[tuple[float, float], ...]  # (theta, pdf) at 100 points
+
+
+@dataclass(slots=True)
+class GrangerMatrix:
+    """Pairwise Granger-causality p-values between K derived series.
+
+    For each ordered pair (i, j), value[i][j] is the p-value of the
+    null 'i does NOT Granger-cause j'. Small p → causality. The
+    diagonal is set to 1.0 (no self-causality).
+    """
+
+    series_names: tuple[str, ...]
+    p_values: tuple[tuple[float, ...], ...]  # K×K row-major
+    max_lag: int
+    n_obs: int
+
+
+@dataclass(slots=True)
 class DashboardSnapshot:
     """The current state of every registered consumer."""
 
@@ -125,6 +192,10 @@ class DashboardSnapshot:
     cluster_scatter: ClusterScatterResult | None = None
     monte_carlo: MonteCarloResult | None = None
     pca: PCAResult | None = None
+    arima_forecast: ArimaForecast | None = None
+    logit: LogitResult | None = None
+    bayesian_posterior: BayesianPosterior | None = None
+    granger: GrangerMatrix | None = None
 
 
 @dataclass(slots=True)
@@ -158,6 +229,10 @@ class DashboardPipeline:
             "cluster_scatter": 6.0,
             "monte_carlo": 8.0,
             "pca": 8.0,
+            "arima_forecast": 6.0,
+            "logit": 6.0,
+            "bayesian_posterior": 10.0,
+            "granger": 12.0,
         }
     )
 
@@ -278,6 +353,22 @@ class DashboardPipeline:
         if self._due(now, "pca") and len(self._positions) >= 30:
             self._snapshot.pca = self._compute_pca()
             self._last_run["pca"] = now
+
+        if self._due(now, "arima_forecast") and len(self._trajectory_lengths) >= 50:
+            self._snapshot.arima_forecast = self._compute_arima_forecast()
+            self._last_run["arima_forecast"] = now
+
+        if self._due(now, "logit") and len(self._trajectory_lengths) >= 40:
+            self._snapshot.logit = self._compute_logit()
+            self._last_run["logit"] = now
+
+        if self._due(now, "bayesian_posterior") and len(self._trajectory_lengths) >= 30:
+            self._snapshot.bayesian_posterior = self._compute_bayesian_posterior()
+            self._last_run["bayesian_posterior"] = now
+
+        if self._due(now, "granger") and len(self._trajectory_lengths) >= 60:
+            self._snapshot.granger = self._compute_granger()
+            self._last_run["granger"] = now
 
         if self._due(now, "topics") and len(self._utterances) >= 40:
             # Stress-test fix A/B: explicit gc after BERTopic; in early
@@ -462,6 +553,190 @@ class DashboardPipeline:
             eigenvalues=top_eigs,
             explained_variance_ratio=cum_var,
             top2_loadings=loadings,
+        )
+
+    def _compute_arima_forecast(self) -> ArimaForecast | None:
+        """AR(1) one-step forecast + 1.96·σ band, with the history series.
+
+        We already compute arima_next as a scalar; this packages the
+        last 60 observations and the std error so the frontend can
+        draw an actual forecast band, not just print a number.
+        """
+        recent = list(self._trajectory_lengths)[-60:]
+        if len(recent) < 30:
+            return None
+        values = np.asarray(recent, dtype=np.float64)
+        try:
+            forecast = time_series.arima_one_step(values, order=(1, 0, 0))
+        except Exception:
+            logger.debug("arima_forecast consumer raised", exc_info=True)
+            return None
+        return ArimaForecast(
+            history=tuple(float(v) for v in values),
+            next_value=float(forecast.next_value),
+            next_std=float(forecast.forecast_std),
+        )
+
+    def _compute_logit(self) -> LogitResult | None:
+        """Logistic regression P(y_t > median | y_{t-1}).
+
+        Pedagogical demo of logit on the trajectory series. We
+        construct treatment Y_t = 1{y_t > median(y)} and regress
+        on the lag-1 feature y_{t-1}. The fit is by sklearn's
+        LogisticRegression (L2-regularised), and we expose:
+        - intercept α + slope β
+        - 80 sampled points (x, σ(α + β·x)) for the curve
+        - empirical (x, y) for the scatter underlay
+        - McFadden's pseudo-R² (1 - log-lik / log-lik_null)
+        """
+        from sklearn.linear_model import LogisticRegression
+
+        values = np.asarray(list(self._trajectory_lengths)[-200:], dtype=np.float64)
+        if len(values) < 40:
+            return None
+        median = float(np.median(values))
+        x = values[:-1].reshape(-1, 1)
+        y = (values[1:] > median).astype(np.int64)
+        if y.sum() < 5 or y.sum() > len(y) - 5:
+            return None  # degenerate (everything one class)
+        try:
+            clf = LogisticRegression(max_iter=1000, C=1.0).fit(x, y)
+        except Exception:
+            logger.debug("logit fit failed", exc_info=True)
+            return None
+        slope = float(clf.coef_[0, 0])
+        intercept = float(clf.intercept_[0])
+        x_min, x_max = float(x.min()), float(x.max())
+        pad = (x_max - x_min) * 0.1 if x_max > x_min else 1.0
+        grid = np.linspace(x_min - pad, x_max + pad, 80)
+        sig = 1.0 / (1.0 + np.exp(-(intercept + slope * grid)))
+        curve = tuple((float(g), float(s)) for g, s in zip(grid, sig, strict=True))
+        # Empirical scatter (sub-sampled for clarity).
+        pts = tuple((float(xi[0]), int(yi)) for xi, yi in zip(x, y, strict=True))
+        # McFadden's pseudo-R²
+        try:
+            proba = clf.predict_proba(x)[:, 1]
+            eps = 1e-12
+            ll_full = float(np.sum(y * np.log(proba + eps) + (1 - y) * np.log(1 - proba + eps)))
+            p_null = float(y.mean())
+            ll_null = float(np.sum(y * np.log(p_null + eps) + (1 - y) * np.log(1 - p_null + eps)))
+            pseudo_r2 = 1.0 - ll_full / ll_null if ll_null != 0 else 0.0
+        except Exception:
+            pseudo_r2 = 0.0
+        return LogitResult(
+            intercept=intercept,
+            slope=slope,
+            curve=curve,
+            points=pts,
+            n=len(y),
+            pseudo_r2=float(pseudo_r2),
+        )
+
+    def _compute_bayesian_posterior(self) -> BayesianPosterior | None:
+        """Closed-form Beta posterior with full PDF curve.
+
+        Beta(1, 1) prior + Binomial(n, θ) likelihood ⇒ Beta(1+s, 1+n-s)
+        posterior. We sample the PDF at 100 θ ∈ [0, 1] points and
+        also return mean / std / 95% credible interval.
+        """
+        from scipy.stats import beta
+
+        values = list(self._trajectory_lengths)
+        if not values:
+            return None
+        threshold = float(np.median(values))
+        successes = int(sum(1 for v in values if v >= threshold))
+        trials = len(values)
+        alpha = 1.0 + successes
+        bb = 1.0 + (trials - successes)
+        rv = beta(alpha, bb)
+        mean = float(rv.mean())
+        std = float(rv.std())
+        lo = float(rv.ppf(0.025))
+        hi = float(rv.ppf(0.975))
+        thetas = np.linspace(0.001, 0.999, 100)
+        # scipy stubs return rv_discrete_frozen | rv_continuous_frozen
+        # under the union; beta(α, β) is the continuous case which has
+        # .pdf, but pyright can't narrow it without help.
+        pdf = rv.pdf(thetas)  # pyright: ignore[reportAttributeAccessIssue]
+        curve = tuple((float(t), float(p)) for t, p in zip(thetas, pdf, strict=True))
+        return BayesianPosterior(
+            alpha=alpha,
+            beta=bb,
+            mean=mean,
+            std=std,
+            credible_low=lo,
+            credible_high=hi,
+            curve=curve,
+        )
+
+    def _compute_granger(self) -> GrangerMatrix | None:
+        """Pairwise Granger between 4 derived series from the buffers.
+
+        Series (all length T, one per analytics tick):
+          A. trajectory L₂ norm (raw)
+          B. trajectory absolute first difference (volatility proxy)
+          C. number of distinct nodes occupied per tick (dispersion proxy)
+          D. heatmap entropy per tick (density spread)
+
+        For each ordered pair (i, j) we report the p-value of the F
+        test for the null 'i does NOT Granger-cause j' under lag = 2.
+        """
+        from statsmodels.tsa.stattools import grangercausalitytests
+
+        traj = np.asarray(list(self._trajectory_lengths)[-100:], dtype=np.float64)
+        if len(traj) < 40:
+            return None
+        diff = np.concatenate([[0.0], np.abs(np.diff(traj))])
+
+        positions_list = list(self._positions)[-100:]
+        dispersion = np.array(
+            [float(len({int(p) for p in row.tolist()})) for row in positions_list],
+            dtype=np.float64,
+        )
+        heatmaps = list(self._heatmaps)[-100:]
+        if heatmaps:
+            entropy_series = np.array(
+                [
+                    float(-np.sum((h / (h.sum() + 1e-12)) * np.log(h / (h.sum() + 1e-12) + 1e-12)))
+                    for h in heatmaps
+                ],
+                dtype=np.float64,
+            )
+        else:
+            entropy_series = np.zeros_like(traj)
+
+        # Align lengths.
+        n = min(len(traj), len(diff), len(dispersion), len(entropy_series))
+        if n < 40:
+            return None
+        traj, diff = traj[-n:], diff[-n:]
+        dispersion = dispersion[-n:]
+        entropy_series = entropy_series[-n:]
+
+        series = {"traj": traj, "vol": diff, "disp": dispersion, "entropy": entropy_series}
+        names = ("traj", "vol", "disp", "entropy")
+        k = len(names)
+        p_mat: list[list[float]] = [[1.0] * k for _ in range(k)]
+        max_lag = 2
+        for i, ni in enumerate(names):
+            for j, nj in enumerate(names):
+                if i == j:
+                    continue
+                pair = np.column_stack([series[nj], series[ni]])  # [y, x]
+                try:
+                    result = grangercausalitytests(pair, maxlag=max_lag, verbose=False)
+                    # statsmodels returns dict {lag: (tests, models)}.
+                    # Use the F-test p-value at the chosen max lag.
+                    p = float(result[max_lag][0]["ssr_ftest"][1])
+                    p_mat[i][j] = p
+                except Exception:
+                    logger.debug("granger %s->%s failed", ni, nj, exc_info=True)
+        return GrangerMatrix(
+            series_names=names,
+            p_values=tuple(tuple(row) for row in p_mat),
+            max_lag=max_lag,
+            n_obs=n,
         )
 
     # ── internals ───────────────────────────────────────────────────

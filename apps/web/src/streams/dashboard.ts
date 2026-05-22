@@ -57,6 +57,38 @@ export interface PCAResult {
   top2_loadings: [number, number][];
 }
 
+export interface ArimaForecast {
+  history: number[];
+  next_value: number;
+  next_std: number;
+}
+
+export interface LogitResult {
+  intercept: number;
+  slope: number;
+  curve: [number, number][];
+  points: [number, number][];
+  n: number;
+  pseudo_r2: number;
+}
+
+export interface BayesianPosterior {
+  alpha: number;
+  beta: number;
+  mean: number;
+  std: number;
+  credible_low: number;
+  credible_high: number;
+  curve: [number, number][];
+}
+
+export interface GrangerMatrix {
+  series_names: string[];
+  p_values: number[][];
+  max_lag: number;
+  n_obs: number;
+}
+
 export interface DashboardSnapshot {
   tick: number;
   summary: DashboardSummary | null;
@@ -81,6 +113,10 @@ export interface DashboardSnapshot {
   cluster_scatter: ClusterScatter | null;
   monte_carlo: MonteCarloFan | null;
   pca: PCAResult | null;
+  arima_forecast: ArimaForecast | null;
+  logit: LogitResult | null;
+  bayesian_posterior: BayesianPosterior | null;
+  granger: GrangerMatrix | null;
 }
 
 const POLL_MS = 500;

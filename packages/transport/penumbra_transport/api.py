@@ -449,6 +449,50 @@ def build_app(
                     "top2_loadings": [list(p) for p in snap.pca.top2_loadings],
                 }
             ),
+            "arima_forecast": (
+                None
+                if snap.arima_forecast is None
+                else {
+                    "history": list(snap.arima_forecast.history),
+                    "next_value": snap.arima_forecast.next_value,
+                    "next_std": snap.arima_forecast.next_std,
+                }
+            ),
+            "logit": (
+                None
+                if snap.logit is None
+                else {
+                    "intercept": snap.logit.intercept,
+                    "slope": snap.logit.slope,
+                    "curve": [list(p) for p in snap.logit.curve],
+                    "points": [list(p) for p in snap.logit.points],
+                    "n": snap.logit.n,
+                    "pseudo_r2": snap.logit.pseudo_r2,
+                }
+            ),
+            "bayesian_posterior": (
+                None
+                if snap.bayesian_posterior is None
+                else {
+                    "alpha": snap.bayesian_posterior.alpha,
+                    "beta": snap.bayesian_posterior.beta,
+                    "mean": snap.bayesian_posterior.mean,
+                    "std": snap.bayesian_posterior.std,
+                    "credible_low": snap.bayesian_posterior.credible_low,
+                    "credible_high": snap.bayesian_posterior.credible_high,
+                    "curve": [list(p) for p in snap.bayesian_posterior.curve],
+                }
+            ),
+            "granger": (
+                None
+                if snap.granger is None
+                else {
+                    "series_names": list(snap.granger.series_names),
+                    "p_values": [list(row) for row in snap.granger.p_values],
+                    "max_lag": snap.granger.max_lag,
+                    "n_obs": snap.granger.n_obs,
+                }
+            ),
         }
 
     @app.get("/encrypted-heatmap")

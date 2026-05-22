@@ -211,6 +211,30 @@ export function AnalyticsPanel() {
           accent
           onClick={() => open("pca")}
         />
+        <Cell
+          label="logit β"
+          value={snap.logit?.slope !== undefined ? fmt(snap.logit.slope, 3) : "—"}
+          caption={
+            snap.logit?.pseudo_r2 !== undefined
+              ? `pseudo R² ${fmt(snap.logit.pseudo_r2, 2)}`
+              : "warming"
+          }
+          accent
+          onClick={() => open("logit")}
+        />
+        <Cell
+          label="granger"
+          value={(() => {
+            const g = snap.granger;
+            if (!g) return "—";
+            const k = g.series_names.length + 1;
+            const count = g.p_values.flat().filter((p, i) => p < 0.05 && i % k !== 0).length;
+            return String(count);
+          })()}
+          caption={snap.granger ? "edges p<.05" : "warming"}
+          accent
+          onClick={() => open("granger")}
+        />
       </div>
 
       {summary && (
@@ -236,7 +260,7 @@ export function AnalyticsPanel() {
         onClose={() => setOpenMetric(null)}
         metric={openMetric}
         values={
-          openMetric && openMetric !== "pca"
+          openMetric && openMetric !== "pca" && openMetric !== "logit" && openMetric !== "granger"
             ? histories[mapMetricToHistoryKey(openMetric)]
             : undefined
         }
@@ -246,13 +270,17 @@ export function AnalyticsPanel() {
         clusterScatter={snap.cluster_scatter}
         monteCarlo={snap.monte_carlo}
         pca={snap.pca}
+        arima={snap.arima_forecast}
+        logit={snap.logit}
+        bayesian={snap.bayesian_posterior}
+        granger={snap.granger}
       />
     </div>
   );
 }
 
 function mapMetricToHistoryKey(
-  m: Exclude<MetricKind, "pca">,
+  m: Exclude<MetricKind, "pca" | "logit" | "granger">,
 ): keyof ReturnType<typeof useDashboardLive>["history"] {
   switch (m) {
     case "trajectory_mean":
