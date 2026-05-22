@@ -103,6 +103,64 @@ def chi_squared_goodness_of_fit(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class ANOVAResult:
+    """One-way ANOVA F-test + per-group summary statistics.
+
+    Tests the null 'all group means are equal'. The group summaries
+    (mean + SE + n) are exposed too so the chart can draw the
+    point-estimate-with-CI per group alongside the global p-value.
+    """
+
+    f_statistic: float
+    p_value: float
+    df_between: int
+    df_within: int
+    group_names: tuple[str, ...]
+    group_means: tuple[float, ...]
+    group_se: tuple[float, ...]  # standard errors (σ/√n per group)
+    group_n: tuple[int, ...]
+    grand_mean: float
+
+
+def anova_oneway(
+    groups: dict[str, NDArray[np.float64]],
+) -> ANOVAResult:
+    """One-way ANOVA across `groups`. Each group must have ≥ 2 obs.
+
+    Pedagogically: F = MS_between / MS_within. Large F + small p
+    means *some* pair of groups differ in mean; ANOVA does NOT
+    tell you WHICH pair (use Tukey HSD or pairwise t-tests for that).
+    """
+    from scipy.stats import f_oneway
+
+    names = tuple(sorted(groups.keys()))
+    arrays = [np.asarray(groups[n], dtype=np.float64) for n in names]
+    for a in arrays:
+        if a.size < 2:
+            raise ValueError("each group needs ≥ 2 observations")
+    stat_obj = f_oneway(*arrays)
+    f_stat = float(stat_obj.statistic)
+    p = float(stat_obj.pvalue)
+    k = len(arrays)
+    n_total = sum(a.size for a in arrays)
+    means = tuple(float(a.mean()) for a in arrays)
+    se = tuple(float(a.std(ddof=1) / np.sqrt(a.size)) if a.size > 1 else 0.0 for a in arrays)
+    n_per = tuple(int(a.size) for a in arrays)
+    grand = float(np.concatenate(arrays).mean())
+    return ANOVAResult(
+        f_statistic=f_stat,
+        p_value=p,
+        df_between=k - 1,
+        df_within=n_total - k,
+        group_names=names,
+        group_means=means,
+        group_se=se,
+        group_n=n_per,
+        grand_mean=grand,
+    )
+
+
 def cliff_delta(a: NDArray[np.float64], b: NDArray[np.float64]) -> float:
     """Cliff's δ: a robust effect size in [-1, 1].
 

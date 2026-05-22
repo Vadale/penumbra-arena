@@ -14,25 +14,33 @@
 
 import { useEffect } from "react";
 import type {
+  ANOVAReport as ANOVAReportData,
   ArimaForecast as ArimaForecastData,
+  AutocorrelationReport as AutocorrelationReportData,
   BayesianPosterior as BayesianPosteriorData,
   CausalEstimate as CausalEstimateData,
   ClusterScatter as ClusterScatterData,
+  CorrelationMatrix as CorrelationMatrixData,
   EconomySnapshot as EconomySnapshotData,
   GarchResult as GarchResultData,
   GrangerMatrix as GrangerMatrixData,
   LogitResult as LogitResultData,
   MonteCarloFan as MCFanData,
   PCAResult,
+  PermutationReport as PermutationReportData,
   RegressionFit,
+  ROCData as ROCDataType,
   SpectralReport as SpectralReportData,
   SurvivalCurve as SurvivalCurveData,
   VARImpulseResponse as VARImpulseResponseData,
 } from "../streams/dashboard";
+import { ACFChart } from "./ACFChart";
+import { ANOVAChart } from "./ANOVAChart";
 import { ArimaChart } from "./ArimaChart";
 import { BayesianDensity } from "./BayesianDensity";
 import { CausalChart } from "./CausalChart";
 import { ClusterScatter } from "./ClusterScatter";
+import { CorrelationHeatmap } from "./CorrelationHeatmap";
 import { EconomyChart } from "./EconomyChart";
 import { GarchChart } from "./GarchChart";
 import { GrangerMatrix } from "./GrangerMatrix";
@@ -40,7 +48,9 @@ import { LineChart } from "./LineChart";
 import { LogitChart } from "./LogitChart";
 import { MonteCarloFan } from "./MonteCarloFan";
 import { PCAScree } from "./PCAScree";
+import { PermutationChart } from "./PermutationChart";
 import { RegressionChart } from "./RegressionChart";
+import { ROCChart } from "./ROCChart";
 import { SpectralChart } from "./SpectralChart";
 import { SurvivalChart } from "./SurvivalChart";
 import { TopicsBar } from "./TopicsBar";
@@ -67,7 +77,12 @@ export type MetricKind =
   | "spectral"
   | "causal"
   | "var_irf"
-  | "garch";
+  | "garch"
+  | "anova"
+  | "autocorrelation"
+  | "roc"
+  | "correlations"
+  | "permutation";
 
 interface Props {
   open: boolean;
@@ -91,6 +106,12 @@ interface Props {
   varIrf?: VARImpulseResponseData | null;
   garch?: GarchResultData | null;
   qqPoints?: [number, number][];
+  residualVsFitted?: [number, number][];
+  anova?: ANOVAReportData | null;
+  autocorrelation?: AutocorrelationReportData | null;
+  roc?: ROCDataType | null;
+  correlations?: CorrelationMatrixData | null;
+  permutation?: PermutationReportData | null;
 }
 
 const META: Record<MetricKind, { label: string; description: string; yUnit?: string }> = {
@@ -198,6 +219,31 @@ const META: Record<MetricKind, { label: string; description: string; yUnit?: str
     description:
       "σ²_t = ω + α·ε²_{t-1} + β·σ²_{t-1} fit on the log-returns of the trajectory norm. The cyan band is ±σ_t (the model's evolving volatility), the white line is the observed log-returns. Persistence = α + β; values close to 1.0 indicate near-integrated GARCH (shocks decay very slowly). Pedagogically: this is THE workhorse for conditional volatility in finance, and the right baseline before you reach for stochastic-vol models.",
   },
+  anova: {
+    label: "ANOVA — F-test across HDBSCAN clusters",
+    description:
+      "One-way ANOVA on the per-agent PC1-PC2 norm, grouped by HDBSCAN cluster label. The F-statistic compares between-group variance to within-group variance under the null 'all group means are equal'. Small p ⇒ at least one pair of clusters has a different mean position. ANOVA does NOT tell you WHICH pair (you'd need Tukey HSD or pairwise t-tests for that). Cyan dots = group means; bars = 95% CI; ember dashed = grand mean.",
+  },
+  autocorrelation: {
+    label: "ACF + PACF — ARIMA order diagnostics",
+    description:
+      "Standard diagnostic for choosing ARIMA(p, d, q) order on the trajectory series. ACF (top) is autocorrelation across all lags — geometric decay ⇒ AR process. PACF (bottom) is partial autocorrelation controlling for shorter lags — cuts off at lag p for an AR(p). Cyan band = ±1.96/√n significance bounds. Bars OUTSIDE the band are significant at the 5% level.",
+  },
+  roc: {
+    label: "ROC curve + AUC — logit classifier",
+    description:
+      "ROC plots TPR (sensitivity) vs FPR (1 - specificity) as the threshold sweeps. AUC = area under it; 0.5 = random, 1.0 = perfect, > 0.7 = useful. Ember dashed = random reference. The cyan-filled region quantifies the discrimination the trained logit achieves on the latest data window.",
+  },
+  correlations: {
+    label: "Correlation heatmap — Pearson + Spearman",
+    description:
+      "Two K×K matrices across (traj, vol, traj², disp). Pearson r captures LINEAR association; Spearman ρ captures MONOTONE association. They diverge when the relationship is monotone but non-linear — comparing them is a quick non-parametric robustness check. Cyan = positive, ember = negative; intensity ∝ |r|.",
+  },
+  permutation: {
+    label: "Permutation test — null ATE distribution",
+    description:
+      "Shuffle the treatment labels n times and recompute the simple ATE under each shuffle; the histogram is the empirical null distribution. The white vertical line is the OBSERVED ATE on real treatment assignments. Two-sided p = P(|null| ≥ |observed|). Pedagogically: a permutation p-value makes ZERO parametric assumptions — it's exact under the null exchangeability hypothesis.",
+  },
 };
 
 export function DetailModal({
@@ -222,6 +268,12 @@ export function DetailModal({
   varIrf,
   garch,
   qqPoints,
+  residualVsFitted,
+  anova,
+  autocorrelation,
+  roc,
+  correlations,
+  permutation,
 }: Props) {
   useEffect(() => {
     if (!open) return;
@@ -242,7 +294,9 @@ export function DetailModal({
       return <TopicsBar topicSizes={topicSizes ?? {}} topWords={topicTopWords ?? {}} />;
     }
     if (metric === "trajectory_mean" && regression) {
-      return <RegressionChart fit={regression} qqPoints={qqPoints} />;
+      return (
+        <RegressionChart fit={regression} qqPoints={qqPoints} residualVsFitted={residualVsFitted} />
+      );
     }
     if (metric === "hdbscan_clusters" && clusterScatter) {
       return <ClusterScatter data={clusterScatter} />;
@@ -282,6 +336,21 @@ export function DetailModal({
     }
     if (metric === "garch" && garch) {
       return <GarchChart data={garch} />;
+    }
+    if (metric === "anova" && anova) {
+      return <ANOVAChart data={anova} />;
+    }
+    if (metric === "autocorrelation" && autocorrelation) {
+      return <ACFChart data={autocorrelation} />;
+    }
+    if (metric === "roc" && roc) {
+      return <ROCChart data={roc} />;
+    }
+    if (metric === "correlations" && correlations) {
+      return <CorrelationHeatmap data={correlations} />;
+    }
+    if (metric === "permutation" && permutation) {
+      return <PermutationChart data={permutation} />;
     }
     return <LineChart values={values ?? []} label={meta.label} yUnit={meta.yUnit} />;
   })();

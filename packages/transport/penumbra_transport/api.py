@@ -565,6 +565,64 @@ def build_app(
                 }
             ),
             "qq_points": [list(p) for p in snap.qq_points],
+            "residual_vs_fitted": [list(p) for p in snap.residual_vs_fitted],
+            "anova": (
+                None
+                if snap.anova is None
+                else {
+                    "f_statistic": snap.anova.f_statistic,
+                    "p_value": snap.anova.p_value,
+                    "df_between": snap.anova.df_between,
+                    "df_within": snap.anova.df_within,
+                    "grouping": snap.anova.grouping,
+                    "group_names": list(snap.anova.group_names),
+                    "group_means": list(snap.anova.group_means),
+                    "group_se": list(snap.anova.group_se),
+                    "group_n": list(snap.anova.group_n),
+                    "grand_mean": snap.anova.grand_mean,
+                }
+            ),
+            "autocorrelation": (
+                None
+                if snap.autocorrelation is None
+                else {
+                    "n_obs": snap.autocorrelation.n_obs,
+                    "max_lag": snap.autocorrelation.max_lag,
+                    "acf": list(snap.autocorrelation.acf),
+                    "pacf": list(snap.autocorrelation.pacf),
+                    "conf_band": snap.autocorrelation.conf_band,
+                }
+            ),
+            "roc": (
+                None
+                if snap.roc is None
+                else {
+                    "fpr": list(snap.roc.fpr),
+                    "tpr": list(snap.roc.tpr),
+                    "thresholds": list(snap.roc.thresholds),
+                    "auc": snap.roc.auc,
+                }
+            ),
+            "correlations": (
+                None
+                if snap.correlations is None
+                else {
+                    "series_names": list(snap.correlations.series_names),
+                    "pearson": [list(row) for row in snap.correlations.pearson],
+                    "spearman": [list(row) for row in snap.correlations.spearman],
+                    "n_obs": snap.correlations.n_obs,
+                }
+            ),
+            "permutation": (
+                None
+                if snap.permutation is None
+                else {
+                    "observed_ate": snap.permutation.observed_ate,
+                    "null_samples": list(snap.permutation.null_samples),
+                    "p_two_sided": snap.permutation.p_two_sided,
+                    "n_permutations": snap.permutation.n_permutations,
+                }
+            ),
         }
 
     @app.get("/encrypted-heatmap")

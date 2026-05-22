@@ -306,6 +306,55 @@ export function AnalyticsPanel() {
           accent={!!snap.garch && snap.garch.persistence <= 0.98}
           onClick={() => open("garch")}
         />
+        <Cell
+          label="ANOVA F"
+          value={snap.anova ? fmt(snap.anova.f_statistic, 2) : "—"}
+          caption={
+            snap.anova
+              ? `p ${snap.anova.p_value < 0.001 ? "<.001" : snap.anova.p_value.toFixed(3)} · k=${snap.anova.group_names.length}`
+              : "warming"
+          }
+          accent={!!snap.anova && snap.anova.p_value < 0.05}
+          onClick={() => open("anova")}
+        />
+        <Cell
+          label="ACF/PACF"
+          value={snap.autocorrelation ? String(snap.autocorrelation.max_lag) : "—"}
+          caption={
+            snap.autocorrelation ? `band ±${snap.autocorrelation.conf_band.toFixed(3)}` : "warming"
+          }
+          accent
+          onClick={() => open("autocorrelation")}
+        />
+        <Cell
+          label="AUC"
+          value={snap.roc ? fmt(snap.roc.auc, 3) : "—"}
+          caption={snap.roc ? `${snap.roc.fpr.length} pts` : "warming"}
+          accent={!!snap.roc && snap.roc.auc >= 0.7}
+          ember={!!snap.roc && snap.roc.auc < 0.55}
+          onClick={() => open("roc")}
+        />
+        <Cell
+          label="corr"
+          value={snap.correlations ? String(snap.correlations.series_names.length) : "—"}
+          caption={snap.correlations ? `n=${snap.correlations.n_obs}` : "warming"}
+          accent
+          onClick={() => open("correlations")}
+        />
+        <Cell
+          label="perm p"
+          value={
+            snap.permutation
+              ? snap.permutation.p_two_sided < 0.001
+                ? "<.001"
+                : snap.permutation.p_two_sided.toFixed(3)
+              : "—"
+          }
+          caption={snap.permutation ? `n=${snap.permutation.n_permutations}` : "warming"}
+          ember={!!snap.permutation && snap.permutation.p_two_sided < 0.05}
+          accent={!!snap.permutation && snap.permutation.p_two_sided >= 0.05}
+          onClick={() => open("permutation")}
+        />
       </div>
 
       {summary && (
@@ -343,6 +392,11 @@ export function AnalyticsPanel() {
             case "causal":
             case "var_irf":
             case "garch":
+            case "anova":
+            case "autocorrelation":
+            case "roc":
+            case "correlations":
+            case "permutation":
               return undefined;
             default:
               return histories[mapMetricToHistoryKey(openMetric)];
@@ -365,6 +419,12 @@ export function AnalyticsPanel() {
         varIrf={snap.var_irf}
         garch={snap.garch}
         qqPoints={snap.qq_points}
+        residualVsFitted={snap.residual_vs_fitted}
+        anova={snap.anova}
+        autocorrelation={snap.autocorrelation}
+        roc={snap.roc}
+        correlations={snap.correlations}
+        permutation={snap.permutation}
       />
     </div>
   );
@@ -382,6 +442,11 @@ function mapMetricToHistoryKey(
     | "causal"
     | "var_irf"
     | "garch"
+    | "anova"
+    | "autocorrelation"
+    | "roc"
+    | "correlations"
+    | "permutation"
   >,
 ): keyof ReturnType<typeof useDashboardLive>["history"] {
   switch (m) {

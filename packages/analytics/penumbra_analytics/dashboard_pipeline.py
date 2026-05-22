@@ -271,6 +271,74 @@ class GrangerMatrix:
 
 
 @dataclass(slots=True)
+class ANOVAReport:
+    """One-way ANOVA F-test on a categorical grouping of agents."""
+
+    f_statistic: float
+    p_value: float
+    df_between: int
+    df_within: int
+    grouping: str  # how groups were defined (e.g. 'hdbscan_cluster')
+    group_names: tuple[str, ...]
+    group_means: tuple[float, ...]
+    group_se: tuple[float, ...]
+    group_n: tuple[int, ...]
+    grand_mean: float
+
+
+@dataclass(slots=True)
+class AutocorrelationReport:
+    """ACF + PACF up to L lags for the trajectory series.
+
+    Pedagogically the right way to choose ARIMA(p, d, q) order: ACF
+    decays geometrically for AR; PACF cuts off at lag p for AR(p);
+    ACF cuts off at q for MA(q).
+    """
+
+    n_obs: int
+    max_lag: int
+    acf: tuple[float, ...]
+    pacf: tuple[float, ...]
+    conf_band: float  # ±1.96/√n — both ACF and PACF use the same band
+
+
+@dataclass(slots=True)
+class ROCData:
+    """ROC curve + AUC for the logit classifier."""
+
+    fpr: tuple[float, ...]
+    tpr: tuple[float, ...]
+    thresholds: tuple[float, ...]
+    auc: float
+
+
+@dataclass(slots=True)
+class CorrelationMatrix:
+    """Pearson + Spearman pairwise correlations across K metrics."""
+
+    series_names: tuple[str, ...]
+    pearson: tuple[tuple[float, ...], ...]
+    spearman: tuple[tuple[float, ...], ...]
+    n_obs: int
+
+
+@dataclass(slots=True)
+class PermutationReport:
+    """Permutation test on the causal ATE.
+
+    Shuffle treatment labels n_permutations times, recompute IPW ATE
+    under each shuffle. Observed ATE + null distribution + two-sided
+    p-value let us validate the causal estimate without parametric
+    assumptions.
+    """
+
+    observed_ate: float
+    null_samples: tuple[float, ...]
+    p_two_sided: float
+    n_permutations: int
+
+
+@dataclass(slots=True)
 class DashboardSnapshot:
     """The current state of every registered consumer."""
 
@@ -309,6 +377,14 @@ class DashboardSnapshot:
     var_irf: VARImpulseResponse | None = None
     garch: GarchResult | None = None
     qq_points: tuple[tuple[float, float], ...] = ()
+    anova: ANOVAReport | None = None
+    autocorrelation: AutocorrelationReport | None = None
+    roc: ROCData | None = None
+    correlations: CorrelationMatrix | None = None
+    permutation: PermutationReport | None = None
+    # Fitted residuals for the residual-vs-fitted diagnostic. Each
+    # entry is (fitted_value, residual). Empty until regression runs.
+    residual_vs_fitted: tuple[tuple[float, float], ...] = ()
     # Q-Q lives on the regression chart (theoretical-vs-sample
     # quantiles of OLS residuals); the field is empty until the
     # regression consumer has run.
@@ -356,6 +432,10 @@ class DashboardPipeline:
             "causal": 12.0,
             "var_irf": 12.0,
             "garch": 10.0,
+            "anova": 8.0,
+            "autocorrelation": 6.0,
+            "correlations": 6.0,
+            "permutation": 15.0,
         }
     )
 
@@ -530,9 +610,34 @@ class DashboardPipeline:
             self._snapshot.garch = self._compute_garch()
             self._last_run["garch"] = now
 
-        # Q-Q points on regression residuals — cheap, always run with regression.
+        # Q-Q + residual-vs-fitted on regression residuals — cheap.
         if self._snapshot.regression is not None:
             self._snapshot.qq_points = self._compute_qq_points()
+            self._snapshot.residual_vs_fitted = self._compute_residual_vs_fitted()
+
+        if self._due(now, "anova") and len(self._positions) >= 30:
+            self._snapshot.anova = self._compute_anova()
+            self._last_run["anova"] = now
+
+        if self._due(now, "autocorrelation") and len(self._trajectory_lengths) >= 40:
+            self._snapshot.autocorrelation = self._compute_autocorrelation()
+            self._last_run["autocorrelation"] = now
+
+        if self._due(now, "correlations") and len(self._trajectory_lengths) >= 40:
+            self._snapshot.correlations = self._compute_correlations()
+            self._last_run["correlations"] = now
+
+        if (
+            self._due(now, "permutation")
+            and self._snapshot.causal is not None
+            and len(self._purchases) >= 40
+        ):
+            self._snapshot.permutation = self._compute_permutation_test()
+            self._last_run["permutation"] = now
+
+        # Extend LogitResult with ROC the cheap way: compute once when logit ran.
+        if self._snapshot.logit is not None and self._snapshot.roc is None:
+            self._snapshot.roc = self._compute_roc()
 
         if self._due(now, "topics") and len(self._utterances) >= 40:
             # Stress-test fix A/B: explicit gc after BERTopic; in early
@@ -1204,6 +1309,209 @@ class DashboardPipeline:
         quantiles = np.array([(i + 0.5) / n for i in range(n)], dtype=np.float64)
         theoretical = norm.ppf(quantiles)
         return tuple((float(t), float(s)) for t, s in zip(theoretical, standardised, strict=True))
+
+    def _compute_anova(self) -> ANOVAReport | None:
+        """One-way ANOVA: trajectory norm grouped by HDBSCAN cluster.
+
+        Requires at least 2 non-noise clusters with ≥ 2 members each.
+        """
+        if not self._snapshot.cluster_scatter:
+            return None
+        from penumbra_analytics import inferential
+
+        scatter = self._snapshot.cluster_scatter
+        # Build a per-agent (PC1 + PC2 norm) outcome and group by label.
+        groups: dict[str, list[float]] = {}
+        for x, y, label in scatter.points:
+            if label < 0:
+                continue
+            key = f"c{label}"
+            groups.setdefault(key, []).append(float(np.hypot(x, y)))
+        valid = {k: np.asarray(v, dtype=np.float64) for k, v in groups.items() if len(v) >= 2}
+        if len(valid) < 2:
+            return None
+        try:
+            res = inferential.anova_oneway(valid)
+        except (ValueError, RuntimeError):
+            logger.debug("ANOVA failed", exc_info=True)
+            return None
+        return ANOVAReport(
+            f_statistic=res.f_statistic,
+            p_value=res.p_value,
+            df_between=res.df_between,
+            df_within=res.df_within,
+            grouping="HDBSCAN cluster on PC1/PC2",
+            group_names=res.group_names,
+            group_means=res.group_means,
+            group_se=res.group_se,
+            group_n=res.group_n,
+            grand_mean=res.grand_mean,
+        )
+
+    def _compute_autocorrelation(self) -> AutocorrelationReport | None:
+        """ACF + PACF up to 20 lags on the trajectory series."""
+        from statsmodels.tsa.stattools import acf, pacf
+
+        values = np.asarray(list(self._trajectory_lengths)[-300:], dtype=np.float64)
+        n = values.size
+        if n < 40:
+            return None
+        try:
+            max_lag = min(20, n // 3)
+            a = acf(values, nlags=max_lag, fft=True)
+            p = pacf(values, nlags=max_lag, method="ywm")
+        except Exception:
+            logger.debug("ACF/PACF failed", exc_info=True)
+            return None
+        band = 1.96 / np.sqrt(n)
+        return AutocorrelationReport(
+            n_obs=int(n),
+            max_lag=int(max_lag),
+            acf=tuple(float(v) for v in a),
+            pacf=tuple(float(v) for v in p),
+            conf_band=float(band),
+        )
+
+    def _compute_roc(self) -> ROCData | None:
+        """ROC curve + AUC for the live logit classifier."""
+        if not self._snapshot.logit:
+            return None
+        from sklearn.metrics import roc_auc_score, roc_curve
+
+        logit = self._snapshot.logit
+        # Re-derive the fit's predictions from the stored points and coefs.
+        xs = np.array([x for x, _ in logit.points], dtype=np.float64)
+        ys = np.array([y for _, y in logit.points], dtype=np.int64)
+        if ys.sum() < 3 or ys.sum() > len(ys) - 3:
+            return None
+        proba = 1.0 / (1.0 + np.exp(-(logit.intercept + logit.slope * xs)))
+        try:
+            fpr, tpr, thresholds = roc_curve(ys, proba)
+            auc = float(roc_auc_score(ys, proba))
+        except (ValueError, RuntimeError):
+            logger.debug("ROC failed", exc_info=True)
+            return None
+        # Down-sample to <=80 points so the wire stays compact.
+        if len(fpr) > 80:
+            idx = np.linspace(0, len(fpr) - 1, 80).astype(np.int64)
+            fpr = fpr[idx]
+            tpr = tpr[idx]
+            thresholds = thresholds[idx]
+        return ROCData(
+            fpr=tuple(float(v) for v in fpr),
+            tpr=tuple(float(v) for v in tpr),
+            thresholds=tuple(float(v) for v in thresholds),
+            auc=auc,
+        )
+
+    def _compute_correlations(self) -> CorrelationMatrix | None:
+        """Pearson + Spearman matrix across derived metrics."""
+        from scipy.stats import pearsonr, spearmanr
+
+        traj = np.asarray(list(self._trajectory_lengths)[-200:], dtype=np.float64)
+        if traj.size < 30:
+            return None
+        diff = np.concatenate([[0.0], np.abs(np.diff(traj))])
+        squared = traj**2
+        positions_list = list(self._positions)[-200:]
+        if positions_list:
+            disp = np.array(
+                [float(len({int(p) for p in row.tolist()})) for row in positions_list],
+                dtype=np.float64,
+            )
+        else:
+            disp = np.zeros_like(traj)
+        # Align lengths.
+        n = min(traj.size, diff.size, squared.size, disp.size)
+        if n < 30:
+            return None
+        series = {
+            "traj": traj[-n:],
+            "vol": diff[-n:],
+            "traj²": squared[-n:],
+            "disp": disp[-n:],
+        }
+        names = tuple(series.keys())
+        k = len(names)
+        pear = [[1.0] * k for _ in range(k)]
+        spear = [[1.0] * k for _ in range(k)]
+        for i, ni in enumerate(names):
+            for j, nj in enumerate(names):
+                if i >= j:
+                    continue
+                try:
+                    # pearsonr returns a NamedTuple (statistic, pvalue);
+                    # spearmanr returns SignificanceResult-ish; pyright's
+                    # stub for spearmanr is over-loose, so coerce by index.
+                    p_res = pearsonr(series[ni], series[nj])
+                    s_res = spearmanr(series[ni], series[nj])
+                    p_r = float(p_res[0])  # type: ignore[index]
+                    s_r = float(s_res[0])  # type: ignore[index]
+                except Exception:
+                    p_r = s_r = 0.0
+                pear[i][j] = pear[j][i] = p_r
+                spear[i][j] = spear[j][i] = s_r
+        return CorrelationMatrix(
+            series_names=names,
+            pearson=tuple(tuple(row) for row in pear),
+            spearman=tuple(tuple(row) for row in spear),
+            n_obs=int(n),
+        )
+
+    def _compute_permutation_test(self) -> PermutationReport | None:
+        """Shuffle treatment labels n times, recompute IPW ATE under each.
+
+        Returns the observed ATE + null distribution + 2-sided p.
+        """
+        from penumbra_core.economy import PRODUCT_CATALOG
+
+        positions = list(self._positions)
+        purchases = list(self._purchases)
+        if len(positions) < 30 or not purchases:
+            return None
+        position_matrix = np.stack(positions[-60:])
+        n_agents = position_matrix.shape[1]
+        outcome = np.linalg.norm(position_matrix, axis=0)
+        luxury_ids = {p.id for p in PRODUCT_CATALOG if p.category == "luxury"}
+        treatment = np.zeros(n_agents, dtype=np.int64)
+        for p in purchases:
+            pid = int(getattr(p, "product_id", -1))
+            aid = int(getattr(p, "agent_id", -1))
+            if pid in luxury_ids and 0 <= aid < n_agents:
+                treatment[aid] = 1
+        n_t = int(treatment.sum())
+        n_c = int(n_agents - n_t)
+        if n_t < 3 or n_c < 3:
+            return None
+        # Observed: simple difference-in-means (faster + same null behaviour as IPW).
+        observed = float(outcome[treatment == 1].mean() - outcome[treatment == 0].mean())
+        n_perm = 250
+        rng = np.random.default_rng(seed=(int(self._snapshot.tick) * 17) & 0xFFFFFFFF)
+        null_samples = np.empty(n_perm, dtype=np.float64)
+        for k in range(n_perm):
+            perm = rng.permutation(treatment)
+            null_samples[k] = outcome[perm == 1].mean() - outcome[perm == 0].mean()
+        # Two-sided permutation p-value.
+        p_two = float(np.mean(np.abs(null_samples) >= abs(observed)))
+        return PermutationReport(
+            observed_ate=observed,
+            null_samples=tuple(float(v) for v in null_samples),
+            p_two_sided=p_two,
+            n_permutations=n_perm,
+        )
+
+    def _compute_residual_vs_fitted(self) -> tuple[tuple[float, float], ...]:
+        """Residual-vs-fitted scatter points for the OLS regression."""
+        reg = self._snapshot.regression
+        if reg is None or len(reg.points) < 5:
+            return ()
+        return tuple(
+            (
+                float(reg.intercept + reg.slope * x),
+                float(y - (reg.intercept + reg.slope * x)),
+            )
+            for x, y in reg.points
+        )
 
     # ── internals ───────────────────────────────────────────────────
 

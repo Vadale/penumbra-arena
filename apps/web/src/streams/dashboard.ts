@@ -142,6 +142,48 @@ export interface GarchResult {
   conditional_volatility: number[];
 }
 
+export interface ANOVAReport {
+  f_statistic: number;
+  p_value: number;
+  df_between: number;
+  df_within: number;
+  grouping: string;
+  group_names: string[];
+  group_means: number[];
+  group_se: number[];
+  group_n: number[];
+  grand_mean: number;
+}
+
+export interface AutocorrelationReport {
+  n_obs: number;
+  max_lag: number;
+  acf: number[];
+  pacf: number[];
+  conf_band: number;
+}
+
+export interface ROCData {
+  fpr: number[];
+  tpr: number[];
+  thresholds: number[];
+  auc: number;
+}
+
+export interface CorrelationMatrix {
+  series_names: string[];
+  pearson: number[][];
+  spearman: number[][];
+  n_obs: number;
+}
+
+export interface PermutationReport {
+  observed_ate: number;
+  null_samples: number[];
+  p_two_sided: number;
+  n_permutations: number;
+}
+
 export interface DashboardSnapshot {
   tick: number;
   summary: DashboardSummary | null;
@@ -177,6 +219,12 @@ export interface DashboardSnapshot {
   var_irf: VARImpulseResponse | null;
   garch: GarchResult | null;
   qq_points: [number, number][]; // Q-Q plot points (theoretical, sample) for OLS residuals.
+  residual_vs_fitted: [number, number][];
+  anova: ANOVAReport | null;
+  autocorrelation: AutocorrelationReport | null;
+  roc: ROCData | null;
+  correlations: CorrelationMatrix | null;
+  permutation: PermutationReport | null;
 }
 
 const POLL_MS = 500;

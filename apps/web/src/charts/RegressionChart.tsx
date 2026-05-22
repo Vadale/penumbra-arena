@@ -13,13 +13,21 @@ interface Props {
   fit: RegressionFit;
   /** Q-Q plot points (theoretical, sample) for the same fit's residuals. */
   qqPoints?: [number, number][];
+  /** Residual-vs-fitted scatter — (fitted, residual) per sample. */
+  residualVsFitted?: [number, number][];
   width?: number;
   height?: number;
 }
 
 const M = { top: 12, right: 16, bottom: 30, left: 50 };
 
-export function RegressionChart({ fit, qqPoints, width = 560, height = 320 }: Props) {
+export function RegressionChart({
+  fit,
+  qqPoints,
+  residualVsFitted,
+  width = 560,
+  height = 320,
+}: Props) {
   const { points, slope, intercept, r_squared, n, sigma } = fit;
   if (points.length < 2) {
     return (
@@ -161,6 +169,15 @@ export function RegressionChart({ fit, qqPoints, width = 560, height = 320 }: Pr
         </div>
       )}
 
+      {residualVsFitted && residualVsFitted.length >= 5 && (
+        <div className="mt-3">
+          <div className="mb-1 text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
+            residual vs fitted — heteroscedasticity / non-linearity check
+          </div>
+          <ResidualVsFitted points={residualVsFitted} />
+        </div>
+      )}
+
       <div className="mt-2 grid grid-cols-5 gap-2 text-[10px]">
         <Stat label="slope β" value={slope} digits={4} accent />
         <Stat label="intercept α" value={intercept} digits={2} />
@@ -169,6 +186,58 @@ export function RegressionChart({ fit, qqPoints, width = 560, height = 320 }: Pr
         <Stat label="n" value={n} digits={0} />
       </div>
     </div>
+  );
+}
+
+function ResidualVsFitted({ points }: { points: [number, number][] }) {
+  const w = 560;
+  const h = 150;
+  const inset = { top: 8, right: 8, bottom: 18, left: 36 };
+  const xs = points.map((p) => p[0]);
+  const ys = points.map((p) => p[1]);
+  const xMin = Math.min(...xs);
+  const xMax = Math.max(...xs);
+  const yAbs = Math.max(...ys.map((v) => Math.abs(v)), 1e-9);
+  const yMin = -yAbs * 1.15;
+  const yMax = yAbs * 1.15;
+  const sx = (v: number) =>
+    inset.left + ((v - xMin) / (xMax - xMin || 1)) * (w - inset.left - inset.right);
+  const sy = (v: number) =>
+    inset.top + (1 - (v - yMin) / (yMax - yMin || 1)) * (h - inset.top - inset.bottom);
+  return (
+    <svg width="100%" viewBox={`0 0 ${w} ${h}`} role="img" aria-label="residual vs fitted scatter">
+      <line
+        x1={sx(xMin)}
+        y1={sy(0)}
+        x2={sx(xMax)}
+        y2={sy(0)}
+        stroke="var(--color-penumbra-ember)"
+        strokeWidth={0.8}
+        strokeDasharray="3 3"
+      />
+      {points.map(([fv, rv]) => (
+        <circle
+          key={`rvf-${fv.toFixed(4)}-${rv.toFixed(4)}`}
+          cx={sx(fv)}
+          cy={sy(rv)}
+          r={1.8}
+          fill="var(--color-penumbra-cyan)"
+          opacity={0.75}
+        />
+      ))}
+      <text x={inset.left} y={h - 4} fontSize={9} fill="var(--color-penumbra-muted)">
+        fitted ŷ
+      </text>
+      <text
+        x={w - inset.right}
+        y={h - 4}
+        fontSize={9}
+        textAnchor="end"
+        fill="var(--color-penumbra-muted)"
+      >
+        ε = y − ŷ
+      </text>
+    </svg>
   );
 }
 
