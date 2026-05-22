@@ -29,6 +29,34 @@ export interface SigningStats {
   n_agents: number;
 }
 
+export interface RegressionFit {
+  slope: number;
+  intercept: number;
+  r_squared: number;
+  n: number;
+  sigma: number;
+  points: [number, number][];
+}
+
+export interface ClusterScatter {
+  points: [number, number, number][]; // (x, y, label)
+  n_clusters: number;
+  n_noise: number;
+}
+
+export interface MonteCarloFan {
+  percentiles: Record<string, number>;
+  var: number;
+  cvar: number;
+  n_samples: number;
+}
+
+export interface PCAResult {
+  eigenvalues: number[];
+  explained_variance_ratio: number[];
+  top2_loadings: [number, number][];
+}
+
 export interface DashboardSnapshot {
   tick: number;
   summary: DashboardSummary | null;
@@ -49,6 +77,10 @@ export interface DashboardSnapshot {
   n_topics: number | null;
   topic_sizes: Record<string, number>;
   topic_top_words: Record<string, string[]>;
+  regression: RegressionFit | null;
+  cluster_scatter: ClusterScatter | null;
+  monte_carlo: MonteCarloFan | null;
+  pca: PCAResult | null;
 }
 
 const POLL_MS = 500;

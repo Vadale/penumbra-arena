@@ -200,6 +200,17 @@ export function AnalyticsPanel() {
           history={histories.n_topics}
           onClick={() => open("topics")}
         />
+        <Cell
+          label="pca λ₁"
+          value={snap.pca?.eigenvalues[0] !== undefined ? fmt(snap.pca.eigenvalues[0]) : "—"}
+          caption={
+            snap.pca?.explained_variance_ratio
+              ? `cum ${fmt((snap.pca.explained_variance_ratio[0] ?? 0) * 100, 0)}%`
+              : "warming"
+          }
+          accent
+          onClick={() => open("pca")}
+        />
       </div>
 
       {summary && (
@@ -224,16 +235,24 @@ export function AnalyticsPanel() {
         open={openMetric !== null}
         onClose={() => setOpenMetric(null)}
         metric={openMetric}
-        values={openMetric ? histories[mapMetricToHistoryKey(openMetric)] : undefined}
+        values={
+          openMetric && openMetric !== "pca"
+            ? histories[mapMetricToHistoryKey(openMetric)]
+            : undefined
+        }
         topicSizes={openMetric === "topics" ? snap.topic_sizes : undefined}
         topicTopWords={openMetric === "topics" ? snap.topic_top_words : undefined}
+        regression={snap.regression}
+        clusterScatter={snap.cluster_scatter}
+        monteCarlo={snap.monte_carlo}
+        pca={snap.pca}
       />
     </div>
   );
 }
 
 function mapMetricToHistoryKey(
-  m: MetricKind,
+  m: Exclude<MetricKind, "pca">,
 ): keyof ReturnType<typeof useDashboardLive>["history"] {
   switch (m) {
     case "trajectory_mean":

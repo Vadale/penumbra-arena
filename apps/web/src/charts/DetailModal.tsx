@@ -1,15 +1,29 @@
 /**
  * Modal that pops up when the user clicks an AnalyticsPanel cell.
  *
- * Renders the full-size chart appropriate for the metric: a generic
- * time-series line chart for scalar metrics, a bar chart for topics,
- * or a panel that says "no detail view yet" for everything else.
+ * Per-metric chart routing:
+ *   trajectory_mean → RegressionChart (OLS + R² + 95% band)
+ *   hdbscan_clusters → ClusterScatter (PC1/PC2 with HDBSCAN labels)
+ *   var95            → MonteCarloFan (bootstrap percentile band + VaR/CVaR)
+ *   pca              → PCAScree (eigenvalues + cumulative variance)
+ *   topics           → TopicsBar
+ *   everything else  → LineChart (generic time-series)
  *
  * Dismiss via Escape, backdrop click, or the explicit close button.
  */
 
 import { useEffect } from "react";
+import type {
+  ClusterScatter as ClusterScatterData,
+  MonteCarloFan as MCFanData,
+  PCAResult,
+  RegressionFit,
+} from "../streams/dashboard";
+import { ClusterScatter } from "./ClusterScatter";
 import { LineChart } from "./LineChart";
+import { MonteCarloFan } from "./MonteCarloFan";
+import { PCAScree } from "./PCAScree";
+import { RegressionChart } from "./RegressionChart";
 import { TopicsBar } from "./TopicsBar";
 
 export type MetricKind =
@@ -24,7 +38,8 @@ export type MetricKind =
   | "bayesian_theta"
   | "dp_epsilon_spent"
   | "signing_verified"
-  | "topics";
+  | "topics"
+  | "pca";
 
 interface Props {
   open: boolean;
@@ -33,22 +48,26 @@ interface Props {
   values?: number[];
   topicSizes?: Record<string, number>;
   topicTopWords?: Record<string, string[]>;
+  regression?: RegressionFit | null;
+  clusterScatter?: ClusterScatterData | null;
+  monteCarlo?: MCFanData | null;
+  pca?: PCAResult | null;
 }
 
 const META: Record<MetricKind, { label: string; description: string; yUnit?: string }> = {
   trajectory_mean: {
-    label: "trajectory mean",
+    label: "trajectory mean — OLS regression on tick",
     description:
-      "average L₂ norm of agent positions across the rolling window. Steady values mean the swarm is occupying a stable region; rising values mean it's spreading or migrating.",
+      "OLS fit y_t = α + β·t over the most recent window of trajectory L₂ norms. β = slope (per-tick drift), R² = fraction of variance explained, σ = residual std error, shaded band = ±1.96σ ≈ 95% prediction interval. The interesting reading isn't the absolute slope — it's whether the residuals stay small (high R²) or scatter widely (low R²).",
   },
   trajectory_std: {
     label: "trajectory std",
     description: "standard deviation of the same trajectory series; a measure of swarm dispersion.",
   },
   hdbscan_clusters: {
-    label: "HDBSCAN clusters",
+    label: "HDBSCAN clusters on PC1/PC2",
     description:
-      "density-based clustering on recent agent positions. Counts how many distinct factions the algorithm believes exist right now.",
+      "Agents projected onto the first two principal components of their position history. HDBSCAN clusters that 2-D embedding without requiring a fixed number of factions. Noise points (label = -1) are agents whose movement pattern is too idiosyncratic to belong to any group.",
   },
   arima_next: {
     label: "ARIMA(1,0,0) one-step forecast",
@@ -60,9 +79,9 @@ const META: Record<MetricKind, { label: string; description: string; yUnit?: str
       "regularised optimal transport between successive encrypted-heatmap snapshots. Large = the density shifted between samples.",
   },
   var95: {
-    label: "VaR 95%",
+    label: "Bootstrap fan + VaR/CVaR(95%)",
     description:
-      "Value-at-Risk at the 95th percentile of the trajectory norm distribution. Empirical, no parametric assumption.",
+      "Stationary block bootstrap (n=400) of the trajectory norm mean. Inner band [25%, 75%], outer band [5%, 95%], median in cyan. VaR(.95) is the 95th-percentile loss boundary; CVaR(.95) is the expected loss CONDITIONAL on exceeding VaR — the average tail loss. Pedagogically: CVaR is the coherent risk measure, VaR is the historical legacy one.",
   },
   h0_total: {
     label: "H₀ total persistence",
@@ -94,9 +113,25 @@ const META: Record<MetricKind, { label: string; description: string; yUnit?: str
     description:
       "number of topics surfaced over the agent-utterance corpus. Sizes shown by bar; representative words listed next to each bar.",
   },
+  pca: {
+    label: "PCA — eigenvalues + cumulative variance",
+    description:
+      "Eigendecomposition of the position-history covariance. Bars = top eigenvalues λ₁..λ₈; line = cumulative explained-variance ratio; red dashed line = Kaiser criterion (λ = 1). The number of components above Kaiser is the standard heuristic for 'intrinsic dimensionality'; the 90% cumulative point is the variance-retention rule of thumb for downstream models.",
+  },
 };
 
-export function DetailModal({ open, onClose, metric, values, topicSizes, topicTopWords }: Props) {
+export function DetailModal({
+  open,
+  onClose,
+  metric,
+  values,
+  topicSizes,
+  topicTopWords,
+  regression,
+  clusterScatter,
+  monteCarlo,
+  pca,
+}: Props) {
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
@@ -110,6 +145,25 @@ export function DetailModal({ open, onClose, metric, values, topicSizes, topicTo
 
   if (!open || metric === null) return null;
   const meta = META[metric];
+
+  const body = (() => {
+    if (metric === "topics") {
+      return <TopicsBar topicSizes={topicSizes ?? {}} topWords={topicTopWords ?? {}} />;
+    }
+    if (metric === "trajectory_mean" && regression) {
+      return <RegressionChart fit={regression} />;
+    }
+    if (metric === "hdbscan_clusters" && clusterScatter) {
+      return <ClusterScatter data={clusterScatter} />;
+    }
+    if (metric === "var95" && monteCarlo) {
+      return <MonteCarloFan fan={monteCarlo} />;
+    }
+    if (metric === "pca" && pca) {
+      return <PCAScree pca={pca} />;
+    }
+    return <LineChart values={values ?? []} label={meta.label} yUnit={meta.yUnit} />;
+  })();
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6">
@@ -141,11 +195,7 @@ export function DetailModal({ open, onClose, metric, values, topicSizes, topicTo
           {meta.description}
         </p>
         <div className="border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] p-3">
-          {metric === "topics" ? (
-            <TopicsBar topicSizes={topicSizes ?? {}} topWords={topicTopWords ?? {}} />
-          ) : (
-            <LineChart values={values ?? []} label={meta.label} yUnit={meta.yUnit} />
-          )}
+          {body}
         </div>
       </div>
     </div>

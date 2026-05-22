@@ -208,11 +208,7 @@ class MinHeap<T> {
       const right = r < n ? this.data[r] : undefined;
       if (small === undefined) return;
       if (left !== undefined && left[0] < small[0]) smallest = l;
-      if (
-        right !== undefined &&
-        right[0] < (this.data[smallest] as [number, T])[0]
-      )
-        smallest = r;
+      if (right !== undefined && right[0] < (this.data[smallest] as [number, T])[0]) smallest = r;
       if (smallest === i) break;
       const a = this.data[i];
       const b = this.data[smallest];

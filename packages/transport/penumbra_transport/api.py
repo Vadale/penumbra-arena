@@ -409,6 +409,46 @@ def build_app(
             "n_topics": snap.n_topics,
             "topic_sizes": {str(k): v for k, v in snap.topic_sizes.items()},
             "topic_top_words": {str(k): list(v) for k, v in snap.topic_top_words.items()},
+            "regression": (
+                None
+                if snap.regression is None
+                else {
+                    "slope": snap.regression.slope,
+                    "intercept": snap.regression.intercept,
+                    "r_squared": snap.regression.r_squared,
+                    "n": snap.regression.n,
+                    "sigma": snap.regression.sigma,
+                    "points": [list(p) for p in snap.regression.points],
+                }
+            ),
+            "cluster_scatter": (
+                None
+                if snap.cluster_scatter is None
+                else {
+                    "points": [list(p) for p in snap.cluster_scatter.points],
+                    "n_clusters": snap.cluster_scatter.n_clusters,
+                    "n_noise": snap.cluster_scatter.n_noise,
+                }
+            ),
+            "monte_carlo": (
+                None
+                if snap.monte_carlo is None
+                else {
+                    "percentiles": {str(k): v for k, v in snap.monte_carlo.percentiles.items()},
+                    "var": snap.monte_carlo.var,
+                    "cvar": snap.monte_carlo.cvar,
+                    "n_samples": snap.monte_carlo.n_samples,
+                }
+            ),
+            "pca": (
+                None
+                if snap.pca is None
+                else {
+                    "eigenvalues": list(snap.pca.eigenvalues),
+                    "explained_variance_ratio": list(snap.pca.explained_variance_ratio),
+                    "top2_loadings": [list(p) for p in snap.pca.top2_loadings],
+                }
+            ),
         }
 
     @app.get("/encrypted-heatmap")
