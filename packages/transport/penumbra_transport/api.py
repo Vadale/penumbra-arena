@@ -64,6 +64,7 @@ class AppState:
     orchestrator: Orchestrator
     mappo_runtime: object | None = None  # MappoRuntime when MAPPO loaded
     live_trainer: object | None = None  # LiveTrainer when MAPPO loaded
+    second_mappo: object | None = None  # second checkpoint for A/B compare
 
 
 def build_app(
@@ -1263,6 +1264,283 @@ def build_app(
         result = await asyncio.to_thread(_run)
         _zk_cache.update(result)
         return dict(_zk_cache)
+
+    @app.get("/learning/gat-attention")
+    async def learning_gat_attention() -> dict[str, object]:
+        """Run a fresh GATv2 pathfinder over the live arena + return attention.
+
+        Builds the dense adjacency + per-node features from the current
+        arena, runs one forward pass through a randomly-initialised
+        GATv2 pathfinder, and returns the per-node value + the layer-1
+        attention matrix. Pedagogically: we use random weights because
+        we don't have a trained checkpoint shipped — the focus here is
+        WHAT graph attention is, not what the policy converged to.
+        """
+        sim_local: Simulation = app.state.penumbra.simulation
+        import torch
+        from penumbra_learning.gat_pathfinder import GATv2Pathfinder
+
+        arena = sim_local.arena
+        nodes = sorted(arena.graph.nodes())
+        n = len(nodes)
+        node_idx = {nid: i for i, nid in enumerate(nodes)}
+        goals = set(arena.goals)
+        x = torch.zeros((n, 2), dtype=torch.float32)
+        for i, nid in enumerate(nodes):
+            deg = arena.graph.degree(nid)
+            x[i, 0] = 1.0 if nid in goals else 0.0
+            x[i, 1] = float(deg) / 10.0
+        adj = torch.zeros((n, n), dtype=torch.bool)
+        edge_cost = torch.zeros((n, n), dtype=torch.float32)
+        for u, v in arena.graph.edges():
+            i, j = node_idx[u], node_idx[v]
+            adj[i, j] = True
+            adj[j, i] = True
+            c = float(arena.cost_of(int(u), int(v)))
+            edge_cost[i, j] = c
+            edge_cost[j, i] = c
+        for i in range(n):
+            adj[i, i] = True  # self-loops as per GATv2 convention
+        net = GATv2Pathfinder()
+        with torch.no_grad():
+            value, attn1, attn2 = net.attention_matrices(x, adj, edge_cost)
+        return {
+            "available": True,
+            "n_nodes": n,
+            "node_ids": [int(nid) for nid in nodes],
+            "goals": [int(g) for g in arena.goals],
+            "values": [float(v) for v in value.tolist()],
+            "attention_layer1": [list(row) for row in attn1.tolist()],
+            "attention_layer2": [list(row) for row in attn2.tolist()],
+        }
+
+    @app.get("/learning/saliency/{agent_id}")
+    async def learning_saliency(agent_id: int) -> dict[str, object]:
+        """Per-feature gradient of the chosen action's probability.
+
+        Pedagogically: which feature in the observation moved the policy
+        the most toward its chosen action? Computed via autograd on a
+        single forward pass; works only when MAPPO is loaded.
+        """
+        runtime = app.state.penumbra.mappo_runtime
+        sim_local: Simulation = app.state.penumbra.simulation
+        if runtime is None:
+            return {"available": False}
+        if agent_id < 0 or agent_id >= len(sim_local.agents):
+            raise HTTPException(status_code=404, detail=f"no agent {agent_id}")
+        import torch
+        from penumbra_learning.env import (
+            NEIGHBOURS_K,
+            OBS_PER_NEIGHBOUR,
+            PAD_VALUE,
+        )
+
+        agent = sim_local.agents[agent_id]
+        obs = agent.observe(sim_local.arena, tick=sim_local.tick_counter)
+        neighbours = sorted(obs.neighbour_costs.keys())
+        goals = set(obs.visible_goals)
+        feats: list[float] = []
+        for j in range(NEIGHBOURS_K):
+            if j < len(neighbours):
+                n_id = neighbours[j]
+                feats.extend(
+                    [
+                        float(obs.neighbour_costs[n_id]),
+                        1.0 if n_id in goals else 0.0,
+                        1.0 if n_id in goals else 0.0,
+                    ]
+                )
+            else:
+                feats.extend([PAD_VALUE, PAD_VALUE, PAD_VALUE])
+        del OBS_PER_NEIGHBOUR
+        device = runtime.agent_net.device  # type: ignore[attr-defined]
+        x = (
+            torch.tensor(feats, dtype=torch.float32, device=device)
+            .unsqueeze(0)
+            .requires_grad_(True)
+        )
+        actor = runtime.agent_net.actor  # type: ignore[attr-defined]
+        logits = actor.net(x) / float(runtime.temperature)  # type: ignore[attr-defined]
+        probs = torch.softmax(logits, dim=-1)
+        chosen = int(probs.argmax(dim=-1).item())
+        # ∂p[chosen] / ∂x — magnitude per feature.
+        scalar = probs[0, chosen]
+        grads = torch.autograd.grad(scalar, x)[0]
+        saliency = grads[0].abs().tolist()
+        feat_labels = []
+        for j in range(NEIGHBOURS_K):
+            for slot in ("cost", "is_goal", "is_goal_dup"):
+                feat_labels.append(f"neigh{j}.{slot}")
+        return {
+            "available": True,
+            "agent_id": int(agent_id),
+            "chosen_action": int(chosen),
+            "features": [float(v) for v in feats],
+            "feature_labels": feat_labels,
+            "saliency": [float(s) for s in saliency],
+        }
+
+    @app.post("/learning/multi-checkpoint/{name}")
+    async def learning_load_second_checkpoint(name: str) -> dict[str, object]:
+        """Load a SECOND MAPPO checkpoint from /checkpoints into a side slot.
+
+        The dashboard's A/B compare panel reads this side slot and the
+        primary runtime to compute KL divergence between the two policies
+        on a fresh batch of observations. `name` is a path relative to
+        the `checkpoints/` directory.
+        """
+        from pathlib import Path
+
+        runtime = app.state.penumbra.mappo_runtime
+        if runtime is None:
+            raise HTTPException(status_code=404, detail="no live MAPPO loaded")
+        path = Path("checkpoints") / name
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail=f"checkpoint {path} not found")
+        from penumbra_learning.mappo import MAPPO, MAPPOConfig
+
+        cfg = runtime.agent_net.config  # type: ignore[attr-defined]
+        second = MAPPO(
+            MAPPOConfig(obs_dim=cfg.obs_dim, n_actions=cfg.n_actions, n_agents=cfg.n_agents)
+        )
+        try:
+            second.load(str(path), actor_only=True)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"load failed: {exc}") from exc
+        app.state.penumbra.second_mappo = second
+        return {"loaded": str(path), "path": str(path)}
+
+    @app.get("/learning/ab-compare")
+    async def learning_ab_compare() -> dict[str, object]:
+        """Compare primary MAPPO vs the side-loaded second checkpoint.
+
+        For each live agent, sample its current observation, compute the
+        action distribution under BOTH policies, and report the KL
+        divergence and top-action agreement.
+        """
+        runtime = app.state.penumbra.mappo_runtime
+        second = getattr(app.state.penumbra, "second_mappo", None)
+        sim_local: Simulation = app.state.penumbra.simulation
+        if runtime is None or second is None:
+            return {
+                "available": False,
+                "reason": "load a second checkpoint via /learning/multi-checkpoint/{name}",
+            }
+        import torch
+        from penumbra_learning.env import NEIGHBOURS_K, PAD_VALUE
+
+        feats_all: list[list[float]] = []
+        for agent in sim_local.agents:
+            obs = agent.observe(sim_local.arena, tick=sim_local.tick_counter)
+            neighbours = sorted(obs.neighbour_costs.keys())
+            goals = set(obs.visible_goals)
+            f: list[float] = []
+            for j in range(NEIGHBOURS_K):
+                if j < len(neighbours):
+                    n_id = neighbours[j]
+                    f.extend(
+                        [
+                            float(obs.neighbour_costs[n_id]),
+                            1.0 if n_id in goals else 0.0,
+                            1.0 if n_id in goals else 0.0,
+                        ]
+                    )
+                else:
+                    f.extend([PAD_VALUE, PAD_VALUE, PAD_VALUE])
+            feats_all.append(f)
+        device = runtime.agent_net.device  # type: ignore[attr-defined]
+        x = torch.tensor(feats_all, dtype=torch.float32, device=device)
+        with torch.no_grad():
+            logits_a = runtime.agent_net.actor.net(x) / float(runtime.temperature)  # type: ignore[attr-defined]
+            logits_b = second.actor.net(x.to(second.device)) / float(runtime.temperature)  # type: ignore[attr-defined]
+            logits_b = logits_b.to(device)
+            probs_a = torch.softmax(logits_a, dim=-1)
+            probs_b = torch.softmax(logits_b, dim=-1)
+        eps = 1e-9
+        kl_per_agent = (probs_a * (probs_a.add(eps).log() - probs_b.add(eps).log())).sum(dim=-1)
+        agree = probs_a.argmax(dim=-1) == probs_b.argmax(dim=-1)
+        return {
+            "available": True,
+            "n_agents": len(sim_local.agents),
+            "agreement_rate": float(agree.float().mean().item()),
+            "mean_kl": float(kl_per_agent.mean().item()),
+            "max_kl": float(kl_per_agent.max().item()),
+            "per_agent_kl": [float(v) for v in kl_per_agent.tolist()],
+        }
+
+    @app.get("/crypto/ckks/compare")
+    async def crypto_ckks_compare() -> dict[str, object]:
+        """Encrypt a small vector with CKKS, decrypt, return both sides.
+
+        Pedagogically: the ciphertext is large + opaque (we show its
+        byte size + first few hex bytes); decryption recovers the
+        plaintext up to a small approximation error (CKKS is APPROXIMATE
+        homomorphic encryption — that's the point).
+        """
+        from penumbra_crypto.ckks import get_backend
+
+        backend = get_backend()
+        plaintext_arr = np.asarray([1.0, 2.5, 3.14, -1.2, 7.7, 0.5, -3.3, 9.0], dtype=np.float64)
+        plaintext = list(plaintext_arr.tolist())
+        ct = backend.encrypt(plaintext_arr)
+        decrypted = list(backend.decrypt(ct))[: len(plaintext)]
+        # Get a byte preview if the backend exposes it.
+        ct_bytes_preview: str | None = None
+        ct_size: int | None = None
+        try:
+            serialize = getattr(backend, "serialize", None)
+            if callable(serialize):
+                raw: bytes = serialize(ct)  # type: ignore[no-untyped-call]
+                ct_size = len(raw)
+                ct_bytes_preview = raw[:32].hex()
+        except Exception:
+            pass
+        return {
+            "available": True,
+            "backend": type(backend).__name__,
+            "plaintext": [float(v) for v in plaintext],
+            "decrypted": [float(v) for v in decrypted],
+            "absolute_error": [
+                float(abs(a - b)) for a, b in zip(plaintext, decrypted, strict=False)
+            ],
+            "ciphertext_size_bytes": ct_size,
+            "ciphertext_preview_hex": ct_bytes_preview,
+        }
+
+    @app.get("/crypto/kyber/demo")
+    async def crypto_kyber_demo() -> dict[str, object]:
+        """One full Kyber (ML-KEM-768) keygen + encaps + decaps round."""
+        from penumbra_crypto import bls
+        from penumbra_crypto.pq import (
+            kem_decapsulate,
+            kem_encapsulate,
+            kem_keygen,
+        )
+
+        del bls  # only imported to keep static analysers happy in slim envs
+        kp = kem_keygen()
+        result = kem_encapsulate(kp.public_key)
+        recovered = kem_decapsulate(kp.secret_key, result.ciphertext)
+        match = recovered == result.shared_secret
+        # Tamper one byte of the ciphertext.
+        tampered_ct = bytearray(result.ciphertext)
+        tampered_ct[0] ^= 0x01
+        recovered_tampered = kem_decapsulate(kp.secret_key, bytes(tampered_ct))
+        # Kyber uses implicit rejection — `recovered_tampered` will NOT
+        # equal the original shared secret, but it WILL be deterministic.
+        return {
+            "available": True,
+            "algorithm": "ML-KEM-768 (Kyber-3)",
+            "public_key_size": len(kp.public_key),
+            "secret_key_size": len(kp.secret_key),
+            "ciphertext_size": len(result.ciphertext),
+            "shared_secret_size": len(result.shared_secret),
+            "public_key_short": kp.public_key.hex()[:32],
+            "ciphertext_short": result.ciphertext.hex()[:32],
+            "shared_secret_short": result.shared_secret.hex()[:32],
+            "honest_match": bool(match),
+            "tampered_match": bool(recovered_tampered == result.shared_secret),
+        }
 
     @app.get("/chain/latest")
     async def chain_latest() -> dict[str, object]:

@@ -46,23 +46,28 @@ import { BayesianDensity } from "./BayesianDensity";
 import { BLSChart } from "./BLSChart";
 import { CandlestickChart } from "./CandlestickChart";
 import { CausalChart } from "./CausalChart";
+import { CKKSCompareChart } from "./CKKSCompareChart";
 import { ClusterScatter } from "./ClusterScatter";
 import { CorrelationHeatmap } from "./CorrelationHeatmap";
 import { DpCompareChart } from "./DpCompareChart";
 import { EconomyChart } from "./EconomyChart";
+import { GATAttentionChart } from "./GATAttentionChart";
 import { GarchChart } from "./GarchChart";
 import { GrangerMatrix } from "./GrangerMatrix";
 import { InflationChart } from "./InflationChart";
+import { KyberKEMChart } from "./KyberKEMChart";
 import { LineChart } from "./LineChart";
 import { LogitChart } from "./LogitChart";
 import { MempoolChart } from "./MempoolChart";
 import { MonteCarloFan } from "./MonteCarloFan";
+import { MultiCheckpointChart } from "./MultiCheckpointChart";
 import { PCAScree } from "./PCAScree";
 import { PermutationChart } from "./PermutationChart";
 import { PolicyInspector } from "./PolicyInspector";
 import { RegressionChart } from "./RegressionChart";
 import { RewardShapingChart } from "./RewardShapingChart";
 import { ROCChart } from "./ROCChart";
+import { SaliencyChart } from "./SaliencyChart";
 import { SlashingChart } from "./SlashingChart";
 import { SpectralChart } from "./SpectralChart";
 import { SurvivalChart } from "./SurvivalChart";
@@ -114,7 +119,12 @@ export type MetricKind =
   | "slashing"
   | "training_curves"
   | "value_map"
-  | "reward_shaping";
+  | "reward_shaping"
+  | "gat_attention"
+  | "saliency"
+  | "ckks_compare"
+  | "kyber_kem"
+  | "multi_checkpoint";
 
 interface Props {
   open: boolean;
@@ -349,6 +359,31 @@ const META: Record<MetricKind, { label: string; description: string; yUnit?: str
     description:
       "Sliders mutate the shared RewardWeights singleton used by the training env. Background PPO picks up new values on its NEXT iteration. Try crowding=-0.05 (penalise the swarm clumping) and watch the policy spread the agents out.",
   },
+  gat_attention: {
+    label: "GATv2 — graph attention weights",
+    description:
+      "GATv2 pathfinder over the live arena. Pick any source node; the bars show how much that node attends to each of its in-graph neighbours under the layer-1 softmax. Weights are RANDOM (no trained checkpoint shipped for the pathfinder) so the panel is teaching the architecture, not a learned policy. Toggle L1/L2 to see two-hop attention.",
+  },
+  saliency: {
+    label: "Saliency — which features drive the policy",
+    description:
+      "For the chosen agent, compute ∂p(chosen_action)/∂x_i via autograd through the actor. Bigger bars = features the policy is currently most sensitive to. Useful for sanity-checking what the network is using: if 'is_goal' bars dominate, the agent is goal-oriented; if 'cost' bars dominate, it's avoiding expensive moves.",
+  },
+  ckks_compare: {
+    label: "CKKS — encrypt → decrypt round-trip",
+    description:
+      "CKKS is APPROXIMATE homomorphic encryption. We encrypt a known plaintext, decrypt, and show plaintext vs decrypted side by side plus the absolute error per slot. The ciphertext preview is hex of the first 32 bytes — the full thing is kilobytes, opaque, and only the secret-key holder can decrypt it.",
+  },
+  kyber_kem: {
+    label: "Kyber (ML-KEM-768) — post-quantum KEM",
+    description:
+      "Generate fresh keypair, encapsulate a shared secret against the public key, decapsulate with the secret key, check they match. Then flip one byte of the ciphertext and observe IMPLICIT REJECTION — Kyber returns a deterministic-but-different shared secret rather than raising, so callers MUST authenticate the transcript before trusting the secret.",
+  },
+  multi_checkpoint: {
+    label: "Multi-checkpoint A/B compare",
+    description:
+      "Load a second MAPPO checkpoint into a side slot, then both policies are evaluated on the same live observations. KL divergence + top-action agreement quantify how different the two are. A common workflow: train two seeds, load both, see whether they agree on dominant actions despite different reward trajectories.",
+  },
 };
 
 export function DetailModal({
@@ -501,6 +536,21 @@ export function DetailModal({
     }
     if (metric === "reward_shaping") {
       return <RewardShapingChart />;
+    }
+    if (metric === "gat_attention") {
+      return <GATAttentionChart />;
+    }
+    if (metric === "saliency") {
+      return <SaliencyChart />;
+    }
+    if (metric === "ckks_compare") {
+      return <CKKSCompareChart />;
+    }
+    if (metric === "kyber_kem") {
+      return <KyberKEMChart />;
+    }
+    if (metric === "multi_checkpoint") {
+      return <MultiCheckpointChart />;
     }
     return <LineChart values={values ?? []} label={meta.label} yUnit={meta.yUnit} />;
   })();

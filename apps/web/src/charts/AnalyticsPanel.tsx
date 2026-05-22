@@ -477,6 +477,41 @@ export function AnalyticsPanel() {
           accent
           onClick={() => open("reward_shaping")}
         />
+        <Cell
+          label="GAT attn"
+          value="graph"
+          caption="GATv2 attention"
+          accent
+          onClick={() => open("gat_attention")}
+        />
+        <Cell
+          label="saliency"
+          value="∂p/∂x"
+          caption="feature gradient"
+          accent
+          onClick={() => open("saliency")}
+        />
+        <Cell
+          label="CKKS"
+          value="enc/dec"
+          caption="HE round-trip"
+          accent
+          onClick={() => open("ckks_compare")}
+        />
+        <Cell
+          label="Kyber"
+          value="PQ KEM"
+          caption="ML-KEM-768"
+          accent
+          onClick={() => open("kyber_kem")}
+        />
+        <Cell
+          label="A/B π"
+          value="multi-ckpt"
+          caption="KL + agreement"
+          accent
+          onClick={() => open("multi_checkpoint")}
+        />
       </div>
 
       {summary && (
@@ -533,6 +568,11 @@ export function AnalyticsPanel() {
             case "training_curves":
             case "value_map":
             case "reward_shaping":
+            case "gat_attention":
+            case "saliency":
+            case "ckks_compare":
+            case "kyber_kem":
+            case "multi_checkpoint":
               return undefined;
             default:
               return histories[mapMetricToHistoryKey(openMetric)];
@@ -600,6 +640,11 @@ function mapMetricToHistoryKey(
     | "training_curves"
     | "value_map"
     | "reward_shaping"
+    | "gat_attention"
+    | "saliency"
+    | "ckks_compare"
+    | "kyber_kem"
+    | "multi_checkpoint"
   >,
 ): keyof ReturnType<typeof useDashboardLive>["history"] {
   switch (m) {

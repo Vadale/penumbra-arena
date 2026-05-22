@@ -52,19 +52,21 @@ class GATv2Layer(nn.Module):
         self.cost_weight = nn.Parameter(torch.zeros(1))  # learnable scalar
 
     def forward(self, x: Tensor, adj: Tensor, edge_cost: Tensor) -> Tensor:
-        # Compute the per-edge "compatibility" e_ij.
-        wl = self.w_left(x)  # (n, out)
-        wr = self.w_right(x)  # (n, out)
-        # Broadcast: e[i, j, :] = wl[i] + wr[j]
-        e_per_edge = self.activation(wl.unsqueeze(1) + wr.unsqueeze(0))  # (n, n, out)
-        scores = self.attn(e_per_edge).squeeze(-1)  # (n, n)
-        scores = scores + self.cost_weight * edge_cost
+        out, _ = self.forward_with_attention(x, adj, edge_cost)
+        return out
 
-        # Mask out non-edges with -inf so softmax assigns them zero weight.
+    def forward_with_attention(
+        self, x: Tensor, adj: Tensor, edge_cost: Tensor
+    ) -> tuple[Tensor, Tensor]:
+        """Same as `forward` but also returns the (n, n) attention matrix."""
+        wl = self.w_left(x)
+        wr = self.w_right(x)
+        e_per_edge = self.activation(wl.unsqueeze(1) + wr.unsqueeze(0))
+        scores = self.attn(e_per_edge).squeeze(-1)
+        scores = scores + self.cost_weight * edge_cost
         scores = scores.masked_fill(~adj, float("-inf"))
-        attention = torch.softmax(scores, dim=-1)  # row-wise
-        # Aggregate: each node's new feature is Σ_j α_ij · W_right h_j.
-        return attention @ wr
+        attention = torch.softmax(scores, dim=-1)
+        return attention @ wr, attention
 
 
 class GATv2Pathfinder(nn.Module):
@@ -85,3 +87,18 @@ class GATv2Pathfinder(nn.Module):
         h = torch.relu(self.layer1(x, adj, edge_cost))
         h = torch.relu(self.layer2(h, adj, edge_cost))
         return self.readout(h).squeeze(-1)
+
+    def attention_matrices(
+        self, x: Tensor, adj: Tensor, edge_cost: Tensor
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        """Run the network and return (value, attention_layer1, attention_layer2).
+
+        Inspection path used by the dashboard. The attention matrix from
+        layer 1 shows which neighbours each node attends to in the first
+        hop; the layer-2 matrix shows the second-hop attention.
+        """
+        h1, attn1 = self.layer1.forward_with_attention(x, adj, edge_cost)
+        h1_relu = torch.relu(h1)
+        h2, attn2 = self.layer2.forward_with_attention(h1_relu, adj, edge_cost)
+        h2_relu = torch.relu(h2)
+        return self.readout(h2_relu).squeeze(-1), attn1, attn2
