@@ -17,6 +17,7 @@ import type {
   ArimaForecast as ArimaForecastData,
   BayesianPosterior as BayesianPosteriorData,
   ClusterScatter as ClusterScatterData,
+  EconomySnapshot as EconomySnapshotData,
   GrangerMatrix as GrangerMatrixData,
   LogitResult as LogitResultData,
   MonteCarloFan as MCFanData,
@@ -26,6 +27,7 @@ import type {
 import { ArimaChart } from "./ArimaChart";
 import { BayesianDensity } from "./BayesianDensity";
 import { ClusterScatter } from "./ClusterScatter";
+import { EconomyChart } from "./EconomyChart";
 import { GrangerMatrix } from "./GrangerMatrix";
 import { LineChart } from "./LineChart";
 import { LogitChart } from "./LogitChart";
@@ -49,7 +51,8 @@ export type MetricKind =
   | "topics"
   | "pca"
   | "logit"
-  | "granger";
+  | "granger"
+  | "economy";
 
 interface Props {
   open: boolean;
@@ -66,6 +69,7 @@ interface Props {
   logit?: LogitResultData | null;
   bayesian?: BayesianPosteriorData | null;
   granger?: GrangerMatrixData | null;
+  economy?: EconomySnapshotData | null;
 }
 
 const META: Record<MetricKind, { label: string; description: string; yUnit?: string }> = {
@@ -143,6 +147,11 @@ const META: Record<MetricKind, { label: string; description: string; yUnit?: str
     description:
       "Pairwise F-test p-values for the null 'row series does NOT Granger-cause column series' at the configured lag. Series: traj (trajectory norm), vol (|Δtraj|), disp (distinct nodes occupied), entropy (heatmap entropy). Low p (cyan) ⇒ past values of the row series help predict the column series beyond what the column's own lags would. Causality here is in the predictive sense, not the philosophical one.",
   },
+  economy: {
+    label: "City economy — purchases stream",
+    description:
+      "Every city stocks 10 of 30 catalogue products (food, hygiene, tools, luxury, medicine). When an agent arrives at a city it Bernoulli(p=.06)-rolls each item; a hit fires a Geometric(1/1.5) quantity purchase. The aggregates here feed regression/Granger/etc with a second semantically distinct stream, so the live charts stop being just a function of the trajectory norm.",
+  },
 };
 
 export function DetailModal({
@@ -160,6 +169,7 @@ export function DetailModal({
   logit,
   bayesian,
   granger,
+  economy,
 }: Props) {
   useEffect(() => {
     if (!open) return;
@@ -202,6 +212,9 @@ export function DetailModal({
     }
     if (metric === "granger" && granger) {
       return <GrangerMatrix data={granger} />;
+    }
+    if (metric === "economy" && economy) {
+      return <EconomyChart data={economy} />;
     }
     return <LineChart values={values ?? []} label={meta.label} yUnit={meta.yUnit} />;
   })();

@@ -89,6 +89,14 @@ export interface GrangerMatrix {
   n_obs: number;
 }
 
+export interface EconomySnapshot {
+  total_purchases: number;
+  total_revenue: number;
+  category_counts: Record<string, number>;
+  top_products: [string, number, number][]; // (name, units, revenue)
+  basket_histogram: [number, number][]; // (size, count)
+}
+
 export interface DashboardSnapshot {
   tick: number;
   summary: DashboardSummary | null;
@@ -117,6 +125,7 @@ export interface DashboardSnapshot {
   logit: LogitResult | null;
   bayesian_posterior: BayesianPosterior | null;
   granger: GrangerMatrix | null;
+  economy: EconomySnapshot | null;
 }
 
 const POLL_MS = 500;

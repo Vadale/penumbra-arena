@@ -150,6 +150,20 @@ class BayesianPosterior:
 
 
 @dataclass(slots=True)
+class EconomySnapshot:
+    """Rolling economy state: top categories, top products, basket sizes.
+
+    Concept taught: turning an event stream into rolling aggregates.
+    """
+
+    total_purchases: int
+    total_revenue: float
+    category_counts: dict[str, int]  # category → units sold (window)
+    top_products: tuple[tuple[str, int, float], ...]  # (name, units, revenue)
+    basket_histogram: tuple[tuple[int, int], ...]  # (size, count)
+
+
+@dataclass(slots=True)
 class GrangerMatrix:
     """Pairwise Granger-causality p-values between K derived series.
 
@@ -196,6 +210,7 @@ class DashboardSnapshot:
     logit: LogitResult | None = None
     bayesian_posterior: BayesianPosterior | None = None
     granger: GrangerMatrix | None = None
+    economy: EconomySnapshot | None = None
 
 
 @dataclass(slots=True)
@@ -233,6 +248,7 @@ class DashboardPipeline:
             "logit": 6.0,
             "bayesian_posterior": 10.0,
             "granger": 12.0,
+            "economy": 3.0,
         }
     )
 
@@ -240,6 +256,8 @@ class DashboardPipeline:
     _positions: deque[NDArray[np.float64]] = field(default_factory=lambda: deque(maxlen=64))
     _heatmaps: deque[NDArray[np.float64]] = field(default_factory=lambda: deque(maxlen=64))
     _utterances: deque[str] = field(default_factory=lambda: deque(maxlen=400))
+    _purchases: deque[object] = field(default_factory=lambda: deque(maxlen=2000))
+    _purchases_by_tick: deque[int] = field(default_factory=lambda: deque(maxlen=2000))
     _last_run: dict[str, float] = field(default_factory=dict)
     _snapshot: DashboardSnapshot = field(default_factory=lambda: DashboardSnapshot(tick=-1))
 
@@ -370,6 +388,10 @@ class DashboardPipeline:
             self._snapshot.granger = self._compute_granger()
             self._last_run["granger"] = now
 
+        if self._due(now, "economy") and len(self._purchases) > 0:
+            self._snapshot.economy = self._compute_economy()
+            self._last_run["economy"] = now
+
         if self._due(now, "topics") and len(self._utterances) >= 40:
             # Stress-test fix A/B: explicit gc after BERTopic; in early
             # measurements RSS climbed ~9 GB/h because BERTopic + UMAP +
@@ -391,6 +413,56 @@ class DashboardPipeline:
             self._last_run["topics"] = now
 
         return self._snapshot
+
+    def _compute_economy(self) -> EconomySnapshot | None:
+        """Roll the recent purchase window into category + top-product counts."""
+        if not self._purchases:
+            return None
+        # Window: most recent 800 events (covers a few minutes).
+        window = list(self._purchases)[-800:]
+        total_purchases = len(window)
+        total_revenue = float(sum(float(getattr(p, "price_paid", 0.0)) for p in window))
+        cats: dict[str, int] = {}
+        prod_units: dict[int, int] = {}
+        prod_revenue: dict[int, float] = {}
+        baskets: dict[int, int] = {}  # tick → quantity-bucket histogram via per-agent grouping
+        per_agent_basket: dict[tuple[int, int], int] = {}
+        for p in window:
+            cat = str(getattr(p, "category", "?"))
+            cats[cat] = cats.get(cat, 0) + int(getattr(p, "quantity", 1))
+            pid = int(getattr(p, "product_id", -1))
+            prod_units[pid] = prod_units.get(pid, 0) + int(getattr(p, "quantity", 1))
+            prod_revenue[pid] = prod_revenue.get(pid, 0.0) + float(getattr(p, "price_paid", 0.0))
+            key = (int(getattr(p, "agent_id", -1)), int(getattr(p, "tick", 0)))
+            per_agent_basket[key] = per_agent_basket.get(key, 0) + int(getattr(p, "quantity", 1))
+        for size in per_agent_basket.values():
+            bucket = min(size, 10)  # cap at 10+
+            baskets[bucket] = baskets.get(bucket, 0) + 1
+
+        from penumbra_core.economy import PRODUCT_CATALOG
+
+        top_products: list[tuple[str, int, float]] = []
+        for pid, units in sorted(prod_units.items(), key=lambda kv: -kv[1])[:8]:
+            if 0 <= pid < len(PRODUCT_CATALOG):
+                name = PRODUCT_CATALOG[pid].name
+                top_products.append((name, units, prod_revenue.get(pid, 0.0)))
+        return EconomySnapshot(
+            total_purchases=total_purchases,
+            total_revenue=total_revenue,
+            category_counts=cats,
+            top_products=tuple(top_products),
+            basket_histogram=tuple(sorted(baskets.items())),
+        )
+
+    def record_purchases(self, purchases: list[object]) -> None:
+        """Append a batch of Purchase events to the rolling buffer.
+
+        Typed as `list[object]` to avoid an analytics→core import
+        cycle; runtime uses the duck-typed attributes.
+        """
+        for p in purchases:
+            self._purchases.append(p)
+            self._purchases_by_tick.append(int(getattr(p, "tick", 0)))
 
     @property
     def snapshot(self) -> DashboardSnapshot:

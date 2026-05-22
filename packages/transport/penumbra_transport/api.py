@@ -493,6 +493,17 @@ def build_app(
                     "n_obs": snap.granger.n_obs,
                 }
             ),
+            "economy": (
+                None
+                if snap.economy is None
+                else {
+                    "total_purchases": snap.economy.total_purchases,
+                    "total_revenue": snap.economy.total_revenue,
+                    "category_counts": dict(snap.economy.category_counts),
+                    "top_products": [list(p) for p in snap.economy.top_products],
+                    "basket_histogram": [list(p) for p in snap.economy.basket_histogram],
+                }
+            ),
         }
 
     @app.get("/encrypted-heatmap")

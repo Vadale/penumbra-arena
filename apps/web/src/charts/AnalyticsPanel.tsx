@@ -235,6 +235,17 @@ export function AnalyticsPanel() {
           accent
           onClick={() => open("granger")}
         />
+        <Cell
+          label="buys"
+          value={snap.economy?.total_purchases.toLocaleString() ?? "—"}
+          caption={
+            snap.economy
+              ? `${snap.economy.total_revenue.toFixed(0)} rev · ${Object.keys(snap.economy.category_counts).length} cats`
+              : "warming"
+          }
+          accent
+          onClick={() => open("economy")}
+        />
       </div>
 
       {summary && (
@@ -260,7 +271,11 @@ export function AnalyticsPanel() {
         onClose={() => setOpenMetric(null)}
         metric={openMetric}
         values={
-          openMetric && openMetric !== "pca" && openMetric !== "logit" && openMetric !== "granger"
+          openMetric &&
+          openMetric !== "pca" &&
+          openMetric !== "logit" &&
+          openMetric !== "granger" &&
+          openMetric !== "economy"
             ? histories[mapMetricToHistoryKey(openMetric)]
             : undefined
         }
@@ -274,13 +289,14 @@ export function AnalyticsPanel() {
         logit={snap.logit}
         bayesian={snap.bayesian_posterior}
         granger={snap.granger}
+        economy={snap.economy}
       />
     </div>
   );
 }
 
 function mapMetricToHistoryKey(
-  m: Exclude<MetricKind, "pca" | "logit" | "granger">,
+  m: Exclude<MetricKind, "pca" | "logit" | "granger" | "economy">,
 ): keyof ReturnType<typeof useDashboardLive>["history"] {
   switch (m) {
     case "trajectory_mean":

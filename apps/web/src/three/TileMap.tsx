@@ -571,6 +571,19 @@ export function TileMap() {
       ctx.clearRect(0, 0, WIDTH, HEIGHT);
       ctx.drawImage(terrain, 0, 0);
 
+      // GOAL HALOES go DOWN here — under the roads — so the road
+      // visibly crosses the halo on its way to the city marker.
+      const goalSetUnder = new Set(topology?.goals ?? []);
+      for (const [nodeId, [col, row]] of layout.nodeCells.entries()) {
+        if (!goalSetUnder.has(nodeId)) continue;
+        const x = col * CELL + CELL / 2;
+        const y = row * CELL + CELL / 2;
+        ctx.fillStyle = GOAL_HALO;
+        ctx.beginPath();
+        ctx.arc(x, y, CELL * 2.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
       // Roads — A*-routed polylines, stroke based on traversal heat.
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
@@ -622,7 +635,10 @@ export function TileMap() {
       }
       ctx.globalAlpha = 1;
 
-      // Cities + goals.
+      // City MARKERS — drawn ON TOP of roads so you can see the road
+      // crossing the city on its way through. The marker is a compact
+      // outlined diamond + central glyph; the underlying road remains
+      // visible at the marker's edges.
       const goalSet = new Set(topology?.goals ?? []);
       ctx.textBaseline = "middle";
       ctx.textAlign = "center";
@@ -630,19 +646,17 @@ export function TileMap() {
         const x = col * CELL + CELL / 2;
         const y = row * CELL + CELL / 2;
         const isGoal = goalSet.has(nodeId);
-        if (isGoal) {
-          // Soft halo.
-          ctx.fillStyle = GOAL_HALO;
-          ctx.beginPath();
-          ctx.arc(x, y, CELL * 2.2, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        // Background tile.
+        // Tight backing disc just behind the glyph so the letter is
+        // legible on top of the road; small enough that the road
+        // segment ENTERING the marker is visible.
+        const radius = isGoal ? CELL * 0.78 : CELL * 0.55;
         ctx.fillStyle = isGoal ? GOAL_BG : CITY_BG;
-        ctx.fillRect(x - CELL * 0.7, y - CELL * 0.7, CELL * 1.4, CELL * 1.4);
-        ctx.strokeStyle = isGoal ? GOAL_FG : "#454854";
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x - CELL * 0.7, y - CELL * 0.7, CELL * 1.4, CELL * 1.4);
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = isGoal ? GOAL_FG : "#5a5d68";
+        ctx.lineWidth = isGoal ? 1.4 : 1;
+        ctx.stroke();
         // Glyph.
         ctx.font = FONT_CITY;
         ctx.fillStyle = isGoal ? GOAL_FG : CITY_FG;
