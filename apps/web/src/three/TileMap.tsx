@@ -1,37 +1,31 @@
 /**
- * Dwarf-Fortress-style tile-map of the Penumbra world.
+ * Dwarf-Fortress-style tile-map of the Penumbra world (v2).
  *
- * Concept: real territory, not a graph diagram. A 90×54 grid of
- * 12×12 pixel cells; each cell is a single character glyph at a
- * monospace baseline, drawn on a Canvas for throughput.
+ * v1 had two readability problems:
+ * 1. Roads filled entire tile cells with '#' glyphs, so 95 edges
+ *    crisscrossed and the map became a wall of road. Now roads are
+ *    THIN LINES between city pixel-centres; the underlying terrain
+ *    glyphs stay legible.
+ * 2. With 50 agents collapsed to 2 nodes, the stack offset (±3px)
+ *    overlapped everyone into a single colored blob. Now agents
+ *    orbit their city in expanding rings (8 per ring), so even all
+ *    50 at one node fan out around it.
+ *
+ * It also adds traversal HEAT:
+ * - Every edge has a `heat` value in [0, 1].
+ * - When an agent crosses an edge, we set heat[edge] = 1.0.
+ * - Each animation frame, heat decays by ~0.5% (≈3 s half-life).
+ * - Roads with high heat render bright + thick; idle roads fade.
+ * - So the map reads as a living network: you SEE which paths the
+ *   swarm is currently using vs which sit unused.
  *
  * Layers (back to front)
- * 1. Terrain — procedural biome map from two simplex-noise
- *    octaves (elevation + moisture). Each cell maps to one of:
- *      ~ water       (low elevation)
- *      ^ mountain    (high elevation)
- *      T forest      (mid elevation + high moisture)
- *      . grass       (mid elevation + low moisture)
- *      , scrub       (transition between grass and water/mountain)
- *
- * 2. Roads — the arena's graph edges drawn as Bresenham tile-paths
- *    between the cells where their endpoint cities sit. Roads
- *    overwrite terrain with a `#` glyph in a road-color.
- *
- * 3. Cities + goals — every arena node occupies one cell. Goals
- *    use a star glyph in cyan with a halo; ordinary outposts use
- *    a square glyph in muted gray.
- *
- * 4. Agents — every agent is a SINGLE animated `@` glyph (color
- *    derived from id). When the simulation tick changes an agent's
- *    node, the visual position interpolates along the road
- *    connecting the previous node to the current one, tile-by-tile,
- *    at 60 fps. So you see characters WALKING down the roads.
- *
- * Performance — terrain + roads + cities are static given the
- * topology, so they're rasterised ONCE to an offscreen canvas and
- * blitted to the main canvas each animation frame. Agents (50
- * glyphs) are drawn on top per frame. ~1ms/frame total on M4.
+ * - Terrain (procedural biomes from simplex-noise) — rasterised
+ *   once to an offscreen canvas, blitted per frame.
+ * - Roads — drawn per frame on the live canvas as thin lines,
+ *   stroke based on heat.
+ * - Cities + goals — drawn per frame on top of roads.
+ * - Agents — '@' glyphs at orbit positions, drawn per frame.
  */
 
 import { useEffect, useMemo, useRef } from "react";
@@ -45,12 +39,23 @@ const CELL = 12;
 const WIDTH = COLS * CELL;
 const HEIGHT = ROWS * CELL;
 const FONT = `${CELL - 1}px "JetBrains Mono", "Fira Code", monospace`;
-const FONT_BIG = `${CELL + 2}px "JetBrains Mono", "Fira Code", monospace`;
+const FONT_AGENT = `bold ${CELL + 6}px "JetBrains Mono", "Fira Code", monospace`;
+const FONT_CITY = `${CELL + 2}px "JetBrains Mono", "Fira Code", monospace`;
 
-// Animation: each agent walks at this many tiles per second.
 const AGENT_TILE_PER_SEC = 6;
 
-// Tile glyph + foreground colour by biome.
+// Edge-heat decay: heat *= HEAT_DECAY_PER_FRAME ⇒ half-life ≈ 3 s at 60 fps.
+const HEAT_DECAY_PER_FRAME = 0.996;
+const HEAT_MIN_VISIBLE = 0.04;
+
+// Agent ring spacing when many agents stack at one node.
+// Ring r holds AGENTS_PER_RING agents at radius
+//   RING_INNER + r * RING_STEP. Ring 0 has a non-zero radius so the
+// first 8 agents fan out instead of collapsing onto the city centre.
+const AGENT_RING_INNER = 11;
+const AGENT_RING_STEP = 9;
+const AGENTS_PER_RING = 8;
+
 type Biome = "water" | "mountain" | "forest" | "grass" | "scrub";
 
 const BIOME_GLYPH: Record<Biome, string> = {
@@ -77,32 +82,33 @@ const BIOME_BG: Record<Biome, string> = {
   scrub: "#1d1f15",
 };
 
-const ROAD_FG = "#7a6f3f";
-const ROAD_BG = "#251f10";
-const CITY_FG = "#cfd2d7";
-const CITY_BG = "#252731";
-const GOAL_FG = "#86dfe6"; // cyan
+const ROAD_IDLE = "#3b3621";
+const ROAD_HOT = "#d4a44a";
+const CITY_FG = "#e2e5ea";
+const CITY_BG = "#2d2f39";
+const GOAL_FG = "#86dfe6";
 const GOAL_BG = "#0e2e33";
-const GOAL_HALO = "#1a4a52";
+const GOAL_HALO = "rgba(134, 223, 230, 0.18)";
 
 interface TileLayout {
-  /** biome[row][col] */
   biome: Biome[][];
-  /** isRoad[row][col] */
-  isRoad: boolean[][];
   /** Map nodeId -> (col, row) tile centre. */
   nodeCells: Map<number, [number, number]>;
-  /** For each edge (u,v) the ordered list of (col,row) tiles forming its road. */
+  /** Topology edges with stable canonical key u<v. */
+  edges: { key: string; u: number; v: number }[];
+  /** For each edge key, the Bresenham path (col,row tiles). */
   edgePaths: Map<string, [number, number][]>;
 }
 
-/** Stable hue per agent id; golden-ratio spread. */
+function edgeKey(u: number, v: number): string {
+  return u < v ? `${u}-${v}` : `${v}-${u}`;
+}
+
 function agentColor(id: number): string {
   const hue = ((id * 0.6180339887) % 1) * 360;
   return `oklch(0.82 0.18 ${hue.toFixed(1)})`;
 }
 
-/** Simple deterministic LCG seeded from PENUMBRA_SEED so the map is stable. */
 function seededRng(seed: number): () => number {
   let s = seed >>> 0;
   return () => {
@@ -119,7 +125,6 @@ function classifyBiome(elevation: number, moisture: number): Biome {
   return "grass";
 }
 
-/** Bresenham line between two grid cells; returns ordered list of cells. */
 function bresenham(x0: number, y0: number, x1: number, y1: number): [number, number][] {
   const out: [number, number][] = [];
   let x = x0;
@@ -145,20 +150,12 @@ function bresenham(x0: number, y0: number, x1: number, y1: number): [number, num
   return out;
 }
 
-/**
- * Lay out nodes by a small force simulation, then snap to grid cells.
- * Spread the world a bit and keep nodes away from borders.
- */
 function layoutNodes(
   nodes: number[],
   edges: { u: number; v: number }[],
   rng: () => number,
 ): Map<number, [number, number]> {
-  // Tiny pure-JS force step to spread the nodes. We import d3 lazily
-  // to avoid pulling it into the bundle when not needed.
   const pos = new Map<number, { x: number; y: number }>();
-  // Initialise on a jittered circle so we don't collapse into the
-  // centre under attraction.
   const cx = COLS / 2;
   const cy = ROWS / 2;
   const radius = Math.min(COLS, ROWS) * 0.35;
@@ -169,10 +166,8 @@ function layoutNodes(
       y: cy + radius * Math.sin(angle) + (rng() - 0.5) * 2,
     });
   });
-  // Relax 250 iterations of attraction (linked) + repulsion (all pairs).
   const linkDist = Math.min(COLS, ROWS) * 0.14;
   for (let iter = 0; iter < 250; iter++) {
-    // Repulsion (O(N²) but N=50 so fine).
     const forces = new Map<number, { fx: number; fy: number }>();
     for (const id of nodes) forces.set(id, { fx: 0, fy: 0 });
     for (let i = 0; i < nodes.length; i++) {
@@ -201,7 +196,6 @@ function layoutNodes(
         }
       }
     }
-    // Attraction along edges.
     for (const e of edges) {
       const a = pos.get(e.u);
       const b = pos.get(e.v);
@@ -217,19 +211,16 @@ function layoutNodes(
       fb.fx -= (dx / dist) * k;
       fb.fy -= (dy / dist) * k;
     }
-    // Centring + integration.
     for (const id of nodes) {
       const p = pos.get(id);
       const f = forces.get(id);
       if (p === undefined || f === undefined) continue;
       p.x += f.fx + (cx - p.x) * 0.01;
       p.y += f.fy + (cy - p.y) * 0.01;
-      // Keep some margin from the world borders.
       p.x = Math.max(3, Math.min(COLS - 4, p.x));
       p.y = Math.max(3, Math.min(ROWS - 4, p.y));
     }
   }
-  // Snap to grid cells; resolve collisions by spiralling out.
   const snapped = new Map<number, [number, number]>();
   const taken = new Set<string>();
   for (const id of nodes) {
@@ -271,7 +262,6 @@ function buildTileLayout(
   const rng = seededRng(seed);
   const elevationNoise = createNoise2D(rng);
   const moistureNoise = createNoise2D(rng);
-  // Two-octave noise on each channel.
   const sampleElev = (c: number, r: number) => {
     const a = (elevationNoise(c * 0.07, r * 0.07) + 1) / 2;
     const b = (elevationNoise(c * 0.18, r * 0.18) + 1) / 2;
@@ -293,234 +283,302 @@ function buildTileLayout(
   }
 
   const nodeCells = layoutNodes(nodes, edges, rng);
+  const canonEdges = edges.map((e) => ({ key: edgeKey(e.u, e.v), u: e.u, v: e.v }));
 
-  // Build road paths between every edge endpoint.
-  const isRoad: boolean[][] = Array.from({ length: ROWS }, () =>
-    Array.from({ length: COLS }, () => false),
-  );
   const edgePaths = new Map<string, [number, number][]>();
-  for (const e of edges) {
+  for (const e of canonEdges) {
     const a = nodeCells.get(e.u);
     const b = nodeCells.get(e.v);
     if (a === undefined || b === undefined) continue;
-    const path = bresenham(a[0], a[1], b[0], b[1]);
-    edgePaths.set(`${e.u}-${e.v}`, path);
-    for (const [col, row] of path) {
-      if (col >= 0 && col < COLS && row >= 0 && row < ROWS) {
-        const rowArr = isRoad[row];
-        if (rowArr !== undefined) rowArr[col] = true;
-      }
-    }
+    edgePaths.set(e.key, bresenham(a[0], a[1], b[0], b[1]));
   }
 
-  return { biome, isRoad, nodeCells, edgePaths };
+  return { biome, nodeCells, edges: canonEdges, edgePaths };
 }
 
-/** Rasterise terrain + roads + cities to an offscreen canvas (once). */
-function paintStatic(
-  ctx: CanvasRenderingContext2D,
-  layout: TileLayout,
-  goalSet: Set<number>,
-): void {
+/** Paint the terrain layer (biomes only — no roads, no cities). */
+function paintTerrain(ctx: CanvasRenderingContext2D, layout: TileLayout): void {
   ctx.clearRect(0, 0, WIDTH, HEIGHT);
   ctx.textBaseline = "middle";
   ctx.textAlign = "center";
   ctx.font = FONT;
-
-  // Background terrain.
   for (let r = 0; r < ROWS; r++) {
     const biomeRow = layout.biome[r];
-    const roadRow = layout.isRoad[r];
-    if (biomeRow === undefined || roadRow === undefined) continue;
+    if (biomeRow === undefined) continue;
     for (let c = 0; c < COLS; c++) {
       const tileBiome = biomeRow[c];
       if (tileBiome === undefined) continue;
-      const isRoad = roadRow[c] === true;
-      const bg = isRoad ? ROAD_BG : BIOME_BG[tileBiome];
-      const fg = isRoad ? ROAD_FG : BIOME_FG[tileBiome];
-      const glyph = isRoad ? "#" : BIOME_GLYPH[tileBiome];
-      ctx.fillStyle = bg;
+      ctx.fillStyle = BIOME_BG[tileBiome];
       ctx.fillRect(c * CELL, r * CELL, CELL, CELL);
-      ctx.fillStyle = fg;
-      ctx.fillText(glyph, c * CELL + CELL / 2, r * CELL + CELL / 2 + 0.5);
+      ctx.fillStyle = BIOME_FG[tileBiome];
+      ctx.fillText(BIOME_GLYPH[tileBiome], c * CELL + CELL / 2, r * CELL + CELL / 2 + 0.5);
     }
-  }
-
-  // Cities + goals on top.
-  for (const [nodeId, [col, row]] of layout.nodeCells.entries()) {
-    const x = col * CELL + CELL / 2;
-    const y = row * CELL + CELL / 2;
-    const isGoal = goalSet.has(nodeId);
-    // background block
-    ctx.fillStyle = isGoal ? GOAL_BG : CITY_BG;
-    ctx.fillRect((col - 1) * CELL, (row - 1) * CELL, CELL * 3, CELL * 3);
-
-    if (isGoal) {
-      // soft halo via additional translucent square
-      ctx.fillStyle = GOAL_HALO;
-      ctx.globalAlpha = 0.45;
-      ctx.fillRect((col - 2) * CELL, (row - 2) * CELL, CELL * 5, CELL * 5);
-      ctx.globalAlpha = 1;
-    }
-
-    ctx.font = FONT_BIG;
-    ctx.fillStyle = isGoal ? GOAL_FG : CITY_FG;
-    ctx.fillText(isGoal ? "★" : "■", x, y + 1);
-
-    // label below
-    ctx.font = `${CELL - 4}px "JetBrains Mono", monospace`;
-    ctx.fillStyle = isGoal ? GOAL_FG : "#7e828a";
-    ctx.fillText(isGoal ? `goal ${nodeId}` : `#${nodeId}`, x, y + CELL * 2);
-    ctx.font = FONT;
   }
 }
 
+/** Linearly interpolate between two hex colors (no alpha). */
+function lerpColor(a: string, b: string, t: number): string {
+  const parse = (s: string) => [
+    parseInt(s.slice(1, 3), 16),
+    parseInt(s.slice(3, 5), 16),
+    parseInt(s.slice(5, 7), 16),
+  ];
+  const [ar, ag, ab] = parse(a) as [number, number, number];
+  const [br, bg, bb] = parse(b) as [number, number, number];
+  const r = Math.round(ar + (br - ar) * t);
+  const g = Math.round(ag + (bg - ag) * t);
+  const bl = Math.round(ab + (bb - ab) * t);
+  return `rgb(${r}, ${g}, ${bl})`;
+}
+
 interface AgentAnim {
-  /** path of (col, row) tiles to walk over (inclusive of start and end). */
-  path: [number, number][];
-  /** ms since the walk started. */
+  /** path of tile centres in canvas px. */
+  pathPx: [number, number][];
   startedAt: number;
-  /** total ms the walk should take. */
   durationMs: number;
 }
 
 export function TileMap() {
   const topology = useArenaTopology();
   const lastFrame = usePenumbraStore((s) => s.lastFrame);
-  const staticCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const terrainCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const liveCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const layoutRef = useRef<TileLayout | null>(null);
   const animsRef = useRef<Map<number, AgentAnim>>(new Map());
   const previousNodesRef = useRef<Map<number, number>>(new Map());
+  const edgeHeatRef = useRef<Map<string, number>>(new Map());
 
   const layout = useMemo(() => {
     if (topology === null) return null;
     return buildTileLayout(topology.nodes, topology.edges);
   }, [topology]);
 
-  // Paint the static layer when layout / goals change.
+  // Paint terrain once when layout arrives.
   useEffect(() => {
-    if (layout === null || topology === null || staticCanvasRef.current === null) return;
-    const canvas = staticCanvasRef.current;
+    if (layout === null || terrainCanvasRef.current === null) return;
+    const canvas = terrainCanvasRef.current;
     canvas.width = WIDTH;
     canvas.height = HEIGHT;
     const ctx = canvas.getContext("2d");
     if (ctx === null) return;
-    paintStatic(ctx, layout, new Set(topology.goals));
-    layoutRef.current = layout;
-  }, [layout, topology]);
+    paintTerrain(ctx, layout);
+  }, [layout]);
 
-  // Whenever the live frame changes, queue or update agent walk animations.
+  // Whenever the live frame changes, queue or update agent walk animations + bump edge heat.
   useEffect(() => {
     if (lastFrame === null || layout === null) return;
     const now = performance.now();
     for (const [idStr, nodeId] of Object.entries(lastFrame.agent_positions)) {
       const aid = Number(idStr);
       const prevNode = previousNodesRef.current.get(aid);
-      if (prevNode === nodeId) continue; // standing still
-      // First time we see this agent — just place it, no walk.
+      if (prevNode === nodeId) continue;
       if (prevNode === undefined) {
         previousNodesRef.current.set(aid, nodeId);
         continue;
       }
-      // Look up the road path between prev and current node.
-      const edgeKeyA = `${prevNode}-${nodeId}`;
-      const edgeKeyB = `${nodeId}-${prevNode}`;
-      const stored = layout.edgePaths.get(edgeKeyA) ?? layout.edgePaths.get(edgeKeyB);
-      let path: [number, number][] = [];
-      if (stored !== undefined) {
-        path = stored;
-        // If the stored path goes the other way, reverse it.
-        const first = path[0];
-        const expected = layout.nodeCells.get(prevNode);
-        if (first !== undefined && expected !== undefined) {
-          if (first[0] !== expected[0] || first[1] !== expected[1]) {
-            path = [...path].reverse();
-          }
-        }
-      } else {
-        // No direct edge (teleport / wrap) — fall back to straight Bresenham.
-        const a = layout.nodeCells.get(prevNode);
-        const b = layout.nodeCells.get(nodeId);
-        if (a !== undefined && b !== undefined) path = bresenham(a[0], a[1], b[0], b[1]);
-      }
-      if (path.length < 2) {
+      const key = edgeKey(prevNode, nodeId);
+      edgeHeatRef.current.set(key, 1.0);
+
+      const a = layout.nodeCells.get(prevNode);
+      const b = layout.nodeCells.get(nodeId);
+      if (a === undefined || b === undefined) {
         previousNodesRef.current.set(aid, nodeId);
         continue;
       }
-      const durationMs = (path.length / AGENT_TILE_PER_SEC) * 1000;
-      animsRef.current.set(aid, { path, startedAt: now, durationMs });
+      const stored = layout.edgePaths.get(key);
+      const tilePath =
+        stored !== undefined && stored.length >= 2 ? stored : bresenham(a[0], a[1], b[0], b[1]);
+      // Convert to canvas pixel centres, oriented prev → current.
+      let oriented: [number, number][];
+      const first = tilePath[0];
+      if (first !== undefined && first[0] === a[0] && first[1] === a[1]) {
+        oriented = tilePath;
+      } else {
+        oriented = [...tilePath].reverse();
+      }
+      const pathPx = oriented.map(
+        ([c, r]) => [c * CELL + CELL / 2, r * CELL + CELL / 2] as [number, number],
+      );
+      const durationMs = (pathPx.length / AGENT_TILE_PER_SEC) * 1000;
+      animsRef.current.set(aid, { pathPx, startedAt: now, durationMs });
       previousNodesRef.current.set(aid, nodeId);
     }
   }, [lastFrame, layout]);
 
-  // Animation frame loop: composite the static layer + draw agents on top.
+  // Animation frame loop: terrain → roads (heat) → cities → agents.
   useEffect(() => {
     if (layout === null) return;
     let raf = 0;
     const tick = () => {
       const live = liveCanvasRef.current;
-      const stat = staticCanvasRef.current;
-      if (live === null || stat === null) {
+      const terrain = terrainCanvasRef.current;
+      if (live === null || terrain === null) {
         raf = requestAnimationFrame(tick);
         return;
       }
-      live.width = WIDTH;
-      live.height = HEIGHT;
+      if (live.width !== WIDTH) live.width = WIDTH;
+      if (live.height !== HEIGHT) live.height = HEIGHT;
       const ctx = live.getContext("2d");
       if (ctx === null) {
         raf = requestAnimationFrame(tick);
         return;
       }
-      // Blit static layer.
       ctx.clearRect(0, 0, WIDTH, HEIGHT);
-      ctx.drawImage(stat, 0, 0);
-      // Draw each agent at its interpolated tile position.
-      const now = performance.now();
-      ctx.font = FONT_BIG;
+      ctx.drawImage(terrain, 0, 0);
+
+      // Roads — per-edge lines, stroke based on heat.
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      // First draw the IDLE network as a thin baseline so the topology
+      // is always at least faintly readable even with zero traffic.
+      ctx.strokeStyle = ROAD_IDLE;
+      ctx.lineWidth = 0.6;
+      ctx.globalAlpha = 0.55;
+      ctx.beginPath();
+      for (const e of layout.edges) {
+        const a = layout.nodeCells.get(e.u);
+        const b = layout.nodeCells.get(e.v);
+        if (a === undefined || b === undefined) continue;
+        ctx.moveTo(a[0] * CELL + CELL / 2, a[1] * CELL + CELL / 2);
+        ctx.lineTo(b[0] * CELL + CELL / 2, b[1] * CELL + CELL / 2);
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+
+      // Then overlay any HOT edges (recent traffic), thicker + brighter.
+      for (const e of layout.edges) {
+        const heat = edgeHeatRef.current.get(e.key) ?? 0;
+        if (heat < HEAT_MIN_VISIBLE) continue;
+        const a = layout.nodeCells.get(e.u);
+        const b = layout.nodeCells.get(e.v);
+        if (a === undefined || b === undefined) continue;
+        const color = lerpColor(ROAD_IDLE, ROAD_HOT, heat);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 0.8 + heat * 2.4;
+        ctx.globalAlpha = 0.35 + heat * 0.65;
+        ctx.beginPath();
+        ctx.moveTo(a[0] * CELL + CELL / 2, a[1] * CELL + CELL / 2);
+        ctx.lineTo(b[0] * CELL + CELL / 2, b[1] * CELL + CELL / 2);
+        ctx.stroke();
+        // Decay.
+        const next = heat * HEAT_DECAY_PER_FRAME;
+        if (next < HEAT_MIN_VISIBLE) edgeHeatRef.current.delete(e.key);
+        else edgeHeatRef.current.set(e.key, next);
+      }
+      ctx.globalAlpha = 1;
+
+      // Cities + goals.
+      const goalSet = new Set(topology?.goals ?? []);
       ctx.textBaseline = "middle";
       ctx.textAlign = "center";
-      const agentPositions = lastFrame?.agent_positions ?? {};
-      // Group agents by tile to handle stacking via small offsets.
-      const tileCount = new Map<string, number>();
-      for (const [idStr, nodeId] of Object.entries(agentPositions)) {
-        const aid = Number(idStr);
-        const anim = animsRef.current.get(aid);
-        let col: number;
-        let row: number;
-        if (anim !== undefined) {
-          const t = Math.min(1, (now - anim.startedAt) / anim.durationMs);
-          const idx = Math.min(anim.path.length - 1, Math.floor(t * (anim.path.length - 1)));
-          const cell = anim.path[idx];
-          if (cell !== undefined) {
-            [col, row] = cell;
-          } else {
-            const here = layout.nodeCells.get(nodeId);
-            if (here === undefined) continue;
-            [col, row] = here;
-          }
-          if (t >= 1) animsRef.current.delete(aid);
-        } else {
-          const here = layout.nodeCells.get(nodeId);
-          if (here === undefined) continue;
-          [col, row] = here;
+      for (const [nodeId, [col, row]] of layout.nodeCells.entries()) {
+        const x = col * CELL + CELL / 2;
+        const y = row * CELL + CELL / 2;
+        const isGoal = goalSet.has(nodeId);
+        if (isGoal) {
+          // Soft halo.
+          ctx.fillStyle = GOAL_HALO;
+          ctx.beginPath();
+          ctx.arc(x, y, CELL * 2.2, 0, Math.PI * 2);
+          ctx.fill();
         }
-        const key = `${col},${row}`;
-        const stackIdx = tileCount.get(key) ?? 0;
-        tileCount.set(key, stackIdx + 1);
-        // Small offset within the cell when stacking.
-        const offX = stackIdx === 0 ? 0 : stackIdx % 2 === 0 ? -3 : 3;
-        const offY = stackIdx === 0 ? 0 : stackIdx < 3 ? 0 : -3;
-        const x = col * CELL + CELL / 2 + offX;
-        const y = row * CELL + CELL / 2 + offY + 0.5;
-        ctx.fillStyle = agentColor(aid);
-        ctx.fillText("@", x, y);
+        // Background tile.
+        ctx.fillStyle = isGoal ? GOAL_BG : CITY_BG;
+        ctx.fillRect(x - CELL * 0.7, y - CELL * 0.7, CELL * 1.4, CELL * 1.4);
+        ctx.strokeStyle = isGoal ? GOAL_FG : "#454854";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x - CELL * 0.7, y - CELL * 0.7, CELL * 1.4, CELL * 1.4);
+        // Glyph.
+        ctx.font = FONT_CITY;
+        ctx.fillStyle = isGoal ? GOAL_FG : CITY_FG;
+        ctx.fillText(isGoal ? "★" : "■", x, y + 0.5);
+        // Label.
+        ctx.font = `${CELL - 4}px "JetBrains Mono", monospace`;
+        ctx.fillStyle = isGoal ? GOAL_FG : "#7a7d87";
+        ctx.fillText(isGoal ? `goal ${nodeId}` : `#${nodeId}`, x, y + CELL * 1.4);
+      }
+
+      // Agents — orbit-cluster around their current city.
+      const now = performance.now();
+      ctx.font = FONT_AGENT;
+      ctx.textBaseline = "middle";
+      ctx.textAlign = "center";
+      // First group agents by their CURRENT node (the position from the
+      // last simulation frame). Then for each group, lay them out in
+      // expanding rings of 8 so a 50-agent collapse fans out instead of
+      // stacking into a single blob.
+      const byNode = new Map<number, number[]>();
+      const agentPositions = lastFrame?.agent_positions ?? {};
+      for (const [idStr, nodeId] of Object.entries(agentPositions)) {
+        const arr = byNode.get(nodeId) ?? [];
+        arr.push(Number(idStr));
+        byNode.set(nodeId, arr);
+      }
+      // For each agent, decide its render coords.
+      for (const [nodeId, agentIds] of byNode.entries()) {
+        const cell = layout.nodeCells.get(nodeId);
+        if (cell === undefined) continue;
+        const cxCity = cell[0] * CELL + CELL / 2;
+        const cyCity = cell[1] * CELL + CELL / 2;
+        const sorted = [...agentIds].sort((a, b) => a - b);
+        sorted.forEach((aid, idx) => {
+          // Compute base orbit position. If the agent has an active
+          // walk animation we override with that interpolated position.
+          let x = cxCity;
+          let y = cyCity;
+          const anim = animsRef.current.get(aid);
+          if (anim !== undefined) {
+            const t = (now - anim.startedAt) / anim.durationMs;
+            if (t >= 1) animsRef.current.delete(aid);
+            else {
+              const u = Math.max(0, Math.min(1, t));
+              const fi = u * (anim.pathPx.length - 1);
+              const i0 = Math.floor(fi);
+              const i1 = Math.min(anim.pathPx.length - 1, i0 + 1);
+              const frac = fi - i0;
+              const p0 = anim.pathPx[i0];
+              const p1 = anim.pathPx[i1];
+              if (p0 !== undefined && p1 !== undefined) {
+                x = p0[0] + (p1[0] - p0[0]) * frac;
+                y = p0[1] + (p1[1] - p0[1]) * frac;
+              }
+            }
+          } else if (agentIds.length === 1) {
+            x = cxCity;
+            y = cyCity;
+          } else {
+            // Orbit in expanding rings of AGENTS_PER_RING.
+            const ring = Math.floor(idx / AGENTS_PER_RING);
+            const posInRing = idx % AGENTS_PER_RING;
+            const ringRadius = AGENT_RING_INNER + ring * AGENT_RING_STEP;
+            // Stagger the angular offset slightly per ring so adjacent
+            // rings don't visually align.
+            const angle = (posInRing / AGENTS_PER_RING) * Math.PI * 2 - Math.PI / 2 + ring * 0.42;
+            x = cxCity + ringRadius * Math.cos(angle);
+            y = cyCity + ringRadius * Math.sin(angle);
+          }
+          // Backing dot to lift the @ off the terrain (stronger now).
+          ctx.fillStyle = "rgba(10, 12, 16, 0.85)";
+          ctx.beginPath();
+          ctx.arc(x, y, CELL * 0.7, 0, Math.PI * 2);
+          ctx.fill();
+          // Faint colored ring for outline.
+          ctx.strokeStyle = agentColor(aid);
+          ctx.lineWidth = 1.2;
+          ctx.globalAlpha = 0.6;
+          ctx.beginPath();
+          ctx.arc(x, y, CELL * 0.7, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+          // The @ glyph.
+          ctx.fillStyle = agentColor(aid);
+          ctx.fillText("@", x, y + 0.5);
+        });
       }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [layout, lastFrame]);
+  }, [layout, lastFrame, topology]);
 
   if (topology === null || layout === null) {
     return (
@@ -533,12 +591,9 @@ export function TileMap() {
   return (
     <div className="relative h-full w-full">
       <canvas
-        ref={staticCanvasRef}
+        ref={terrainCanvasRef}
         className="pointer-events-none absolute inset-0 h-full w-full"
-        style={{
-          imageRendering: "pixelated",
-          objectFit: "contain",
-        }}
+        style={{ imageRendering: "pixelated", objectFit: "contain" }}
         aria-hidden
       />
       <canvas
