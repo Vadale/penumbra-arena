@@ -36,7 +36,7 @@ def mappo_policy_factory(
     checkpoint_path: str | Path,
     *,
     n_agents: int,
-    deterministic: bool = True,
+    deterministic: bool = False,
 ) -> callable:  # type: ignore[valid-type]
     """Return a `policy_factory(agent_id) -> Policy` backed by a MAPPO actor.
 
@@ -114,7 +114,8 @@ def mappo_batch_policy(
     checkpoint_path: str | Path,
     *,
     n_agents: int,
-    deterministic: bool = True,
+    deterministic: bool = False,
+    temperature: float = 3.5,
 ) -> callable | None:  # type: ignore[valid-type]
     """Return a `BatchPolicy` backed by ONE batched MAPPO forward pass per tick.
 
@@ -127,6 +128,13 @@ def mappo_batch_policy(
     total) — the simulation falls from the 10 Hz target to ~4 Hz. The
     batched path builds a (50, obs_dim) stack and runs ONE forward
     pass (~5 ms total, ~50× faster).
+
+    `deterministic` defaults to False so the actor SAMPLES from its
+    action distribution. With shared MAPPO params + similar
+    observations, deterministic=True returned identical argmax
+    actions for many agents → the swarm collapsed to a single node.
+    Sampling restores the per-agent stochasticity the policy learned
+    during training; the swarm now spreads across the graph.
 
     Returns None if the checkpoint can't be loaded; the caller falls
     through to per-agent policies (random walk or whatever).
@@ -159,7 +167,7 @@ def mappo_batch_policy(
         # Stack observations into a (B, obs_dim) batch.
         batch = np.stack([_build_feature_vector(o) for o in obs_list], axis=0)
         # Single forward pass over the whole batch.
-        action_indices = agent_net.act(batch, deterministic=deterministic)
+        action_indices = agent_net.act(batch, deterministic=deterministic, temperature=temperature)
         # Map each action index back to the agent's neighbour-or-stay choice.
         out: list[int] = []
         for ag, obs, action_idx in zip(agent_list, obs_list, action_indices, strict=True):

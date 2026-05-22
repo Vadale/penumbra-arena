@@ -150,6 +150,152 @@ function bresenham(x0: number, y0: number, x1: number, y1: number): [number, num
   return out;
 }
 
+// Traversal cost per biome. Water + mountain are expensive so A*
+// routes roads AROUND them; grass + forest are cheap so the path
+// flows through habitable terrain. Tuning these reshapes the world.
+const BIOME_COST: Record<Biome, number> = {
+  water: 14,
+  mountain: 12,
+  scrub: 2.2,
+  forest: 1.6,
+  grass: 1,
+};
+
+/**
+ * Min-heap priority queue keyed by f-score. Custom rather than a
+ * library so we don't ship another dep. Stores [priority, value]
+ * tuples; sift up/down by integer index. Performance: enough for
+ * one A* run over a 90×54 grid in a few ms.
+ */
+class MinHeap<T> {
+  private data: [number, T][] = [];
+  get size(): number {
+    return this.data.length;
+  }
+  push(prio: number, value: T): void {
+    this.data.push([prio, value]);
+    this.siftUp(this.data.length - 1);
+  }
+  pop(): T | undefined {
+    if (this.data.length === 0) return undefined;
+    const top = this.data[0];
+    const last = this.data.pop();
+    if (this.data.length > 0 && last !== undefined) {
+      this.data[0] = last;
+      this.siftDown(0);
+    }
+    return top ? top[1] : undefined;
+  }
+  private siftUp(i: number): void {
+    while (i > 0) {
+      const parent = (i - 1) >> 1;
+      const cur = this.data[i];
+      const par = this.data[parent];
+      if (cur === undefined || par === undefined || cur[0] >= par[0]) break;
+      this.data[i] = par;
+      this.data[parent] = cur;
+      i = parent;
+    }
+  }
+  private siftDown(i: number): void {
+    const n = this.data.length;
+    for (;;) {
+      const l = 2 * i + 1;
+      const r = l + 1;
+      let smallest = i;
+      const small = this.data[smallest];
+      const left = l < n ? this.data[l] : undefined;
+      const right = r < n ? this.data[r] : undefined;
+      if (small === undefined) return;
+      if (left !== undefined && left[0] < small[0]) smallest = l;
+      if (
+        right !== undefined &&
+        right[0] < (this.data[smallest] as [number, T])[0]
+      )
+        smallest = r;
+      if (smallest === i) break;
+      const a = this.data[i];
+      const b = this.data[smallest];
+      if (a === undefined || b === undefined) return;
+      this.data[i] = b;
+      this.data[smallest] = a;
+      i = smallest;
+    }
+  }
+}
+
+/**
+ * 4-connected A* on the biome grid, minimising sum of BIOME_COST.
+ * Returns the ordered list of (col, row) tiles from start to goal
+ * (inclusive on both ends).
+ */
+function astar(
+  biome: Biome[][],
+  start: [number, number],
+  goal: [number, number],
+): [number, number][] {
+  const [sx, sy] = start;
+  const [gx, gy] = goal;
+  const idx = (x: number, y: number) => y * COLS + x;
+  const total = COLS * ROWS;
+  const gScore = new Float64Array(total).fill(Infinity);
+  const came = new Int32Array(total).fill(-1);
+  const closed = new Uint8Array(total);
+  gScore[idx(sx, sy)] = 0;
+  const heap = new MinHeap<number>();
+  heap.push(0, idx(sx, sy));
+  const goalIdx = idx(gx, gy);
+
+  // Manhattan distance as the heuristic — admissible on a 4-connected grid.
+  const heur = (x: number, y: number) => Math.abs(x - gx) + Math.abs(y - gy);
+
+  while (heap.size > 0) {
+    const cur = heap.pop();
+    if (cur === undefined) break;
+    if (cur === goalIdx) {
+      // Reconstruct.
+      const out: [number, number][] = [];
+      let c: number = cur;
+      while (c !== -1) {
+        const y = Math.floor(c / COLS);
+        const x = c - y * COLS;
+        out.push([x, y]);
+        c = came[c] ?? -1;
+      }
+      out.reverse();
+      return out;
+    }
+    if (closed[cur]) continue;
+    closed[cur] = 1;
+    const cy = Math.floor(cur / COLS);
+    const cx = cur - cy * COLS;
+    const neighbours: [number, number][] = [
+      [cx + 1, cy],
+      [cx - 1, cy],
+      [cx, cy + 1],
+      [cx, cy - 1],
+    ];
+    for (const [nx, ny] of neighbours) {
+      if (nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS) continue;
+      const nIdx = idx(nx, ny);
+      if (closed[nIdx]) continue;
+      const row = biome[ny];
+      if (row === undefined) continue;
+      const tileBiome = row[nx];
+      if (tileBiome === undefined) continue;
+      const step = BIOME_COST[tileBiome];
+      const tentative = (gScore[cur] ?? Infinity) + step;
+      if (tentative < (gScore[nIdx] ?? Infinity)) {
+        came[nIdx] = cur;
+        gScore[nIdx] = tentative;
+        heap.push(tentative + heur(nx, ny), nIdx);
+      }
+    }
+  }
+  // No path (shouldn't happen on a connected grid). Fall back to Bresenham.
+  return bresenham(sx, sy, gx, gy);
+}
+
 function layoutNodes(
   nodes: number[],
   edges: { u: number; v: number }[],
@@ -285,12 +431,16 @@ function buildTileLayout(
   const nodeCells = layoutNodes(nodes, edges, rng);
   const canonEdges = edges.map((e) => ({ key: edgeKey(e.u, e.v), u: e.u, v: e.v }));
 
+  // A* on the biome grid for every edge. Roads now bend around water
+  // and mountains instead of slicing through them in straight lines.
+  // ~95 edges × ~500 tiles per path ≈ 50k iterations total, runs in
+  // a few ms on the client.
   const edgePaths = new Map<string, [number, number][]>();
   for (const e of canonEdges) {
     const a = nodeCells.get(e.u);
     const b = nodeCells.get(e.v);
     if (a === undefined || b === undefined) continue;
-    edgePaths.set(e.key, bresenham(a[0], a[1], b[0], b[1]));
+    edgePaths.set(e.key, astar(biome, a, b));
   }
 
   return { biome, nodeCells, edges: canonEdges, edgePaths };
@@ -425,7 +575,7 @@ export function TileMap() {
       ctx.clearRect(0, 0, WIDTH, HEIGHT);
       ctx.drawImage(terrain, 0, 0);
 
-      // Roads — per-edge lines, stroke based on heat.
+      // Roads — A*-routed polylines, stroke based on traversal heat.
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
       // First draw the IDLE network as a thin baseline so the topology
@@ -435,29 +585,39 @@ export function TileMap() {
       ctx.globalAlpha = 0.55;
       ctx.beginPath();
       for (const e of layout.edges) {
-        const a = layout.nodeCells.get(e.u);
-        const b = layout.nodeCells.get(e.v);
-        if (a === undefined || b === undefined) continue;
-        ctx.moveTo(a[0] * CELL + CELL / 2, a[1] * CELL + CELL / 2);
-        ctx.lineTo(b[0] * CELL + CELL / 2, b[1] * CELL + CELL / 2);
+        const path = layout.edgePaths.get(e.key);
+        if (path === undefined || path.length < 2) continue;
+        for (let i = 0; i < path.length; i++) {
+          const p = path[i];
+          if (p === undefined) continue;
+          const x = p[0] * CELL + CELL / 2;
+          const y = p[1] * CELL + CELL / 2;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
       }
       ctx.stroke();
       ctx.globalAlpha = 1;
 
-      // Then overlay any HOT edges (recent traffic), thicker + brighter.
+      // Then overlay any HOT edges (recent traffic) along their A* path.
       for (const e of layout.edges) {
         const heat = edgeHeatRef.current.get(e.key) ?? 0;
         if (heat < HEAT_MIN_VISIBLE) continue;
-        const a = layout.nodeCells.get(e.u);
-        const b = layout.nodeCells.get(e.v);
-        if (a === undefined || b === undefined) continue;
+        const path = layout.edgePaths.get(e.key);
+        if (path === undefined || path.length < 2) continue;
         const color = lerpColor(ROAD_IDLE, ROAD_HOT, heat);
         ctx.strokeStyle = color;
         ctx.lineWidth = 0.8 + heat * 2.4;
         ctx.globalAlpha = 0.35 + heat * 0.65;
         ctx.beginPath();
-        ctx.moveTo(a[0] * CELL + CELL / 2, a[1] * CELL + CELL / 2);
-        ctx.lineTo(b[0] * CELL + CELL / 2, b[1] * CELL + CELL / 2);
+        for (let i = 0; i < path.length; i++) {
+          const p = path[i];
+          if (p === undefined) continue;
+          const x = p[0] * CELL + CELL / 2;
+          const y = p[1] * CELL + CELL / 2;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
         ctx.stroke();
         // Decay.
         const next = heat * HEAT_DECAY_PER_FRAME;

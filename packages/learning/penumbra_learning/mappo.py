@@ -102,11 +102,35 @@ class MAPPO:
         self.opt_critic = torch.optim.Adam(self.critic.parameters(), lr=config.learning_rate)
 
     @torch.no_grad()
-    def act(self, observations: np.ndarray, *, deterministic: bool = False) -> np.ndarray:
-        """Pick actions for a batch of (n_agents, obs_dim) observations."""
+    def act(
+        self,
+        observations: np.ndarray,
+        *,
+        deterministic: bool = False,
+        temperature: float = 1.0,
+    ) -> np.ndarray:
+        """Pick actions for a batch of (n_agents, obs_dim) observations.
+
+        `temperature` scales the actor's logits before sampling. A
+        well-trained policy concentrates probability mass on its best
+        action; with parameter sharing across all N agents and the
+        per-agent observations being similar, deterministic OR
+        low-temperature sampling causes the swarm to collapse to one
+        node. Setting temperature > 1.0 flattens the distribution and
+        recovers exploratory dispersion at inference time without
+        touching the trained weights.
+        """
         obs_t = torch.as_tensor(observations, dtype=torch.float32, device=self.device)
-        dist = self.actor(obs_t)
-        actions = dist.probs.argmax(dim=-1) if deterministic else dist.sample()
+        if deterministic:
+            dist = self.actor(obs_t)
+            actions = dist.probs.argmax(dim=-1)
+        elif temperature == 1.0:
+            dist = self.actor(obs_t)
+            actions = dist.sample()
+        else:
+            # Rebuild Categorical from scaled logits.
+            logits = self.actor.net(obs_t) / float(temperature)
+            actions = Categorical(logits=logits).sample()
         return actions.cpu().numpy()
 
     def compute_gae(
