@@ -6,6 +6,12 @@
 
 import { useEffect, useState } from "react";
 import type { TickFrame } from "../streams/frames";
+import {
+  fetchRuntime,
+  type MappoRuntimeState,
+  setEnabled,
+  setTemperature,
+} from "../streams/learning";
 
 interface RuntimeStats {
   chain_height: number;
@@ -119,6 +125,8 @@ export function StatusBar({
         ember={paused}
         accent={!paused && timeWarp > 1}
       />
+      <Divider />
+      <MappoControls />
       <button
         type="button"
         onClick={onHelp}
@@ -164,4 +172,73 @@ function StatusCell({
 
 function Divider() {
   return <span className="text-[color:var(--color-penumbra-border)]">│</span>;
+}
+
+/** Live MAPPO controls — temperature slider + RANDOM/MAPPO A/B toggle. */
+function MappoControls() {
+  const [runtime, setRuntimeState] = useState<MappoRuntimeState | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async () => {
+      const r = await fetchRuntime();
+      if (!cancelled) setRuntimeState(r);
+    };
+    void tick();
+    const t = window.setInterval(tick, 2000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(t);
+    };
+  }, []);
+
+  if (!runtime || !runtime.available) {
+    return <StatusCell label="mappo" value="off" ember />;
+  }
+
+  const onTempChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = Number(e.target.value);
+    if (!Number.isFinite(v)) return;
+    setRuntimeState({ ...runtime, temperature: v });
+    await setTemperature(v);
+  };
+
+  const onToggle = async () => {
+    const next = !runtime.enabled;
+    setRuntimeState({ ...runtime, enabled: next });
+    await setEnabled(next);
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={onToggle}
+        className={
+          runtime.enabled
+            ? "border border-[color:var(--color-penumbra-cyan)] bg-[color:var(--color-penumbra-cyan-bg)] px-2 py-0.5 text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-cyan)]"
+            : "border border-[color:var(--color-penumbra-ember)] bg-[color:var(--color-penumbra-ember-bg)] px-2 py-0.5 text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-ember)]"
+        }
+        title="toggle MAPPO ↔ random walk"
+      >
+        {runtime.enabled ? "MAPPO" : "RANDOM"}
+      </button>
+      <span className="flex items-baseline gap-1">
+        <span className="text-[color:var(--color-penumbra-dim)]">T</span>
+        <input
+          type="range"
+          min={0.5}
+          max={10}
+          step={0.1}
+          value={runtime.temperature ?? 1.0}
+          onChange={onTempChange}
+          className="h-1 w-24 accent-[color:var(--color-penumbra-cyan)]"
+          title="MAPPO sampling temperature"
+        />
+        <span className="w-8 tabular-nums text-[color:var(--color-penumbra-text)]">
+          {(runtime.temperature ?? 1.0).toFixed(1)}
+        </span>
+      </span>
+    </>
+  );
 }

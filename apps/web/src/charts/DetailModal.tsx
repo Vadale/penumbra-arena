@@ -37,7 +37,9 @@ import type {
   VARImpulseResponse as VARImpulseResponseData,
   WealthReport as WealthReportData,
 } from "../streams/dashboard";
+import { useActionHistogram } from "../streams/learning";
 import { ACFChart } from "./ACFChart";
+import { ActionHistogramChart } from "./ActionHistogramChart";
 import { ANOVAChart } from "./ANOVAChart";
 import { ArimaChart } from "./ArimaChart";
 import { BayesianDensity } from "./BayesianDensity";
@@ -45,6 +47,7 @@ import { CandlestickChart } from "./CandlestickChart";
 import { CausalChart } from "./CausalChart";
 import { ClusterScatter } from "./ClusterScatter";
 import { CorrelationHeatmap } from "./CorrelationHeatmap";
+import { DpCompareChart } from "./DpCompareChart";
 import { EconomyChart } from "./EconomyChart";
 import { GarchChart } from "./GarchChart";
 import { GrangerMatrix } from "./GrangerMatrix";
@@ -54,6 +57,7 @@ import { LogitChart } from "./LogitChart";
 import { MonteCarloFan } from "./MonteCarloFan";
 import { PCAScree } from "./PCAScree";
 import { PermutationChart } from "./PermutationChart";
+import { PolicyInspector } from "./PolicyInspector";
 import { RegressionChart } from "./RegressionChart";
 import { ROCChart } from "./ROCChart";
 import { SpectralChart } from "./SpectralChart";
@@ -91,7 +95,10 @@ export type MetricKind =
   | "permutation"
   | "candles"
   | "inflation"
-  | "wealth";
+  | "wealth"
+  | "policy_inspector"
+  | "action_histogram"
+  | "dp_compare";
 
 interface Props {
   open: boolean;
@@ -271,6 +278,21 @@ const META: Record<MetricKind, { label: string; description: string; yUnit?: str
     description:
       "Lorenz curve: cumulative agent share (x) vs cumulative wealth share (y). The ember 45° line is perfect equality; the cyan curve is the actual distribution; the shaded area between them is the Gini half-area (Gini = 2 × area). Gini = 0 means everyone owns the same; Gini = 1 means one agent owns everything. The percentile readouts (p10/p50/p90/p99) make the tail visible — a Gini around 0.3 with p99 much higher than p90 signals fat-tailed wealth.",
   },
+  policy_inspector: {
+    label: "MAPPO policy inspector",
+    description:
+      "Live introspection of the actor network. Pick any agent id and see the observation it's receiving (cost-to-neighbour + is-goal features), the actor's post-softmax action probabilities at the current temperature, and the action it would CHOOSE (highlighted bar). The labels '→ #N' = move to neighbour-N; 'stay' = no-op. Adjust temperature in the status bar to watch the distribution flatten or sharpen in real time.",
+  },
+  action_histogram: {
+    label: "Action histogram — swarm-wide",
+    description:
+      "Histogram of the actions chosen on the current tick across ALL 50 agents. 'neigh i' = moved to the i-th sorted neighbour; 'stay' = no move; 'random' = the MAPPO toggle is OFF and the simulation is using random walk. With high temperature you see a more uniform distribution; with low temperature the chosen-action mode dominates.",
+  },
+  dp_compare: {
+    label: "DP — clean vs noised heatmap",
+    description:
+      "Side-by-side: the CLEAN encrypted-heatmap aggregate (cyan, pre-DP) and the RELEASED density (ember, after Laplace noise). The δ panel shows the raw noise vector (released − clean). The L1/L2 readouts quantify the injected privacy noise. This is normally invisible from outside the server; we expose it here so you can SEE the privacy/utility tradeoff DP is making.",
+  },
 };
 
 export function DetailModal({
@@ -391,6 +413,15 @@ export function DetailModal({
     if (metric === "wealth" && wealth) {
       return <WealthChart data={wealth} />;
     }
+    if (metric === "policy_inspector") {
+      return <PolicyInspector />;
+    }
+    if (metric === "action_histogram") {
+      return <ActionHistogramInline />;
+    }
+    if (metric === "dp_compare") {
+      return <DpCompareChart />;
+    }
     return <LineChart values={values ?? []} label={meta.label} yUnit={meta.yUnit} />;
   })();
 
@@ -429,4 +460,17 @@ export function DetailModal({
       </div>
     </div>
   );
+}
+
+/** Inline wrapper for the live action histogram polling hook. */
+function ActionHistogramInline() {
+  const data = useActionHistogram();
+  if (!data) {
+    return (
+      <div className="font-mono text-xs text-[color:var(--color-penumbra-muted)]">
+        action histogram warming up
+      </div>
+    );
+  }
+  return <ActionHistogramChart data={data} />;
 }

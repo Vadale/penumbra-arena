@@ -21,6 +21,7 @@ simulation defaults to its random-walk baseline.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -110,13 +111,29 @@ def _random_walk_factory(_agent_id: int) -> Policy:
     return random_walk_policy
 
 
+@dataclass
+class MappoRuntime:
+    """Live, mutable handles for the loaded MAPPO actor.
+
+    Stored on the orchestrator so the API can run the actor on
+    demand (Policy Inspector, action map, etc.) and the user can
+    flip temperature / mode at runtime without restarting.
+    """
+
+    agent_net: object  # MAPPO instance (typed as object to avoid the cycle)
+    last_actions: list[int] = field(default_factory=list)
+    temperature: float = 3.5
+    deterministic: bool = False
+    enabled: bool = True  # if False, batch_policy falls through to random-walk
+
+
 def mappo_batch_policy(
     checkpoint_path: str | Path,
     *,
     n_agents: int,
     deterministic: bool = False,
     temperature: float = 3.5,
-) -> callable | None:  # type: ignore[valid-type]
+) -> tuple[callable | None, MappoRuntime | None]:  # type: ignore[valid-type]
     """Return a `BatchPolicy` backed by ONE batched MAPPO forward pass per tick.
 
     Signature matches `penumbra_core.simulation.BatchPolicy`:
@@ -142,7 +159,7 @@ def mappo_batch_policy(
     path = Path(checkpoint_path)
     if not path.is_file():
         logger.warning("MAPPO checkpoint not found at %s; using per-agent fallback", path)
-        return None
+        return None, None
 
     config = MAPPOConfig(
         obs_dim=NEIGHBOURS_K * OBS_PER_NEIGHBOUR,
@@ -154,7 +171,14 @@ def mappo_batch_policy(
         agent_net.load(str(path), actor_only=True)
     except Exception:
         logger.exception("failed to load MAPPO checkpoint %s; using per-agent fallback", path)
-        return None
+        return None, None
+
+    runtime = MappoRuntime(
+        agent_net=agent_net,
+        temperature=temperature,
+        deterministic=deterministic,
+        enabled=True,
+    )
 
     def _batch_policy(agents: object, observations: object) -> list[int]:
         # `agents` and `observations` are list[Agent] and
@@ -164,10 +188,28 @@ def mappo_batch_policy(
         agent_list = list(agents)  # type: ignore[arg-type]
         if not obs_list:
             return []
+        # If MAPPO has been turned OFF via the runtime, fall through
+        # to random walk — gives the user a live A/B comparison.
+        if not runtime.enabled:
+            rng = np.random.default_rng()
+            out_rand: list[int] = []
+            for ag, obs in zip(agent_list, obs_list, strict=True):
+                neighbours = sorted(obs.neighbour_costs.keys())  # type: ignore[attr-defined]
+                if not neighbours:
+                    out_rand.append(ag.position)  # type: ignore[attr-defined]
+                    continue
+                out_rand.append(int(rng.choice(neighbours)))
+            runtime.last_actions = [-1] * len(out_rand)  # "random" marker
+            return out_rand
         # Stack observations into a (B, obs_dim) batch.
         batch = np.stack([_build_feature_vector(o) for o in obs_list], axis=0)
         # Single forward pass over the whole batch.
-        action_indices = agent_net.act(batch, deterministic=deterministic, temperature=temperature)
+        action_indices = agent_net.act(
+            batch,
+            deterministic=runtime.deterministic,
+            temperature=runtime.temperature,
+        )
+        runtime.last_actions = [int(a) for a in action_indices]
         # Map each action index back to the agent's neighbour-or-stay choice.
         out: list[int] = []
         for ag, obs, action_idx in zip(agent_list, obs_list, action_indices, strict=True):
@@ -180,4 +222,4 @@ def mappo_batch_policy(
         return out
 
     logger.info("loaded MAPPO BATCH checkpoint from %s; deterministic=%s", path, deterministic)
-    return _batch_policy
+    return _batch_policy, runtime

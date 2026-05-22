@@ -45,11 +45,19 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True, slots=True)
 class HeatmapSample:
-    """One encrypted-heatmap measurement, optionally DP-noised."""
+    """One encrypted-heatmap measurement, optionally DP-noised.
+
+    `density` is what an EXTERNAL client would see (with DP noise
+    applied if a budget is available). `clean_density` is the pre-DP
+    aggregate — production wouldn't expose it, but for the live
+    pedagogy we keep it so the dashboard can show the noise as a
+    visible delta.
+    """
 
     tick: int
     timestamp_ns: int
-    density: NDArray[np.float64]  # decrypted aggregate; length = n_nodes
+    density: NDArray[np.float64]
+    clean_density: NDArray[np.float64]
     decrypted_total: float
     noise_applied: bool
     epsilon_spent_total: float
@@ -137,6 +145,7 @@ class EncryptedHeatmap:
             density = np.maximum(decrypted, 0.0)
             del accumulator
 
+        clean_density = density.copy()
         noise_applied = False
         if self._dp is not None:
             try:
@@ -159,6 +168,7 @@ class EncryptedHeatmap:
             tick=simulation.tick_counter,
             timestamp_ns=time.time_ns(),
             density=density,
+            clean_density=clean_density,
             decrypted_total=float(np.sum(density)),
             noise_applied=noise_applied,
             epsilon_spent_total=float(epsilon_spent),

@@ -62,6 +62,7 @@ class AppState:
     hub: Hub
     loop: TickLoop
     orchestrator: Orchestrator
+    mappo_runtime: object | None = None  # MappoRuntime when MAPPO loaded
 
 
 def build_app(
@@ -78,7 +79,11 @@ def build_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        sim = simulation or _build_simulation_with_optional_mappo()
+        mappo_runtime: object | None = None
+        if simulation is None:
+            sim, mappo_runtime = _build_simulation_with_optional_mappo()
+        else:
+            sim = simulation
         hub = Hub()
         orchestrator = Orchestrator.build(sim)
 
@@ -101,7 +106,13 @@ def build_app(
             else None,
         )
         await orchestrator.start()
-        app.state.penumbra = AppState(simulation=sim, hub=hub, loop=loop, orchestrator=orchestrator)
+        app.state.penumbra = AppState(
+            simulation=sim,
+            hub=hub,
+            loop=loop,
+            orchestrator=orchestrator,
+            mappo_runtime=mappo_runtime,
+        )
         try:
             yield
         finally:
@@ -760,6 +771,158 @@ def build_app(
             ]
         }
 
+    # ── Learning (MAPPO) inspection + control ─────────────────────
+
+    def _build_observation_for_agent(agent_idx: int) -> tuple[np.ndarray, list[int], list[int]]:
+        """Build the (obs_dim,) feature vector for one live agent.
+
+        Returns (feature_vector, neighbour_node_ids, sorted_neighbour_node_ids).
+        Mirrors `_build_feature_vector` from the policy loader without
+        creating a dependency cycle.
+        """
+        sim_local = app.state.penumbra.simulation
+        if agent_idx < 0 or agent_idx >= len(sim_local.agents):
+            return np.zeros(15, dtype=np.float32), [], []
+        agent = sim_local.agents[agent_idx]
+        obs = agent.observe(sim_local.arena, tick=sim_local.tick_counter)
+        from penumbra_learning.env import (
+            NEIGHBOURS_K,
+            OBS_PER_NEIGHBOUR,
+            PAD_VALUE,
+        )
+
+        neighbours = sorted(obs.neighbour_costs.keys())
+        goals = set(obs.visible_goals)
+        feats: list[float] = []
+        for j in range(NEIGHBOURS_K):
+            if j < len(neighbours):
+                n = neighbours[j]
+                cost = float(obs.neighbour_costs[n])
+                is_goal = 1.0 if n in goals else 0.0
+                feats.extend([cost, is_goal, is_goal])
+            else:
+                feats.extend([PAD_VALUE, PAD_VALUE, PAD_VALUE])
+        del OBS_PER_NEIGHBOUR  # only imported for clarity
+        return np.asarray(feats, dtype=np.float32), neighbours, neighbours
+
+    @app.get("/learning/policy/{agent_id}")
+    async def learning_policy(agent_id: int) -> dict[str, object]:
+        """Inspect the actor's distribution for one agent at the current tick."""
+        runtime = app.state.penumbra.mappo_runtime
+        sim_local: Simulation = app.state.penumbra.simulation
+        if runtime is None:
+            return {
+                "available": False,
+                "reason": "MAPPO not loaded (set PENUMBRA_MAPPO_CHECKPOINT)",
+            }
+        if agent_id < 0 or agent_id >= len(sim_local.agents):
+            raise HTTPException(status_code=404, detail=f"no agent {agent_id}")
+        feats, neighbours, _ = _build_observation_for_agent(agent_id)
+        agent_net = runtime.agent_net  # type: ignore[attr-defined]
+        probs = agent_net.action_probabilities(feats, temperature=runtime.temperature)  # type: ignore[attr-defined]
+        prob_vector = [float(p) for p in probs[0]]
+        chosen = int(np.argmax(prob_vector))
+        agent = sim_local.agents[agent_id]
+        # Action labels: K neighbours + "stay" (last index).
+        labels: list[str] = []
+        for n in neighbours[: len(prob_vector) - 1]:
+            labels.append(f"→ #{n}")
+        while len(labels) < len(prob_vector) - 1:
+            labels.append("—")
+        labels.append("stay")
+        return {
+            "available": True,
+            "agent_id": agent_id,
+            "current_node": int(agent.position),
+            "observation": [float(v) for v in feats],
+            "neighbour_nodes": [int(n) for n in neighbours],
+            "action_labels": labels,
+            "action_probabilities": prob_vector,
+            "chosen_action": chosen,
+            "temperature": float(runtime.temperature),  # type: ignore[attr-defined]
+            "deterministic": bool(runtime.deterministic),  # type: ignore[attr-defined]
+            "enabled": bool(runtime.enabled),  # type: ignore[attr-defined]
+        }
+
+    @app.get("/learning/runtime")
+    async def learning_runtime() -> dict[str, object]:
+        runtime = app.state.penumbra.mappo_runtime
+        if runtime is None:
+            return {"available": False}
+        return {
+            "available": True,
+            "temperature": float(runtime.temperature),  # type: ignore[attr-defined]
+            "deterministic": bool(runtime.deterministic),  # type: ignore[attr-defined]
+            "enabled": bool(runtime.enabled),  # type: ignore[attr-defined]
+        }
+
+    @app.post("/learning/temperature/{value}")
+    async def set_temperature(value: float) -> dict[str, object]:
+        runtime = app.state.penumbra.mappo_runtime
+        if runtime is None:
+            raise HTTPException(status_code=404, detail="MAPPO not loaded")
+        if not 0.05 <= value <= 50.0:
+            raise HTTPException(status_code=400, detail="temperature must be in [0.05, 50.0]")
+        runtime.temperature = float(value)  # type: ignore[attr-defined]
+        return {"temperature": runtime.temperature}  # type: ignore[attr-defined]
+
+    @app.post("/learning/enabled/{enabled}")
+    async def set_enabled(enabled: bool) -> dict[str, object]:
+        runtime = app.state.penumbra.mappo_runtime
+        if runtime is None:
+            raise HTTPException(status_code=404, detail="MAPPO not loaded")
+        runtime.enabled = bool(enabled)  # type: ignore[attr-defined]
+        return {"enabled": runtime.enabled}  # type: ignore[attr-defined]
+
+    @app.get("/learning/action-histogram")
+    async def action_histogram() -> dict[str, object]:
+        """Distribution of actions chosen this tick by the live policy."""
+        runtime = app.state.penumbra.mappo_runtime
+        if runtime is None or not getattr(runtime, "last_actions", None):
+            return {"available": False, "histogram": []}
+        from collections import Counter
+
+        counts = Counter(runtime.last_actions)  # type: ignore[attr-defined]
+        # Build action labels: K neighbours + stay; -1 = random walk override.
+        from penumbra_learning.env import NEIGHBOURS_K
+
+        out = []
+        for i in range(NEIGHBOURS_K + 1):
+            label = "stay" if i == NEIGHBOURS_K else f"neigh {i}"
+            out.append({"action": label, "count": int(counts.get(i, 0))})
+        if -1 in counts:
+            out.append({"action": "random", "count": int(counts[-1])})
+        return {
+            "available": True,
+            "histogram": out,
+            "n_agents": sum(c["count"] for c in out),
+            "temperature": float(runtime.temperature),  # type: ignore[attr-defined]
+            "enabled": bool(runtime.enabled),  # type: ignore[attr-defined]
+        }
+
+    # ── DP comparison: clean vs noised heatmap ────────────────────
+
+    @app.get("/dp/compare")
+    async def dp_compare() -> dict[str, object]:
+        """Return the latest CLEAN density alongside the DP-noised one.
+
+        The encrypted heatmap stores both the post-DP density (what's
+        normally released) and the pre-DP one (only the local server
+        sees this — production wouldn't expose it, but for the
+        pedagogy we make the noise visible).
+        """
+        sample = app.state.penumbra.orchestrator.heatmap.latest
+        if sample is None:
+            return {"ready": False}
+        return {
+            "ready": True,
+            "clean": list(sample.clean_density.tolist()),
+            "noised": list(sample.density.tolist()),
+            "epsilon_spent": float(sample.epsilon_spent_total),
+            "dp_applied": bool(sample.noise_applied),
+            "tick": int(sample.tick),
+        }
+
     @app.get("/chain/latest")
     async def chain_latest() -> dict[str, object]:
         node = app.state.penumbra.orchestrator.node
@@ -907,7 +1070,7 @@ def build_app(
     return app
 
 
-def _build_simulation_with_optional_mappo() -> Simulation:
+def _build_simulation_with_optional_mappo() -> tuple[Simulation, object | None]:
     """Build a Simulation, optionally restoring from snapshot and/or attaching MAPPO.
 
     Precedence
@@ -943,26 +1106,23 @@ def _build_simulation_with_optional_mappo() -> Simulation:
 
         factory = _resolve_factory(SimulationConfig().n_agents)
         logger.info("restoring simulation from %s", snapshot)
-        return load_simulation(Path(snapshot), policy_factory=factory)  # type: ignore[arg-type]
+        return load_simulation(Path(snapshot), policy_factory=factory), None  # type: ignore[arg-type]
 
     config = SimulationConfig()
     seeded = bootstrap()
     if not checkpoint:
-        return Simulation.build(config, seeded)
+        return Simulation.build(config, seeded), None
     try:
         from penumbra_learning.policy_loader import (
             mappo_batch_policy,
         )
 
-        batch_policy = mappo_batch_policy(checkpoint, n_agents=config.n_agents)
-        # Batched policy path: ~50× faster on MPS than the per-agent
-        # closure factory because we run ONE matmul over the (50,
-        # obs_dim) stack instead of 50 sequential single-row passes.
-        return Simulation.build(config, seeded, batch_policy=batch_policy)
+        batch_policy, runtime = mappo_batch_policy(checkpoint, n_agents=config.n_agents)
+        sim = Simulation.build(config, seeded, batch_policy=batch_policy)
+        return sim, runtime
     except ImportError:
-        # penumbra-learning isn't installed (e.g. a slim deployment) — fall back.
         logger.warning("penumbra_learning not importable; falling back to random walk")
-        return Simulation.build(config, seeded)
+        return Simulation.build(config, seeded), None
 
 
 def _block_view(blk: object) -> dict[str, object]:

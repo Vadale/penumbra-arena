@@ -400,6 +400,27 @@ export function AnalyticsPanel() {
           accent={!!snap.wealth && snap.wealth.gini <= 0.45}
           onClick={() => open("wealth")}
         />
+        <Cell
+          label="MAPPO π"
+          value="inspect"
+          caption="click agent's policy"
+          accent
+          onClick={() => open("policy_inspector")}
+        />
+        <Cell
+          label="actions"
+          value="live"
+          caption="swarm choice mix"
+          accent
+          onClick={() => open("action_histogram")}
+        />
+        <Cell
+          label="DP δ"
+          value="clean ↔ noised"
+          caption="privacy noise live"
+          accent
+          onClick={() => open("dp_compare")}
+        />
       </div>
 
       {summary && (
@@ -445,6 +466,9 @@ export function AnalyticsPanel() {
             case "candles":
             case "inflation":
             case "wealth":
+            case "policy_inspector":
+            case "action_histogram":
+            case "dp_compare":
               return undefined;
             default:
               return histories[mapMetricToHistoryKey(openMetric)];
@@ -501,6 +525,9 @@ function mapMetricToHistoryKey(
     | "candles"
     | "inflation"
     | "wealth"
+    | "policy_inspector"
+    | "action_histogram"
+    | "dp_compare"
   >,
 ): keyof ReturnType<typeof useDashboardLive>["history"] {
   switch (m) {

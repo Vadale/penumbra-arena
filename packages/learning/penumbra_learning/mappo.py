@@ -102,6 +102,48 @@ class MAPPO:
         self.opt_critic = torch.optim.Adam(self.critic.parameters(), lr=config.learning_rate)
 
     @torch.no_grad()
+    def action_probabilities(
+        self,
+        observations: np.ndarray,
+        *,
+        temperature: float = 1.0,
+    ) -> np.ndarray:
+        """Return action probability distribution for inspection (no sampling).
+
+        Inspection path used by the Policy Inspector chart — given a
+        single observation (or a batch), returns the post-softmax
+        probability vector. Same temperature semantics as `act()`.
+        """
+        obs_t = torch.as_tensor(observations, dtype=torch.float32, device=self.device)
+        if obs_t.ndim == 1:
+            obs_t = obs_t.unsqueeze(0)
+        logits = self.actor.net(obs_t) / float(temperature)
+        probs = torch.softmax(logits, dim=-1)
+        return probs.cpu().numpy()
+
+    @torch.no_grad()
+    def value_estimate(
+        self,
+        observations: np.ndarray,
+    ) -> float:
+        """Critic's value estimate V(s) for the current global state.
+
+        The centralised critic takes the concatenated per-agent
+        observations. For inspection we expose it as a single scalar
+        per call; the caller is expected to pad or repeat the input
+        to the right dimension before calling.
+        """
+        obs_t = torch.as_tensor(observations, dtype=torch.float32, device=self.device)
+        if obs_t.ndim == 1:
+            obs_t = obs_t.unsqueeze(0)
+        # Critic expects shape (B, global_obs_dim). We flatten the
+        # per-agent observations into one row.
+        flat = obs_t.reshape(1, -1)
+        if flat.shape[1] != self.config.obs_dim * self.config.n_agents:
+            return float("nan")  # mis-shaped; caller pads externally.
+        return float(self.critic(flat).item())
+
+    @torch.no_grad()
     def act(
         self,
         observations: np.ndarray,
