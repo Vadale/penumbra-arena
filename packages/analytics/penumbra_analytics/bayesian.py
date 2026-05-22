@@ -39,6 +39,18 @@ class PosteriorEstimate:
     n_iters: int
 
 
+def _beta_binomial_model(successes: int, trials: int) -> None:
+    """JIT-friendly model: parameters as args, not closure-captured.
+
+    Capturing `successes`/`trials` in a Python closure made every
+    `beta_binomial_posterior()` call generate a fresh JAX JIT cache
+    entry — the leaker tracemalloc identified (~tens of MB per call,
+    multiplied across the streaming pipeline).
+    """
+    theta = numpyro.sample("theta", dist.Beta(1.0, 1.0))
+    numpyro.sample("obs", dist.Binomial(total_count=trials, probs=theta), obs=successes)
+
+
 def beta_binomial_posterior(
     successes: int,
     trials: int,
@@ -55,19 +67,25 @@ def beta_binomial_posterior(
     if successes < 0 or trials <= 0 or successes > trials:
         raise ValueError("require 0 ≤ successes ≤ trials and trials > 0")
 
-    def model() -> None:
-        theta = numpyro.sample("theta", dist.Beta(1.0, 1.0))
-        numpyro.sample("obs", dist.Binomial(total_count=trials, probs=theta), obs=successes)
-
-    guide = AutoNormal(model)
-    svi = SVI(model, guide, numpyro.optim.Adam(0.05), Trace_ELBO())
+    guide = AutoNormal(_beta_binomial_model)
+    svi = SVI(_beta_binomial_model, guide, numpyro.optim.Adam(0.05), Trace_ELBO())
     key = jax.random.PRNGKey(seed)
-    result = svi.run(key, n_iters, progress_bar=False)
+    result = svi.run(key, n_iters, successes, trials, progress_bar=False)
     params = result.params
     posterior_samples = guide.sample_posterior(
-        jax.random.PRNGKey(seed + 1), params, sample_shape=(2_000,)
+        jax.random.PRNGKey(seed + 1),
+        params,
+        sample_shape=(2_000,),
+        successes=successes,
+        trials=trials,
     )
     theta = np.asarray(posterior_samples["theta"])  # type: ignore[index]
+    # Stress-test fix: clear JAX traced-function cache. SVI builds a
+    # fresh jaxpr per call (different closure ⇒ different JIT key).
+    # Without this, RSS climbs ~5 GB/h on the streaming dashboard
+    # pipeline. tracemalloc identified jax/_src/interpreters/
+    # partial_eval.py as the dominant allocator.
+    jax.clear_caches()
     return PosteriorEstimate(
         mean=float(theta.mean()),
         std=float(theta.std()),

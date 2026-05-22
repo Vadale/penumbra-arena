@@ -36,7 +36,13 @@ from penumbra_transport.encrypted_heatmap import EncryptedHeatmap
 logger = logging.getLogger(__name__)
 
 BLOCK_INTERVAL_SECONDS_DEFAULT = 10.0
-HEATMAP_INTERVAL_SECONDS_DEFAULT = 1.0
+# Stress-test fix: TenSEAL CKKS encrypt+sum+decrypt costs ~12 MB/sec
+# of C++ allocation at 1 Hz, and the C-extension allocator doesn't
+# release it cleanly. Sliding to 5 s cuts the leak 5x without
+# meaningfully changing the UX — the heatmap visual updates every
+# few seconds, not every tick. Override via env var if you want
+# faster sampling for a particular demo.
+HEATMAP_INTERVAL_SECONDS_DEFAULT = 5.0
 ANALYTICS_INTERVAL_SECONDS_DEFAULT = 1.0
 
 
