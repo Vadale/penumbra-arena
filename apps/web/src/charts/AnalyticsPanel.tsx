@@ -421,6 +421,41 @@ export function AnalyticsPanel() {
           accent
           onClick={() => open("dp_compare")}
         />
+        <Cell
+          label="VRF leader"
+          value="rotation"
+          caption="chain consensus"
+          accent
+          onClick={() => open("vrf_leader")}
+        />
+        <Cell
+          label="mempool"
+          value="pending"
+          caption="next block contents"
+          accent
+          onClick={() => open("mempool")}
+        />
+        <Cell
+          label="ZK proof"
+          value="verify"
+          caption="Groth16 legal-path"
+          accent
+          onClick={() => open("zk_verify")}
+        />
+        <Cell
+          label="BLS agg"
+          value="inspect"
+          caption="block signature"
+          accent
+          onClick={() => open("bls_aggregate")}
+        />
+        <Cell
+          label="slash"
+          value="forge evidence"
+          caption="byzantine demo"
+          ember
+          onClick={() => open("slashing")}
+        />
       </div>
 
       {summary && (
@@ -469,6 +504,11 @@ export function AnalyticsPanel() {
             case "policy_inspector":
             case "action_histogram":
             case "dp_compare":
+            case "vrf_leader":
+            case "mempool":
+            case "zk_verify":
+            case "bls_aggregate":
+            case "slashing":
               return undefined;
             default:
               return histories[mapMetricToHistoryKey(openMetric)];
@@ -528,6 +568,11 @@ function mapMetricToHistoryKey(
     | "policy_inspector"
     | "action_histogram"
     | "dp_compare"
+    | "vrf_leader"
+    | "mempool"
+    | "zk_verify"
+    | "bls_aggregate"
+    | "slashing"
   >,
 ): keyof ReturnType<typeof useDashboardLive>["history"] {
   switch (m) {

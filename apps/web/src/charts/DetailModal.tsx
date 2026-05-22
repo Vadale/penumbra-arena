@@ -43,6 +43,7 @@ import { ActionHistogramChart } from "./ActionHistogramChart";
 import { ANOVAChart } from "./ANOVAChart";
 import { ArimaChart } from "./ArimaChart";
 import { BayesianDensity } from "./BayesianDensity";
+import { BLSChart } from "./BLSChart";
 import { CandlestickChart } from "./CandlestickChart";
 import { CausalChart } from "./CausalChart";
 import { ClusterScatter } from "./ClusterScatter";
@@ -54,7 +55,11 @@ import { GrangerMatrix } from "./GrangerMatrix";
 import { InflationChart } from "./InflationChart";
 import { LineChart } from "./LineChart";
 import { LogitChart } from "./LogitChart";
+import { MempoolChart } from "./MempoolChart";
 import { MonteCarloFan } from "./MonteCarloFan";
+import { SlashingChart } from "./SlashingChart";
+import { VRFLeaderChart } from "./VRFLeaderChart";
+import { ZKVerifyChart } from "./ZKVerifyChart";
 import { PCAScree } from "./PCAScree";
 import { PermutationChart } from "./PermutationChart";
 import { PolicyInspector } from "./PolicyInspector";
@@ -98,7 +103,12 @@ export type MetricKind =
   | "wealth"
   | "policy_inspector"
   | "action_histogram"
-  | "dp_compare";
+  | "dp_compare"
+  | "vrf_leader"
+  | "mempool"
+  | "zk_verify"
+  | "bls_aggregate"
+  | "slashing";
 
 interface Props {
   open: boolean;
@@ -293,6 +303,31 @@ const META: Record<MetricKind, { label: string; description: string; yUnit?: str
     description:
       "Side-by-side: the CLEAN encrypted-heatmap aggregate (cyan, pre-DP) and the RELEASED density (ember, after Laplace noise). The δ panel shows the raw noise vector (released − clean). The L1/L2 readouts quantify the injected privacy noise. This is normally invisible from outside the server; we expose it here so you can SEE the privacy/utility tradeoff DP is making.",
   },
+  vrf_leader: {
+    label: "VRF leader rotation",
+    description:
+      "Every block, the validators run a VRF lottery using the previous block hash + height as the seed. Each computes a deterministic VRF output from its secret key; the smallest output wins. Pedagogically: this gives PoS its leader-election property — unbiasable, publicly verifiable, and decentralisable. The leader-frequency bars confirm the lottery is roughly fair.",
+  },
+  mempool: {
+    label: "Mempool — pending transactions",
+    description:
+      "Match outcomes accumulate here when matches end; slashing evidence accumulates here when an equivocation is submitted. The next BLS-finalised block drains up to max_payload of these. If a match just ended (status=won), expect an outcome to appear briefly.",
+  },
+  zk_verify: {
+    label: "Groth16 — legal-path proof verification",
+    description:
+      "Loads the shipped circuit artifacts and runs our pure-Python Groth16 verifier. The honest case ACCEPTS; tampering the public goal id or one adjacency bit causes the verifier to REJECT — proving the proof is BOUND to the published public inputs. The circuit semantic: 'I know an intermediate node such that (start → mid → goal) is a legal walk in the 4×4 arena.'",
+  },
+  bls_aggregate: {
+    label: "BLS aggregate signature",
+    description:
+      "N validators each sign the same block_hash + height payload with their BLS12-381 secret. The chain stores ONE 96-byte aggregate signature point instead of N individual ones. fast_aggregate_verify against the validator pubkeys re-establishes finality. Tamper the block contents and the verifier rejects — the aggregate binds to the exact payload.",
+  },
+  slashing: {
+    label: "Slashing — submit equivocation evidence",
+    description:
+      "Pick an active validator and the demo server signs two CONFLICTING block hashes with that validator's secret key, then files the SlashingEvidence. The chain folds the result into the next block — the offender's pubkey moves into slashed_pubkeys, active_indices shrinks, and future blocks finalise with the remaining quorum. This is gated behind PENUMBRA_DEMO_SELF_SLASH=1 so production-shaped runs can't accidentally enable it.",
+  },
 };
 
 export function DetailModal({
@@ -421,6 +456,21 @@ export function DetailModal({
     }
     if (metric === "dp_compare") {
       return <DpCompareChart />;
+    }
+    if (metric === "vrf_leader") {
+      return <VRFLeaderChart />;
+    }
+    if (metric === "mempool") {
+      return <MempoolChart />;
+    }
+    if (metric === "zk_verify") {
+      return <ZKVerifyChart />;
+    }
+    if (metric === "bls_aggregate") {
+      return <BLSChart />;
+    }
+    if (metric === "slashing") {
+      return <SlashingChart />;
     }
     return <LineChart values={values ?? []} label={meta.label} yUnit={meta.yUnit} />;
   })();

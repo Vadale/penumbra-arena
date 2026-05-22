@@ -270,7 +270,7 @@ def build_app(
         }
 
     @app.post("/chain/_demo/self-slash")
-    async def chain_demo_self_slash() -> dict[str, object]:
+    async def chain_demo_self_slash(validator_index: int | None = None) -> dict[str, object]:
         """Pedagogical only: have the node 'betray' its own validator 0.
 
         Generates two BLS sigs over two different fake block hashes
@@ -296,7 +296,15 @@ def build_app(
         # observable (not idempotent against the same index forever).
         if not node.active_indices:
             raise HTTPException(status_code=409, detail="no active validators left to slash")
-        target_idx = min(node.active_indices)
+        if validator_index is None:
+            target_idx = min(node.active_indices)
+        else:
+            if validator_index not in node.active_indices:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"validator {validator_index} is not active",
+                )
+            target_idx = int(validator_index)
         secret = node.secrets[target_idx]
         pub = node.validators[target_idx].bls_pubkey
         # Use a plausible "block height the offender double-signed at"
@@ -317,10 +325,11 @@ def build_app(
         )
         tx = node.slash(evidence)
         return {
-            "slashed": pub.hex()[:16] + "…",
-            "height_observed": tx.height_observed,
-            "active_validators": len(node.active_indices),
-            "total_validators": len(node.validators),
+            "validator_index": target_idx,
+            "offender_short": pub.hex()[:16],
+            "height": tx.height_observed,
+            "slashed": len(node.slashed_pubkeys),
+            "active_after": len(node.active_indices),
         }
 
     @app.get("/agents/signing-stats")
@@ -921,6 +930,164 @@ def build_app(
             "epsilon_spent": float(sample.epsilon_spent_total),
             "dp_applied": bool(sample.noise_applied),
             "tick": int(sample.tick),
+        }
+
+    # ── Chain explorer extras: VRF leader, mempool, BLS, ZK ───────
+
+    @app.get("/chain/vrf-leader")
+    async def chain_vrf_leader() -> dict[str, object]:
+        """Recent VRF leaders + the validator panel + current head seed.
+
+        Returns:
+          validators: [{index, bls_short, vrf_short, slashed}]
+          recent: last 12 blocks' [{height, leader_index, leader_short}]
+          next_seed: hex preview of the seed the NEXT election will use
+        """
+        node = app.state.penumbra.orchestrator.node
+        validators = [
+            {
+                "index": i,
+                "bls_short": v.bls_pubkey.hex()[:16],
+                "vrf_short": v.vrf_pubkey.hex()[:16],
+                "slashed": v.bls_pubkey in node.slashed_pubkeys,
+            }
+            for i, v in enumerate(node.validators)
+        ]
+        recent: list[dict[str, object]] = []
+        for blk in node.chain[-12:]:
+            proposer = blk.header.proposer_pubkey
+            leader_idx = next(
+                (i for i, v in enumerate(node.validators) if v.bls_pubkey == proposer),
+                -1,
+            )
+            recent.append(
+                {
+                    "height": int(blk.header.height),
+                    "leader_index": leader_idx,
+                    "leader_short": proposer.hex()[:16],
+                    "vrf_beta_short": blk.header.vrf_beta.hex()[:16],
+                    "timestamp_ns": int(blk.header.timestamp_ns),
+                }
+            )
+        next_seed = (node.head_hash + node.height.to_bytes(8, "big")).hex()[:32]
+        return {
+            "validators": validators,
+            "recent": recent,
+            "next_seed": next_seed,
+            "active": [int(i) for i in node.active_indices],
+            "current_height": int(node.height),
+        }
+
+    @app.get("/chain/mempool")
+    async def chain_mempool() -> dict[str, object]:
+        """Pending outcomes + pending slashings that the next block will pick up."""
+        node = app.state.penumbra.orchestrator.node
+        pending = node.mempool.peek()
+        return {
+            "n_outcomes": len(node.mempool),
+            "outcomes": [
+                {
+                    "match_id": int(o.match_id),
+                    "winner": int(o.winner_agent_id) if o.winner_agent_id is not None else None,
+                    "winning_goal": int(o.winning_goal) if o.winning_goal is not None else None,
+                    "started_tick": int(o.started_tick),
+                    "end_tick": int(o.end_tick),
+                    "end_reason": o.end_reason,
+                }
+                for o in pending[:32]
+            ],
+            "n_slashings": len(node.pending_slashings),
+            "slashings": [
+                {
+                    "offender_short": s.evidence.offender_pubkey.hex()[:16],
+                    "height": int(s.evidence.height),
+                }
+                for s in node.pending_slashings[:16]
+            ],
+        }
+
+    @app.get("/chain/bls/{block_hash}")
+    async def chain_bls_inspect(block_hash: str) -> dict[str, object]:
+        """Show the BLS aggregate signature of a specific block + verify it.
+
+        The frontend can also tamper the public input and submit it
+        back to /chain/bls/verify to demonstrate that the aggregate
+        signature binds to the block hash.
+        """
+        node = app.state.penumbra.orchestrator.node
+        target: object | None = None
+        for blk in node.chain:
+            if blk.hash().hex() == block_hash:
+                target = blk
+                break
+        if target is None:
+            raise HTTPException(status_code=404, detail=f"no block with hash {block_hash}")
+        # Verify the aggregate against the published pubkeys.
+        from penumbra_chain.consensus import canonical_block_sign_payload
+        from penumbra_crypto.bls import fast_aggregate_verify
+
+        ok = False
+        try:
+            payload_bytes = canonical_block_sign_payload(
+                target.hash(),  # type: ignore[attr-defined]
+                target.header.height,  # type: ignore[attr-defined]
+            )
+            ok = fast_aggregate_verify(
+                list(target.finality.pubkeys),  # type: ignore[attr-defined]
+                payload_bytes,
+                target.finality.aggregate,  # type: ignore[attr-defined]
+            )
+        except Exception:
+            ok = False
+        return {
+            "block_hash": block_hash,
+            "block_height": int(target.header.height),  # type: ignore[attr-defined]
+            "n_signers": len(target.finality.pubkeys),  # type: ignore[attr-defined]
+            "aggregate_short": target.finality.aggregate.hex()[:32],  # type: ignore[attr-defined]
+            "signers": [
+                p.hex()[:16]
+                for p in target.finality.pubkeys  # type: ignore[attr-defined]
+            ],
+            "verified": ok,
+        }
+
+    @app.get("/crypto/zk/legal-path")
+    async def crypto_zk_verify() -> dict[str, object]:
+        """Verify the shipped Groth16 legal-path proof using our pure-Python verifier.
+
+        The pedagogical demo: a real ZK proof — 'I know a 2-hop walk
+        in the published 4×4 adjacency matrix from start to goal' —
+        rendered with side-by-side honest-vs-tampered verification.
+        """
+        import json
+        from pathlib import Path
+
+        from penumbra_crypto.snark import load_proof, load_verifying_key, verify
+
+        artifacts = Path(__file__).resolve().parents[3] / "circuits" / "artifacts"
+        vk_path = artifacts / "legal_path_vk.json"
+        proof_path = artifacts / "legal_path_proof.json"
+        public_path = artifacts / "legal_path_public.json"
+        if not all(p.is_file() for p in (vk_path, proof_path, public_path)):
+            return {"available": False, "reason": "circuits/artifacts missing"}
+        vk = load_verifying_key(json.loads(vk_path.read_text()))
+        proof = load_proof(json.loads(proof_path.read_text()))
+        public = [int(s) for s in json.loads(public_path.read_text())]
+        honest_ok = verify(vk, proof, public)
+        # Tamper the goal (last public input) and re-run.
+        tampered = [*public[:-1], (public[-1] + 1) % 4]
+        tampered_ok = verify(vk, proof, tampered)
+        # Tamper one adjacency bit too.
+        adj_tampered = list(public)
+        adj_tampered[3] = 1 - adj_tampered[3]
+        adj_ok = verify(vk, proof, adj_tampered)
+        return {
+            "available": True,
+            "circuit": "legal_path 2-hop",
+            "n_public_inputs": len(public),
+            "honest": {"inputs": public, "verified": bool(honest_ok)},
+            "tamper_goal": {"inputs": tampered, "verified": bool(tampered_ok)},
+            "tamper_adjacency": {"inputs": adj_tampered, "verified": bool(adj_ok)},
         }
 
     @app.get("/chain/latest")
