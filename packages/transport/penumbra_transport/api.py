@@ -691,10 +691,15 @@ def _build_simulation_with_optional_mappo() -> Simulation:
     if not checkpoint:
         return Simulation.build(config, seeded)
     try:
-        from penumbra_learning.policy_loader import mappo_policy_factory
+        from penumbra_learning.policy_loader import (
+            mappo_batch_policy,
+        )
 
-        factory = mappo_policy_factory(checkpoint, n_agents=config.n_agents)
-        return Simulation.build(config, seeded, policy_factory=factory)
+        batch_policy = mappo_batch_policy(checkpoint, n_agents=config.n_agents)
+        # Batched policy path: ~50× faster on MPS than the per-agent
+        # closure factory because we run ONE matmul over the (50,
+        # obs_dim) stack instead of 50 sequential single-row passes.
+        return Simulation.build(config, seeded, batch_policy=batch_policy)
     except ImportError:
         # penumbra-learning isn't installed (e.g. a slim deployment) — fall back.
         logger.warning("penumbra_learning not importable; falling back to random walk")

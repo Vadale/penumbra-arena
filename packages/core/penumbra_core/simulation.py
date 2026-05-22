@@ -54,9 +54,23 @@ class SimulationConfig:
     means fast-forward."""
 
 
+BatchPolicy = Callable[[list[Agent], list[AgentObservation]], list[NodeId]]
+
+
 @dataclass(slots=True)
 class Simulation:
-    """Perpetual multi-agent simulation. Owns arena, agents, current match."""
+    """Perpetual multi-agent simulation. Owns arena, agents, current match.
+
+    The simulation supports two policy execution modes:
+    - **Per-agent** (default): each `agent.policy(obs, rng)` is called
+      in turn. Right for stateless policies like random_walk.
+    - **Batched**: if `batch_policy` is set, the simulation collects
+      all observations first and hands them to the batch policy in a
+      single call. Right for neural policies — a 50-row matmul on
+      MPS costs ~5ms whereas 50 sequential 1-row matmuls cost ~250ms
+      (overhead-bound). The MAPPO loader supplies a batch policy by
+      default; random_walk leaves it None.
+    """
 
     config: SimulationConfig
     seeded: Seeded
@@ -67,6 +81,7 @@ class Simulation:
     tick_counter: int = 0
     state: RunState = RunState.RUNNING
     on_match_end: Callable[[Match, Arena, list[Agent]], None] | None = None
+    batch_policy: BatchPolicy | None = None
 
     @classmethod
     def build(
@@ -75,6 +90,7 @@ class Simulation:
         seeded: Seeded,
         *,
         policy_factory: Callable[[int], Callable[[AgentObservation, object], NodeId]] | None = None,
+        batch_policy: BatchPolicy | None = None,
     ) -> Simulation:
         """Construct a freshly-seeded simulation ready for tick 0."""
         from penumbra_core.agent import random_walk_policy
@@ -100,6 +116,7 @@ class Simulation:
             arena=arena,
             agents=agents,
             current_match=Match.start(match_id=0, current_tick=0, max_ticks=config.match_max_ticks),
+            batch_policy=batch_policy,
         )
 
     # ── lifecycle controls ────────────────────────────────────────────
@@ -141,16 +158,26 @@ class Simulation:
         return self._snapshot()
 
     def _move_agents(self) -> None:
-        for agent in self.agents:
-            observation = agent.observe(self.arena, tick=self.tick_counter)
-            agent_rng = self.seeded.numpy_for(f"agent-{agent.id}")
-            target = agent.policy(observation, agent_rng)
+        # Collect every observation before any policy call. The batch
+        # policy (when configured) needs them all at once; the per-
+        # agent path benefits from a single arena.observe() pass too.
+        observations = [agent.observe(self.arena, tick=self.tick_counter) for agent in self.agents]
+        # Decide targets.
+        if self.batch_policy is not None:
+            targets = self.batch_policy(self.agents, observations)
+        else:
+            targets = [
+                agent.policy(obs, self.seeded.numpy_for(f"agent-{agent.id}"))
+                for agent, obs in zip(self.agents, observations, strict=True)
+            ]
+        # Apply moves.
+        for agent, obs, target in zip(self.agents, observations, targets, strict=True):
             if target == agent.position:
                 continue
-            if target not in observation.neighbour_costs:
+            if target not in obs.neighbour_costs:
                 # Policy proposed an illegal move; stay put.
                 continue
-            cost = observation.neighbour_costs[target]
+            cost = obs.neighbour_costs[target]
             agent.move_to(target, cost, tick=self.tick_counter)
 
     def _evaluate_match(self) -> None:
