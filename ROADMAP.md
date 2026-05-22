@@ -177,19 +177,96 @@ to live properties of the running system:
   Gated by `PENUMBRA_ENABLE_PTY=1`. Dashboard has a Coach/Terminal
   tab toggle.
 
+## Phase 8 — Dashboard expansion · `bugs-plus-missing-panels`
+
+Built **after** the original phases above. Every panel is a clickable
+tile on the analytics grid that opens a modal with educational
+description + live interaction.
+
+### Stats / econometrics tiles (Tier 2 + Tier 3)
+
+`tier3-stat-charts`:
+- ANOVA F-test on HDBSCAN cluster labels
+- ACF/PACF correlograms with ±1.96/√n bands
+- ROC curve + AUC for the logit propensity
+- Pearson + Spearman correlation heatmap
+- Permutation test on causal ATE
+- Q-Q plot + residual-vs-fitted inline in the regression chart
+
+### Closed-system market economy · `market-economy`
+
+- Per-agent wallets (coins + inventory) + per-city markets
+  (stocked products, inventory, dynamic ask price, treasury).
+- BUY + SELL flow on city arrival (sell first to free coins).
+- Money is conserved; inflation emerges from supply/demand pressure
+  on a fixed money base.
+- Charts: CandlestickChart (OHLC + volume), InflationChart (CPI +
+  money supply), WealthChart (Lorenz + Gini).
+
+### ML interaction · `ml-interaction`
+
+- PolicyInspector: live actor-prob bars for any agent + observation
+  features + chosen action.
+- ActionHistogramChart: swarm-wide action mix per tick.
+- StatusBar MAPPO/RANDOM toggle + temperature slider (mutates
+  inference live).
+- DpCompareChart: clean vs noised heatmap + δ + L1/L2 magnitudes.
+
+### Chain & crypto panels · `chain-crypto-panels`
+
+- VRFLeaderChart: validator panel + leader-frequency bars.
+- MempoolChart: pending outcomes + slashing evidence.
+- ZKVerifyChart: Groth16 legal-path verifier (cached after first run).
+- BLSChart: aggregate sig for any block + signers + verify.
+- SlashingChart: pick validator + forge equivocation evidence.
+
+### Live training + value map + reward shaping · `ml-interaction`
+
+- LiveTrainer background asyncio task — PPO updates against the
+  LIVE actor; start/stop from the dashboard.
+- ValueMapChart: critic V(s) + per-node policy entropy histogram.
+- RewardShapingChart: 4 sliders mutating the shared RewardWeights
+  singleton at runtime.
+
+### Advanced ML + remaining crypto · `advanced-batch5` + `bugs-plus-missing-panels`
+
+- GATAttentionChart: layer-1 / layer-2 attention rows per source node.
+- SaliencyChart: ∂p(chosen)/∂x per observation feature.
+- CKKSCompareChart: encrypt → decrypt round-trip + per-slot error.
+- KyberKEMChart: ML-KEM-768 keygen + encaps + decaps + tampered.
+- MultiCheckpointChart: load second checkpoint + KL + agreement.
+- VDFChart: Wesolowski compute vs verify timing.
+- DilithiumChart: per-agent ML-DSA-65 sig inspect.
+- ShamirChart: (n, t) split + reconstruct + (t-1) garbage check.
+- TFHEChart: LWE encrypt + homomorphic NOT/XOR correctness.
+- WorldSnapshotChart: UI for the world/save + world/load endpoints.
+- ArenaGraphChart: Fruchterman-Reingold 2D force-directed view.
+
+### Bug fixes baked in along the way
+
+- `np.trapz` → `np.trapezoid` for numpy 2.x compatibility (Gini was
+  silently None before).
+- Pre-commit got biome inside the hook system so frontend reformats
+  don't silently drop from the commit (the silent-rollback bug).
+- ZK verifier cache warm-up at server boot (was 15s cold path on
+  first modal open).
+- Sinkhorn divide-by-zero + ripser cols>rows warning suppressed at
+  call site (cosmetic but log-spamming).
+
 ## Test + tag counts (current)
 
-- **35 tags** on GitHub, every one a runnable repo state.
-- **47+ commits**.
-- **~298 backend tests** + **10 vitest** = ~308 total, all green.
-- **CI**: 7 consecutive green runs.
+- **40+ tags** on GitHub, every one a runnable repo state.
+- **60+ commits** (Phase 8 added ~15).
+- **302 backend tests** + **24 vitest** = **326 total**, all green.
+- **CI**: green.
+- **52 dashboard chart tiles**, each cliccable to its own modal.
 
 ## Deferred (intentional, with rationale)
 
 | Item | Why deferred |
 |---|---|
 | `attacker/snark_forgery.py` | The Schnorr ZK module already pins the defence; the attack demo would be documentation |
-| Production-grade TFHE (Concrete-ML) | `concrete-python` doesn't ship cp313 wheels; the educational module (`tfhe-educational`) captures the protocol shape |
+| Production-grade TFHE (Concrete-ML) | `concrete-python` doesn't ship cp313 wheels; the educational module + the TFHEChart panel capture the protocol shape |
 | LLM-generated agent utterances | The templated corpus in `analytics/topics.py` produces enough topic-modelling signal without the GPU spend |
 | Real EVM/Substrate chain | The custom local chain is the right scope for an educational project; an EVM-compatible implementation is a different project |
 | Multi-machine distribution + KMS + dashboard auth | Single-host learning project by design |

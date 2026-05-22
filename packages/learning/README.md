@@ -22,6 +22,14 @@ Apple Metal (MPS).
   pedagogical asset: read the forward() and the attention math is
   literally visible in 25 lines.
 - **`training.py`** — self-play rollout + GAE + PPO update + checkpoint.
+- **`policy_loader.py`** — `mappo_batch_policy()` returns the inference
+  policy plus a mutable `MappoRuntime` (temperature, deterministic,
+  enabled, last_actions) the dashboard reaches into to flip behaviour
+  at runtime without restarting the server.
+- **`live_trainer.py`** — background `LiveTrainer` that owns an
+  internal `PenumbraEnv` and runs ONE PPO iteration at a time against
+  the live actor. The user toggles start/stop from the dashboard and
+  watches actor/critic/entropy/reward curves update every ~1.5s.
 
 ## Micro-experiments
 
@@ -40,10 +48,14 @@ Apple Metal (MPS).
 
 ```python
 from penumbra_learning.device import best_device
-from penumbra_learning.env import PenumbraEnv, NEIGHBOURS_K, OBS_PER_NEIGHBOUR
-from penumbra_learning.mappo import MAPPO, MAPPOConfig
-from penumbra_learning.gat_pathfinder import GATv2Layer, GATv2Pathfinder
+from penumbra_learning.env import (
+    PenumbraEnv, NEIGHBOURS_K, OBS_PER_NEIGHBOUR, REWARD_WEIGHTS
+)
+from penumbra_learning.mappo import MAPPO, MAPPOConfig  # action_probabilities, value_estimate
+from penumbra_learning.gat_pathfinder import GATv2Layer, GATv2Pathfinder  # forward_with_attention
 from penumbra_learning.training import train, TrainingConfig
+from penumbra_learning.policy_loader import mappo_batch_policy, MappoRuntime
+from penumbra_learning.live_trainer import LiveTrainer, build_live_trainer, TrainingSample
 ```
 
 ## M4 budget

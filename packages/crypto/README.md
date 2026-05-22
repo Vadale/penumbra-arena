@@ -22,6 +22,21 @@ property-based test.
 | `educational/schnorr.py` | Schnorr Σ-protocol with Fiat-Shamir; the simplest non-trivial ZK proof of knowledge. |
 | `educational/tfhe_boolean.py` | LWE-based homomorphic XOR/NOT/NAND/AND/OR from scratch. ~150 LOC. Demo: encrypted faction overlap. No bootstrapping (documented caveat); for production, swap for a Concrete-Python compiled circuit. |
 
+## Dashboard panels exposing these primitives
+
+| Primitive | Tile | Endpoint |
+|---|---|---|
+| CKKS | "CKKS" | `/crypto/ckks/compare` |
+| DP (Laplace) | "DP δ" | `/dp/compare` |
+| Kyber (ML-KEM-768) | "Kyber" | `/crypto/kyber/demo` |
+| Dilithium (ML-DSA-65) | "Dilithium" | `/crypto/dilithium/inspect/{id}` |
+| BLS aggregate | "BLS agg" | `/chain/bls/{hash}` |
+| VRF leader | "VRF leader" | `/chain/vrf-leader` |
+| VDF (Wesolowski) | "VDF" | `/crypto/vdf/demo` |
+| Groth16 zk-SNARK | "ZK proof" | `/crypto/zk/legal-path` |
+| Shamir SSS | "Shamir" | `/crypto/shamir/demo` |
+| TFHE (LWE) | "TFHE" | `/crypto/tfhe/demo` |
+
 ## Real-circuit Groth16 demo
 
 Outside this package — `circuits/` at the repo root — circom +

@@ -14,6 +14,12 @@ ultimately meets on each simulation tick.
   perpetual tick loop. *Concept:* an "episode" is an artificial boundary on
   a continuous-time process; the simulation persists agents and stats
   across them.
+- **`economy.py`** — the closed two-sided market. Wallets +
+  city-state (stocked products, inventory, dynamic ask price, treasury);
+  per-tick `Market.tick()` runs produce → reprice → settle arrivals
+  (sell first, then buy). Money is conserved; inflation emerges from
+  supply/demand pressure on a FIXED money base. *Concept:* how a
+  macro-level price index can rise without monetary expansion.
 
 ## Micro-experiments
 
@@ -30,4 +36,8 @@ from penumbra_core.arena import Arena, ArenaConfig
 from penumbra_core.agent import Agent
 from penumbra_core.match import Match
 from penumbra_core.simulation import Simulation
+from penumbra_core.economy import (
+    Market, Wallet, MarketState, Trade,
+    PRODUCT_CATALOG, PRODUCT_CATEGORIES,
+)
 ```

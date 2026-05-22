@@ -130,6 +130,56 @@ Levers when over budget:
 - All changes to `packages/crypto/`, `packages/chain/`, or `packages/attacker/` **must** be reviewed by the `crypto-auditor` agent before commit.
 - HE backend toggle: `PENUMBRA_HE_BACKEND={openfhe,tenseal}`. Default `openfhe`; fallback documented.
 
+## Dashboard tile pattern (post Phase 8) — 5 steps
+
+Every new "thing the user can click" on the analytics grid follows
+the same shape. See `apps/web/src/charts/*Chart.tsx` for ~30 examples.
+
+1. **Backend endpoint** — add one `@app.get` (or POST) under
+   `packages/transport/penumbra_transport/api.py`. Return a flat
+   JSON dict with `available: bool` so the frontend can render an
+   empty state cleanly.
+2. **Chart component** — `apps/web/src/charts/FooChart.tsx`. Fetch
+   the endpoint on mount + a small interval for live ones; render
+   an SVG or grid of Stat cells. Look at `VDFChart` for a minimal
+   one-shot panel and `TrainingCurves` for a polling one.
+3. **Modal route** — extend `MetricKind` in `DetailModal.tsx` with
+   the new id, add the META entry (label + description) and one
+   `if (metric === "...") return <FooChart />` branch.
+4. **Tile** — add a `<Cell label="..." onClick={() => open("...")}/>`
+   in `AnalyticsPanel.tsx`; remember to add the new id to both the
+   `mapMetricToHistoryKey` exclusion list and the openMetric switch.
+5. **Proxy** — if the endpoint is on a NEW path prefix (e.g.
+   `/foo/...`), add `"/foo": API_HTTP` to `apps/web/vite.config.ts`
+   (we burned half a session debugging "loading…" panels because of
+   this one).
+
+## Live MAPPO training (background task)
+
+The actor is shared between inference and the background trainer.
+`MappoRuntime` in `packages/learning/penumbra_learning/policy_loader.py`
+holds the live `agent_net` + mutable `temperature` + `enabled` flag;
+`LiveTrainer` in `live_trainer.py` runs one PPO iteration at a time
+against the same actor. To drive it:
+
+- `POST /learning/training/start` — kicks off the background task
+- `POST /learning/training/stop` — pauses
+- `GET /learning/training/curves` — last 200 (iter, losses, KL, reward)
+
+When extending the trainer, KEEP the rollout env's `n_agents` equal
+to the checkpoint's `MAPPOConfig.n_agents` — the critic dim has to
+match, otherwise the first PPO step crashes (we built `build_live_trainer`
+explicitly to enforce this).
+
+## Pre-commit hygiene
+
+Biome is INSIDE pre-commit (added 2026-05-22 to fix a class of silent
+commit-rollback bugs). When pre-commit reformats a file, the hook
+fails, you re-stage with `git add -A`, re-commit, and the formatted
+file is included. **After every commit, run `git log --oneline -1`
+and confirm HEAD matches the new message** — if it doesn't, the
+commit was silently rolled back and you need to re-stage.
+
 ## Adding a new analytics module — 5 steps
 
 1. Create `packages/analytics/<name>.py` with module docstring including `Concept taught: ...`.
