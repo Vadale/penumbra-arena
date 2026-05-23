@@ -291,6 +291,18 @@ Continuous (P3):
 - [ ] VRF/timing tighter `compare_digest` comparisons
 - [ ] Wesolowski VDF Miller-Rabin with random witnesses
 
+Post-launch v2.0 / v3.0 planning (gates: 500+ stars OR 10+ bench
+submissions; vedi i 3 doc):
+- [ ] Phase 5 — CRYPTO_ATTACK_DEFENSE_PLAN.md (interactive crypto
+      lab + STARK/Verkle/FROST/SPHINCS+/BBS+/Yao/PSI/Loopix +
+      attack & defense modules + CTF surface + Jupyter bridge)
+- [ ] Phase 6a — INTER_SILO_INTEGRATION_PLAN.md (event bus +
+      bidirectional channels so i pilastri si parlino davvero;
+      ~50h; prereq di 6b)
+- [ ] Phase 6b — OPERATOR_MODE_PLAN.md (cyber range; operator
+      agent + Console UI + `pno` CLI + 12 starter scenarios;
+      ~60h; depends su 6a + Phase 5)
+
 ---
 
 Quando hai dubbi su uno specifico item, chiedimi e ti spiego nel

@@ -388,9 +388,50 @@ artefact: teaching platform + benchmark + dataset.
   variants (Krum, Trimmed Mean, Median). Tied to Penumbra-Bench
   as the FL benchmark task. Target release: month 4-6 as v1.2.
 
-- **Logistics extension** (`LOGISTICS_PLAN.md`) — operations
-  research layer with VRP, multi-echelon supply chain, bullwhip
-  effect. Target release: month 4-6 as v1.2.
+- **Logistics extension** (`LOGISTICS_PLAN.md`) — SHIPPED in
+  Phase 2.5 (2026-05-23). OR layer with VRP solvers (greedy /
+  2-opt / OR-Tools), multi-echelon supplier→distributor→city,
+  carrier dispatch, bullwhip metric. Originally planned for
+  month 4-6 as v1.2; landed pre-launch.
+
+## Phase 5 — Crypto + Surveillance Attack/Defense Lab (planned)
+
+See `CRYPTO_ATTACK_DEFENSE_PLAN.md`. Post-OSS-launch (gate: 500+
+stars OR 10+ bench submissions). ~50-60h across 5 tiers.
+
+Adds the cutting-edge-2026 crypto shelf (STARK / Plonky3 / Verkle
+/ FROST / SPHINCS+ / BBS+ / Yao / PSI / Loopix mix-net), plus
+attack modules (membership inference, model inversion, reward
+poisoning, FL backdoor, agent fingerprinting) and defense modules
+(k-anonymity, l-diversity, GAN data poisoning, request padding).
+Interactive surfaces: custom policy injection, capture-the-flag
+mode, Jupyter `%penumbra` magic, replay+branching. Target: v2.0.
+
+## Phase 6 — Cyber Range (Operator Mode + Inter-Silo Integration)
+
+Two paired plans, both post-OSS-launch:
+
+- **Phase 6a — Inter-silo deep integration**
+  (`INTER_SILO_INTEGRATION_PLAN.md`). ~50h. In-process event bus
+  + bidirectional channels so a market shock propagates through
+  stats → reorder policy → carrier dispatch → MAPPO reward → next
+  tick's actions as ONE causal chain. The 8 packages stop being
+  independent observers and become a connected system. Prereq
+  for 6b; can land standalone.
+
+- **Phase 6b — Operator Mode** (`OPERATOR_MODE_PLAN.md`). ~60h.
+  Human-controlled external operator agent (#N+1) with a console
+  UI + `pno` CLI exposing every pillar's primitives as actions.
+  12 starter scenarios in YAML for replayable cyber-range
+  exercises (the "tabletop drill" angle for banks / MPC
+  custodians / privacy ops teams). The asymmetric "1 human vs N
+  AI" design is intentional — this is a lab exercise, not a
+  multiplayer game.
+
+Phase 6 turns Penumbra from "OSS teaching + bench + dataset" into
+the OSS counterpart of commercial cyber ranges (Cyberbit /
+Immersive Labs / RangeForce). Target: v3.0; commercialisation
+window per `OSS_LAUNCH_ROADMAP.md` Phase L4.
 
 Each extension is a fresh news angle that maintains the OSS
 launch momentum (per `OSS_LAUNCH_ROADMAP.md` Phase L3-L4 sustainment).

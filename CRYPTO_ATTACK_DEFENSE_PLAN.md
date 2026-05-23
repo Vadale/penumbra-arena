@@ -4,7 +4,10 @@
 month 3-4 after public release per `OSS_LAUNCH_ROADMAP.md`).
 
 **Sister docs**: `LOGISTICS_PLAN.md`, `FEDERATED_LEARNING_PLAN.md`,
-`BENCHMARK_PLAN.md`, `SYNTHETIC_DATA_PLAN.md`, `SECURITY_AUDIT.md`.
+`BENCHMARK_PLAN.md`, `SYNTHETIC_DATA_PLAN.md`, `SECURITY_AUDIT.md`,
+`INTER_SILO_INTEGRATION_PLAN.md` (Phase 6a — runs in parallel),
+`OPERATOR_MODE_PLAN.md` (Phase 6b — consumes Phase 5 modules as
+operator actions).
 
 **Why Phase 5**: today Penumbra is a *passive* crypto demo — 10 tile
 panels show CKKS, Dilithium, Groth16 etc. working correctly. Phase 5
