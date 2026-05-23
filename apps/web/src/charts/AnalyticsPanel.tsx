@@ -554,6 +554,41 @@ export function AnalyticsPanel() {
           accent
           onClick={() => open("arena_graph")}
         />
+        <Cell
+          label="Pedersen"
+          value="commit"
+          caption="hide + bind + add"
+          accent
+          onClick={() => open("pedersen")}
+        />
+        <Cell
+          label="Beaver"
+          value="SMPC mul"
+          caption="N-party multiplication"
+          accent
+          onClick={() => open("beaver")}
+        />
+        <Cell
+          label="Schnorr ZK"
+          value="Σ-protocol"
+          caption="Fiat-Shamir proof"
+          accent
+          onClick={() => open("schnorr")}
+        />
+        <Cell
+          label="ZK mul"
+          value="circom"
+          caption="a·b === c"
+          accent
+          onClick={() => open("zk_multiplier")}
+        />
+        <Cell
+          label="forge"
+          value="snark attack"
+          caption="verifier must reject"
+          ember
+          onClick={() => open("snark_forge")}
+        />
       </div>
 
       {summary && (
@@ -621,6 +656,11 @@ export function AnalyticsPanel() {
             case "tfhe":
             case "world_snapshot":
             case "arena_graph":
+            case "pedersen":
+            case "beaver":
+            case "schnorr":
+            case "zk_multiplier":
+            case "snark_forge":
               return undefined;
             default:
               return histories[mapMetricToHistoryKey(openMetric)];
@@ -699,6 +739,11 @@ function mapMetricToHistoryKey(
     | "tfhe"
     | "world_snapshot"
     | "arena_graph"
+    | "pedersen"
+    | "beaver"
+    | "schnorr"
+    | "zk_multiplier"
+    | "snark_forge"
   >,
 ): keyof ReturnType<typeof useDashboardLive>["history"] {
   switch (m) {

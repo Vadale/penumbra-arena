@@ -44,6 +44,7 @@ import { ANOVAChart } from "./ANOVAChart";
 import { ArenaGraphChart } from "./ArenaGraphChart";
 import { ArimaChart } from "./ArimaChart";
 import { BayesianDensity } from "./BayesianDensity";
+import { BeaverChart } from "./BeaverChart";
 import { BLSChart } from "./BLSChart";
 import { CandlestickChart } from "./CandlestickChart";
 import { CausalChart } from "./CausalChart";
@@ -63,15 +64,19 @@ import { LogitChart } from "./LogitChart";
 import { MempoolChart } from "./MempoolChart";
 import { MonteCarloFan } from "./MonteCarloFan";
 import { MultiCheckpointChart } from "./MultiCheckpointChart";
+import { MultiplierZKChart } from "./MultiplierZKChart";
 import { PCAScree } from "./PCAScree";
+import { PedersenChart } from "./PedersenChart";
 import { PermutationChart } from "./PermutationChart";
 import { PolicyInspector } from "./PolicyInspector";
 import { RegressionChart } from "./RegressionChart";
 import { RewardShapingChart } from "./RewardShapingChart";
 import { ROCChart } from "./ROCChart";
 import { SaliencyChart } from "./SaliencyChart";
+import { SchnorrChart } from "./SchnorrChart";
 import { ShamirChart } from "./ShamirChart";
 import { SlashingChart } from "./SlashingChart";
+import { SnarkForgeChart } from "./SnarkForgeChart";
 import { SpectralChart } from "./SpectralChart";
 import { SurvivalChart } from "./SurvivalChart";
 import { TFHEChart } from "./TFHEChart";
@@ -136,7 +141,12 @@ export type MetricKind =
   | "shamir"
   | "tfhe"
   | "world_snapshot"
-  | "arena_graph";
+  | "arena_graph"
+  | "pedersen"
+  | "beaver"
+  | "schnorr"
+  | "zk_multiplier"
+  | "snark_forge";
 
 interface Props {
   open: boolean;
@@ -426,6 +436,31 @@ const META: Record<MetricKind, { label: string; description: string; yUnit?: str
     description:
       "The same nodes + edges + goals you see on the world map, laid out with a Fruchterman-Reingold relaxation so the connectivity STRUCTURE is visible (clusters, bottlenecks, isolated subgraphs). Ember = goals, edge thickness ∝ cost. Recomputed every 6s as topology mutates.",
   },
+  pedersen: {
+    label: "Pedersen commitments + homomorphic add",
+    description:
+      "C(m, r) = g^m · h^r mod p. Hiding (random h^r masks m); binding (changing m without breaking discrete log is infeasible). Additively homomorphic — multiplying ciphertexts gives a commitment to the sum. Verify shows honest ACCEPT, tampered REJECT, and the C(a)·C(b) = C(a+b) check.",
+  },
+  beaver: {
+    label: "Beaver triples — secret multiplication",
+    description:
+      "N parties each hold an additive share of x and y plus a Beaver triple (a, b, c=a·b). Local arithmetic + ONE round of broadcast computes additive shares of x·y. None of the parties learn x or y. Σ z_i mod p reconstructs x·y exactly.",
+  },
+  schnorr: {
+    label: "Schnorr Σ-protocol (Fiat-Shamir)",
+    description:
+      "Prover knows witness x s.t. y = g^x. Publishes (t, c, s) where c = H(y || t || context). Verifier recomputes c and checks g^s ≡ t · y^c. Honest accepts; wrong context rejects (challenge mismatch); tampered s rejects (pairing fails).",
+  },
+  zk_multiplier: {
+    label: "Groth16 — multiplier circuit",
+    description:
+      "The simplest non-trivial circom circuit: a * b === c. The shipped proof has c = 15 (e.g. a=3, b=5). Honest verifies; bumping c to 16 rejects because the proof binds to the public input. Same py_ecc verifier as the legal-path circuit, just a different VK/proof pair.",
+  },
+  snark_forge: {
+    label: "SNARK forgery — verifier rejects",
+    description:
+      "Attempt to fool the Groth16 verifier WITHOUT a witness. Two attacks: (1) flip A's low bit — the proof point goes off-curve, pairing equation fails. (2) Replay an honest proof with TAMPERED public inputs — Groth16 binds proofs to public inputs via the linear-combination IC, so verifier rejects. The honest control still accepts.",
+  },
 };
 
 export function DetailModal({
@@ -611,6 +646,21 @@ export function DetailModal({
     }
     if (metric === "arena_graph") {
       return <ArenaGraphChart />;
+    }
+    if (metric === "pedersen") {
+      return <PedersenChart />;
+    }
+    if (metric === "beaver") {
+      return <BeaverChart />;
+    }
+    if (metric === "schnorr") {
+      return <SchnorrChart />;
+    }
+    if (metric === "zk_multiplier") {
+      return <MultiplierZKChart />;
+    }
+    if (metric === "snark_forge") {
+      return <SnarkForgeChart />;
     }
     return <LineChart values={values ?? []} label={meta.label} yUnit={meta.yUnit} />;
   })();

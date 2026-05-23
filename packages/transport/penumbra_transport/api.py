@@ -119,6 +119,28 @@ def build_app(
 
         app.state.zk_warmup_task = asyncio.create_task(_warm_zk_cache(), name="penumbra-zk-warmup")
 
+        # Same idea for the snark-forgery demo (3 verifies × ~5s).
+        async def _warm_forge_cache() -> None:
+            with contextlib.suppress(Exception):
+                from penumbra_attacker.attacks import snark_forgery
+
+                fr = await asyncio.to_thread(snark_forgery.demo)
+                _snark_forge_cache.update(
+                    {
+                        "available": True,
+                        "algorithm": "Groth16 (legal_path circuit)",
+                        "honest_proof_accepted": bool(fr.honest_proof_accepted),
+                        "random_forge_accepted": bool(fr.random_forge_accepted),
+                        "replay_with_tampered_inputs_accepted": bool(
+                            fr.replay_with_tampered_inputs_accepted
+                        ),
+                    }
+                )
+
+        app.state.forge_warmup_task = asyncio.create_task(
+            _warm_forge_cache(), name="penumbra-forge-warmup"
+        )
+
         live_trainer: object | None = None
         if mappo_runtime is not None:
             try:
@@ -395,6 +417,7 @@ def build_app(
                 {"label": "DP reconstruction", "command": "pna dp-reconstruct"},
                 {"label": "linkability", "command": "pna linkability-cmd"},
                 {"label": "timing side-channel", "command": "pna timing --samples 30"},
+                {"label": "snark forgery", "command": "pna snark-forge"},
             ],
             "shell": [
                 {"label": "lessons", "command": "psh lessons"},
@@ -1229,6 +1252,8 @@ def build_app(
         }
 
     _zk_cache: dict[str, object] = {}
+    _multiplier_cache: dict[str, object] = {}
+    _snark_forge_cache: dict[str, object] = {}
 
     def _zk_verify_sync() -> dict[str, object]:
         """Pure-sync ZK verifier — also used by lifespan warm-up."""
@@ -1274,6 +1299,180 @@ def build_app(
         instant for the dashboard.
         """
         return await asyncio.to_thread(_zk_verify_sync)
+
+    @app.get("/crypto/pedersen/demo")
+    async def crypto_pedersen_demo(message: int = 0) -> dict[str, object]:
+        """Commit to a value + verify; also show the homomorphic add property.
+
+        Pedersen commitments are HIDING (blinding factor makes the
+        commitment value uniformly random) and BINDING (changing the
+        message without changing the commitment requires breaking
+        discrete log). They're additively homomorphic:
+            C(m1, r1) * C(m2, r2) = C(m1+m2, r1+r2).
+        """
+        import secrets as pysecrets
+
+        from penumbra_crypto.educational import pedersen
+
+        if message <= 0:
+            message = int.from_bytes(pysecrets.token_bytes(4), "big") % 10**6 + 1
+        msg_b = pysecrets.randbelow(10**6) + 1
+        c_a, open_a = pedersen.commit(message)
+        c_b, open_b = pedersen.commit(msg_b)
+        honest_ok = pedersen.verify(c_a, open_a)
+        wrong_open = type(open_a)(message=message + 1, blinding=open_a.blinding)
+        tampered_ok = pedersen.verify(c_a, wrong_open)
+        # Homomorphic add: c_a · c_b should equal a commitment to (a + b)
+        # with blinding (r_a + r_b).
+        p_mod, q_mod, _g, _h = pedersen.group_params()
+        c_sum_val = (c_a.value * c_b.value) % p_mod
+        combined_open = type(open_a)(
+            message=(open_a.message + open_b.message) % q_mod,
+            blinding=(open_a.blinding + open_b.blinding) % q_mod,
+        )
+        c_sum = type(c_a)(value=c_sum_val)
+        homo_ok = pedersen.verify(c_sum, combined_open)
+        return {
+            "available": True,
+            "algorithm": "Pedersen commitment over Schnorr group (RFC 3526 MODP-14)",
+            "message_a": int(message),
+            "message_b": int(msg_b),
+            "commitment_a_short": format(c_a.value, "x")[:32],
+            "commitment_b_short": format(c_b.value, "x")[:32],
+            "commitment_sum_short": format(c_sum_val, "x")[:32],
+            "honest_verifies": bool(honest_ok),
+            "tampered_message_verifies": bool(tampered_ok),
+            "homomorphic_add_verifies": bool(homo_ok),
+        }
+
+    @app.get("/crypto/beaver/demo")
+    async def crypto_beaver_demo(n_parties: int = 3) -> dict[str, object]:
+        """Beaver triple → secret multiplication via additive shares.
+
+        Each party holds an additive share of x, y, and (a, b, c =
+        a*b). They locally compute d = x - a, e = y - b, open d + e,
+        then locally output z = c + d·b + e·a + d·e. Sum of z shares
+        equals x·y, but no party ever learned x or y in the clear.
+        """
+        import secrets as pysecrets
+
+        from penumbra_crypto.educational import beaver
+
+        n_parties = max(2, min(int(n_parties), 8))
+        x = pysecrets.randbelow(10**6) + 1
+        y = pysecrets.randbelow(10**6) + 1
+        x_shares = beaver._additive_shares(x, n_parties)
+        y_shares = beaver._additive_shares(y, n_parties)
+        triple = beaver.generate_triple(n_parties)
+        z_shares = beaver.beaver_multiply(x_shares, y_shares, triple)
+        reconstructed = beaver.reconstruct_sum(z_shares)
+        expected = x * y
+        from penumbra_crypto.educational.beaver import _PRIME
+
+        return {
+            "available": True,
+            "algorithm": "Beaver triples (trusted-dealer additive sharing)",
+            "n_parties": n_parties,
+            "x": int(x),
+            "y": int(y),
+            "x_shares": [format(int(s), "x")[:16] for s in x_shares],
+            "y_shares": [format(int(s), "x")[:16] for s in y_shares],
+            "z_shares": [format(int(s), "x")[:16] for s in z_shares],
+            "expected_product": int(expected),
+            "reconstructed": int(reconstructed),
+            "matches_modulo_p": bool(reconstructed == expected % _PRIME),
+        }
+
+    @app.get("/crypto/schnorr/demo")
+    async def crypto_schnorr_demo() -> dict[str, object]:
+        """Schnorr Σ-protocol + Fiat-Shamir: prove knowledge of x s.t. y = g^x."""
+        from penumbra_crypto.educational import schnorr
+
+        x, statement = schnorr.keygen()
+        proof = schnorr.prove(x, statement, context=b"penumbra-dashboard-demo")
+        honest_ok = schnorr.verify(statement, proof, context=b"penumbra-dashboard-demo")
+        # Wrong context — verifier recomputes the challenge and rejects.
+        wrong_context_ok = schnorr.verify(statement, proof, context=b"different-context")
+        # Tampered response — flip a bit of s.
+        from dataclasses import replace
+
+        tampered_proof = replace(proof, s=(proof.s ^ 1))
+        tampered_ok = schnorr.verify(statement, tampered_proof, context=b"penumbra-dashboard-demo")
+        return {
+            "available": True,
+            "algorithm": "Schnorr Σ-protocol with Fiat-Shamir (RFC 3526 MODP-14)",
+            "statement_y_short": format(statement.y, "x")[:32],
+            "proof_t_short": format(proof.t, "x")[:32],
+            "proof_s_short": format(proof.s, "x")[:24],
+            "proof_c_short": format(proof.c, "x")[:24],
+            "honest_verifies": bool(honest_ok),
+            "wrong_context_verifies": bool(wrong_context_ok),
+            "tampered_response_verifies": bool(tampered_ok),
+        }
+
+    @app.get("/crypto/zk/multiplier")
+    async def crypto_zk_multiplier() -> dict[str, object]:
+        """Verify the shipped multiplier circom proof (a × b = c).
+
+        Pedagogically simpler than legal_path: a circom circuit with
+        one constraint `a * b === c`. The shipped artifacts have
+        c = 15 (e.g. a=3, b=5). Tampering c rejects.
+        """
+        if _multiplier_cache:
+            return dict(_multiplier_cache)
+        import json
+        from pathlib import Path
+
+        from penumbra_crypto.snark import load_proof, load_verifying_key, verify
+
+        artifacts = Path(__file__).resolve().parents[3] / "circuits" / "artifacts"
+        vk_path = artifacts / "vk.json"
+        proof_path = artifacts / "proof.json"
+        public_path = artifacts / "public.json"
+        if not all(p.is_file() for p in (vk_path, proof_path, public_path)):
+            return {"available": False, "reason": "multiplier artifacts missing"}
+
+        def _run() -> dict[str, object]:
+            vk = load_verifying_key(json.loads(vk_path.read_text()))
+            proof = load_proof(json.loads(proof_path.read_text()))
+            public = [int(s) for s in json.loads(public_path.read_text())]
+            honest_ok = verify(vk, proof, public)
+            tampered = [(public[0] + 1)]
+            tampered_ok = verify(vk, proof, tampered)
+            return {
+                "available": True,
+                "circuit": "multiplier (a × b === c)",
+                "n_public_inputs": len(public),
+                "honest": {"inputs": public, "verified": bool(honest_ok)},
+                "tamper_output": {"inputs": tampered, "verified": bool(tampered_ok)},
+            }
+
+        result = await asyncio.to_thread(_run)
+        _multiplier_cache.update(result)
+        return dict(_multiplier_cache)
+
+    @app.get("/crypto/snark-forge/demo")
+    async def crypto_snark_forge_demo() -> dict[str, object]:
+        """Run the snark-forgery demo: honest accepts, two forgeries reject.
+
+        Cached after first run (three Groth16 verifies on M4 ~ 15s).
+        """
+        if _snark_forge_cache:
+            return dict(_snark_forge_cache)
+        from penumbra_attacker.attacks import snark_forgery
+
+        result = await asyncio.to_thread(snark_forgery.demo)
+        payload: dict[str, object] = {
+            "available": True,
+            "algorithm": "Groth16 (legal_path circuit)",
+            "honest_proof_accepted": bool(result.honest_proof_accepted),
+            "random_forge_accepted": bool(result.random_forge_accepted),
+            "replay_with_tampered_inputs_accepted": bool(
+                result.replay_with_tampered_inputs_accepted
+            ),
+        }
+        _snark_forge_cache.update(payload)
+        return dict(_snark_forge_cache)
 
     @app.get("/crypto/vdf/demo")
     async def crypto_vdf_demo(delay: int = 50000) -> dict[str, object]:

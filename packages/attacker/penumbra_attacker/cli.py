@@ -24,6 +24,7 @@ from penumbra_attacker.attacks import (
     dp_reconstruction,
     linkability,
     replay,
+    snark_forgery,
     timing_sidechannel,
 )
 
@@ -110,6 +111,17 @@ def timing_cmd(samples: int = typer.Option(20, "--samples")) -> None:
     typer.echo(f"dense  median: {result.dense_median_us:.1f} μs")
     typer.echo(f"Welch's t-statistic: {result.welch_t_statistic:.3f}")
     typer.echo(f"p-value: {result.p_value:.4f}")
+
+
+@app.command(name="snark-forge")
+def snark_forge_cmd() -> None:
+    """Try to forge a Groth16 proof; verifier should reject the forgery."""
+    result = snark_forgery.demo()
+    typer.echo(f"honest proof accepted: {result.honest_proof_accepted}")
+    typer.echo(f"random-bytes forgery accepted: {result.random_forge_accepted}")
+    typer.echo(
+        f"replay with tampered inputs accepted: {result.replay_with_tampered_inputs_accepted}"
+    )
 
 
 # ── world snapshot subcommands ────────────────────────────────────
