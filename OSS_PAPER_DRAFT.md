@@ -21,28 +21,39 @@ ready by the end of week 4. Target venues for full submission:
 ## Abstract
 
 We introduce **Penumbra**, an open-source perpetual multi-agent arena
-that integrates privacy-preserving primitives, multi-agent reinforcement
-learning, and adversarial probes into a single live runtime. 50 agents
-compete on a procedurally-dynamic 50-node graph; their per-tick state
-is encrypted under CKKS, their movements signed under Dilithium, and
-match outcomes anchored on a local PoS-VRF blockchain with BLS-
-aggregated finality. The dashboard exposes ~57 clickable concept tiles
-spanning statistics, econometrics, ML interpretability, six classes of
-post-quantum cryptography, and an attacker console with six executable
-attack/forgery demos. The novel contribution is **co-location**: every
-pillar fires on every tick within a single hexagonal architecture, so
-a learner can probe e.g. how Differential Privacy budget exhaustion
-interacts with downstream causal inference — a question that requires
-six separate research codebases in the current state of the art.
+that integrates privacy-preserving primitives, multi-agent
+reinforcement learning, and adversarial probes into a single live
+runtime. Penumbra ships as a **3-in-1 artefact**: (a) a teaching
+platform with ~57 clickable concept tiles spanning statistics,
+econometrics, ML interpretability, six classes of post-quantum
+cryptography, and an attacker console with six executable
+attack/forgery demos; (b) **Penumbra-Bench**, a reproducible
+benchmark suite formalising five tasks across the privacy-aware,
+adversarially-robust, multi-agent axis combination that no existing
+RL benchmark currently spans; and (c) **Penumbra-Data**, a
+multi-modal synthetic dataset (positions, trades, inventory,
+prices, heatmaps, matches, attack labels, chain blocks) published
+on Hugging Face Hub with full generative provenance.
 
-We open-source the full ~33 600 LOC codebase (Python 3.12 + TypeScript
-React 19, strict typing across the stack, 326 tests passing) and
-present three reference use cases: (1) a hands-on undergraduate
-syllabus for post-quantum cryptography integrating live forgery
-attempts; (2) an adversarial-ML benchmark suite comparing learned MAPPO
-policies against OR-Tools VRP centralized optimal under the same world;
-and (3) a privacy-budget audit dashboard suitable for compliance teams
-preparing for the August 2026 EU AI Act enforcement deadlines.
+50 agents compete on a procedurally-dynamic 50-node graph; their
+per-tick state is encrypted under CKKS, their movements signed
+under Dilithium, and match outcomes anchored on a local PoS-VRF
+blockchain with BLS-aggregated finality. The novel contribution is
+**co-location**: every pillar fires on every tick within a single
+hexagonal architecture, so a learner or researcher can probe e.g.
+how Differential Privacy budget exhaustion interacts with downstream
+causal inference — a question that requires six separate research
+codebases in the current state of the art.
+
+We open-source the full ~33 600 LOC codebase (Python 3.12 +
+TypeScript React 19, strict typing across the stack, 326 tests
+passing) under MIT, plus the dataset under CC-BY-4.0. The work
+addresses three current gaps: the lack of integrated runtimes
+for privacy-aware ML pedagogy, the absence of an adversarial-
+robustness × privacy × multi-agent benchmark for the EU AI Act
+enforcement window starting August 2026, and the scarcity of
+synthetic datasets with open generative process and ground-truth
+adversarial labels.
 
 ## 1. Introduction
 
@@ -71,6 +82,24 @@ Contributions:
    exposed to the human — to our knowledge the first published
    instance of "click-to-modify reward function" in an integrated
    RL pedagogy environment.
+5. **Penumbra-Bench**: a formal benchmark suite with five tasks
+   (Privacy-Aware Coordination, Adversarial Resilience, Multi-agent
+   Cooperation under Encryption, Privacy-Budget Management,
+   Linkability Resistance), a composite scoring methodology,
+   four difficulty tiers, seven baseline policies, and a public
+   submission protocol with leaderboard hosted on GitHub Pages.
+6. **Penumbra-Data**: a multi-modal synthetic dataset published on
+   Hugging Face Hub in four size tiers (Mini through Mega) with
+   open generative process, full provenance manifest, and
+   reproducibility from `(seed, config_hash, commit_sha)`. The
+   dataset includes seven correlated streams with ground-truth
+   labels on adversarial events — a property absent from existing
+   anomaly-detection benchmarks.
+7. A federated-learning extension (FedAvg / CKKS-encrypted
+   aggregation / DP-SGD / Byzantine-robust variants) demonstrating
+   end-to-end privacy-preserving distributed training on the same
+   substrate — to our knowledge the first OSS FL implementation
+   that combines all four ingredients natively.
 
 ## 2. Why integrate?
 

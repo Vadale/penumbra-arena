@@ -4,6 +4,10 @@
 > statistics, linear algebra, modern neural networks, and cutting-edge
 > cryptography in one integrated runtime — with a hands-on adversarial
 > console and a real macOS/Unix shell coach baked in.
+>
+> Ships as a **3-in-1 artefact**: a **teaching platform** (~57
+> concept tiles), a **benchmark suite** (Penumbra-Bench), and a
+> **synthetic dataset** on Hugging Face Hub (Penumbra-Data).
 
 **Status**: post-Phase-8, preparing OSS launch. 326 tests green
 (302 backend + 24 frontend), strict typing across the stack,
@@ -121,6 +125,9 @@ The full per-package contracts + endpoint table live in
 | [`OSS_GROWTH_PLAYBOOK.md`](OSS_GROWTH_PLAYBOOK.md) | Deep tactical manual: free + organic stars and visibility (pre-launch SEO, channel etiquette, anti-patterns, KPI dashboard). |
 | [`OSS_PAPER_DRAFT.md`](OSS_PAPER_DRAFT.md) | Working draft of the academic preprint for the OSS launch. |
 | [`LOGISTICS_PLAN.md`](LOGISTICS_PLAN.md) | Proposed Tier-1-to-4 logistics extension (post-launch). |
+| [`FEDERATED_LEARNING_PLAN.md`](FEDERATED_LEARNING_PLAN.md) | Federated learning extension — FedAvg + CKKS-encrypted aggregation + DP-SGD + Byzantine-robust variants (post-launch v1.2). |
+| [`BENCHMARK_PLAN.md`](BENCHMARK_PLAN.md) | **Penumbra-Bench** — 5-task benchmark suite + leaderboard for privacy-aware, adversarially-robust, multi-agent RL. |
+| [`SYNTHETIC_DATA_PLAN.md`](SYNTHETIC_DATA_PLAN.md) | **Penumbra-Data** — multi-modal synthetic dataset on Hugging Face Hub (Mini → Mega tiers) with full generative provenance. |
 | [`EDU_B2B_PITCH.md`](EDU_B2B_PITCH.md) | Enterprise training — secondary commercial direction layered on top of OSS if demand validates. |
 | [`REVIEW_PLAN.md`](REVIEW_PLAN.md) | Operating script for the post-stress review pass. |
 | `packages/<name>/README.md` | Per-package "concept taught" + endpoints + experiments. |

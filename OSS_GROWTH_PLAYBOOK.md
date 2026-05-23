@@ -349,6 +349,42 @@ Best,
 [name]
 ```
 
+### 4.2a Hugging Face Hub as a second distribution channel
+
+If [`SYNTHETIC_DATA_PLAN.md`](SYNTHETIC_DATA_PLAN.md) ships
+alongside or shortly after the OSS launch, the dataset becomes
+a SECOND distribution channel that runs on HF's own algorithm:
+
+- HF datasets ranked by likes + downloads in the past 7 days
+  appear on `huggingface.co/datasets?sort=trending`
+- HF Spaces (free) can host a live demo using the dataset
+- Researchers searching for "synthetic multi-agent" or "privacy
+  preserving dataset" find the HF page; the HF page links back
+  to the GitHub repo
+- Each HF download is a referrer to the GitHub README
+
+Tactics:
+- [ ] Submit the dataset to HF "Trending datasets" by getting 10+
+  likes in the first 24 hours
+- [ ] Cross-list the dataset on Papers With Code
+- [ ] Set up a small HF Space (free tier) with an interactive
+  notebook that loads a sample of the dataset
+
+### 4.2b Benchmark leaderboard as a sustained promotion engine
+
+If [`BENCHMARK_PLAN.md`](BENCHMARK_PLAN.md) ships as v1.1, the
+leaderboard becomes a slow-burn promotion engine. Tactics:
+
+- [ ] Track who lands a top-10 submission; @-mention them on X
+  with congratulations
+- [ ] Quarterly "Penumbra-Bench Q1 review" post: top methods,
+  new techniques, total submissions
+- [ ] Reach out to research groups working on related problems
+  with "would your method be a good fit for our benchmark?"
+- [ ] Submit the benchmark to NeurIPS Datasets & Benchmarks Track
+- [ ] Submit a "demo paper" describing the leaderboard to the
+  next ML conference's demo track
+
 ### 4.3 "Awesome" list submissions
 
 Submit a PR to each, with the entry text drafted. List ordered by

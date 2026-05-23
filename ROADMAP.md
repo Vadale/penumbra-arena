@@ -310,6 +310,38 @@ The B2B Edu pitch (`EDU_B2B_PITCH.md`) is intentionally deferred —
 to be activated only if Phase 9 generates the demand signals
 (stars, invites, consulting requests) listed in the roadmap.
 
+## Phase 10 — 3-in-1 expansion (planned, post-OSS-launch)
+
+After the OSS launch (Phase 9), Penumbra repositions as a 3-in-1
+artefact: teaching platform + benchmark + dataset.
+
+- **Penumbra-Bench** (`BENCHMARK_PLAN.md`) — 5-task benchmark suite
+  (Privacy-Aware Coordination, Adversarial Resilience, Multi-agent
+  Cooperation under Encryption, Privacy-Budget Management,
+  Linkability Resistance) with composite scoring, 4 difficulty
+  tiers, 7 baseline policies, and a public leaderboard on GitHub
+  Pages. Target release: month 2-3 post-launch as v1.1.
+
+- **Penumbra-Data** (`SYNTHETIC_DATA_PLAN.md`) — multi-modal
+  synthetic dataset on Hugging Face Hub. Seven correlated streams
+  (positions, trades, inventory, prices, heatmaps, matches, attack
+  labels, chain blocks) with full generative provenance and
+  ground-truth adversarial labels. Four size tiers: Mini (5 MB) →
+  Mega (20 GB). Target release: month 1-2 post-launch as v1.1
+  asset on HF Hub.
+
+- **Federated Learning extension** (`FEDERATED_LEARNING_PLAN.md`) —
+  FedAvg + CKKS-encrypted aggregation + DP-SGD + Byzantine-robust
+  variants (Krum, Trimmed Mean, Median). Tied to Penumbra-Bench
+  as the FL benchmark task. Target release: month 4-6 as v1.2.
+
+- **Logistics extension** (`LOGISTICS_PLAN.md`) — operations
+  research layer with VRP, multi-echelon supply chain, bullwhip
+  effect. Target release: month 4-6 as v1.2.
+
+Each extension is a fresh news angle that maintains the OSS
+launch momentum (per `OSS_LAUNCH_ROADMAP.md` Phase L3-L4 sustainment).
+
 ## Cadence reality
 
 This was a multi-week project's worth of work, condensed into a
