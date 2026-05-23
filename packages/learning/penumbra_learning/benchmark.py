@@ -173,9 +173,7 @@ def _run_task_pa1(policy: PolicyFn, cfg: dict[str, int]) -> TaskResult:
             seeded,
         )
         for _ in range(cfg["episode_ticks"]):
-            obs_list = [
-                ag.observe(sim.arena, tick=sim.tick_counter) for ag in sim.agents
-            ]
+            obs_list = [ag.observe(sim.arena, tick=sim.tick_counter) for ag in sim.agents]
             features = np.stack([_build_features_for_agent(o) for o in obs_list], axis=0)
             actions = policy(features)
             # Apply actions: walk to neighbour or stay.
@@ -234,9 +232,7 @@ def _run_task_ar1(policy: PolicyFn, cfg: dict[str, int]) -> TaskResult:
         n_byzantine = max(1, int(cfg["n_agents"] * 0.2))
         byz_ids = set(rng.choice(cfg["n_agents"], size=n_byzantine, replace=False).tolist())
         for _ in range(cfg["episode_ticks"]):
-            obs_list = [
-                ag.observe(sim.arena, tick=sim.tick_counter) for ag in sim.agents
-            ]
+            obs_list = [ag.observe(sim.arena, tick=sim.tick_counter) for ag in sim.agents]
             features = np.stack([_build_features_for_agent(o) for o in obs_list], axis=0)
             actions = policy(features)
             for i, (ag, obs, action) in enumerate(zip(sim.agents, obs_list, actions, strict=True)):
@@ -299,9 +295,7 @@ def _run_task_mc1(policy: PolicyFn, cfg: dict[str, int]) -> TaskResult:
         )
         rng = np.random.default_rng(4000 + episode)
         for _ in range(cfg["episode_ticks"]):
-            obs_list = [
-                ag.observe(sim.arena, tick=sim.tick_counter) for ag in sim.agents
-            ]
+            obs_list = [ag.observe(sim.arena, tick=sim.tick_counter) for ag in sim.agents]
             features = np.stack([_build_features_for_agent(o) for o in obs_list], axis=0)
             actions = policy(features)
             for ag, obs, action in zip(sim.agents, obs_list, actions, strict=True):
@@ -380,9 +374,7 @@ def _run_task_lr1(policy: PolicyFn, cfg: dict[str, int]) -> TaskResult:
         )
         action_log: list[np.ndarray] = []
         for _ in range(cfg["episode_ticks"]):
-            obs_list = [
-                ag.observe(sim.arena, tick=sim.tick_counter) for ag in sim.agents
-            ]
+            obs_list = [ag.observe(sim.arena, tick=sim.tick_counter) for ag in sim.agents]
             features = np.stack([_build_features_for_agent(o) for o in obs_list], axis=0)
             actions = policy(features)
             action_log.append(np.asarray(actions, dtype=np.int32))
@@ -439,9 +431,7 @@ def run_benchmark(
     task_results.append(_run_task_mc1(policy, cfg))
     task_results.append(_run_task_pb1(policy, cfg))
     task_results.append(_run_task_lr1(policy, cfg))
-    composite = sum(
-        _COMPOSITE_WEIGHTS[r.task_id] * r.score for r in task_results
-    )
+    composite = sum(_COMPOSITE_WEIGHTS[r.task_id] * r.score for r in task_results)
     try:
         import torch
 

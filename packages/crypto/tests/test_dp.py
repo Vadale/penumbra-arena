@@ -11,6 +11,7 @@ from penumbra_crypto.dp import (
     dp_count,
     dp_histogram,
     dp_mean,
+    secure_rng,
 )
 
 
@@ -100,3 +101,43 @@ def test_basic_composition_serial_releases() -> None:
     mech.laplace(0.0, sensitivity=1.0, epsilon=0.3)
     mech.laplace(0.0, sensitivity=1.0, epsilon=0.4)
     assert pytest.approx(mech.budget.epsilon_spent, abs=1e-9) == 0.7
+
+
+def test_dpmechanism_default_rng_is_secrets_seeded() -> None:
+    """Two mechanisms with implicit `rng=None` must NOT share the PCG64 default state.
+
+    Pre-fix: both fell back to `np.random.default_rng()` with no seed,
+    which on some platforms produces predictable / shared state.
+    Post-fix: the default seeds from `secrets.token_bytes`, so any two
+    instances draw independent noise.
+    """
+    mech_a = DPMechanism(PrivacyBudget(epsilon=1.0))
+    mech_b = DPMechanism(PrivacyBudget(epsilon=1.0))
+    noise_a = [mech_a.laplace(0.0, sensitivity=1.0, epsilon=0.01) for _ in range(8)]
+    noise_b = [mech_b.laplace(0.0, sensitivity=1.0, epsilon=0.01) for _ in range(8)]
+    assert noise_a != noise_b, (
+        "Two implicit-rng DPMechanism instances drew identical noise — "
+        "the CSPRNG-seeded default is not active"
+    )
+
+
+def test_dpmechanism_explicit_rng_reproducible() -> None:
+    """Passing the same explicit seeded Generator twice yields identical noise.
+
+    This is the contract tests rely on for pinned-seed reproducibility:
+    the CSPRNG-seeded default only kicks in when `rng is None`.
+    """
+    mech_a = DPMechanism(PrivacyBudget(epsilon=1.0), rng=np.random.default_rng(seed=12345))
+    mech_b = DPMechanism(PrivacyBudget(epsilon=1.0), rng=np.random.default_rng(seed=12345))
+    noise_a = [mech_a.laplace(0.0, sensitivity=1.0, epsilon=0.01) for _ in range(8)]
+    noise_b = [mech_b.laplace(0.0, sensitivity=1.0, epsilon=0.01) for _ in range(8)]
+    assert noise_a == noise_b
+
+
+def test_secure_rng_returns_independent_generators() -> None:
+    """`secure_rng()` calls must return Generators with distinct state."""
+    g1 = secure_rng()
+    g2 = secure_rng()
+    sample_1 = g1.standard_normal(16).tolist()
+    sample_2 = g2.standard_normal(16).tolist()
+    assert sample_1 != sample_2

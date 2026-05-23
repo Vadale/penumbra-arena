@@ -25,10 +25,27 @@ References
 
 from __future__ import annotations
 
+import secrets
 from dataclasses import dataclass
 
 import numpy as np
 from numpy.typing import NDArray
+
+
+def secure_rng() -> np.random.Generator:
+    """Return a `np.random.Generator` seeded from the OS CSPRNG.
+
+    NumPy's PCG64 algorithm is statistically excellent but not
+    cryptographically secure on its own — given a few outputs an
+    adversary can reconstruct its state. Seeding it from
+    `secrets.token_bytes` removes the *predictability* that an
+    adversary needs to subtract Laplace noise from a DP release.
+    For *adversarial* DP guarantees, every release should draw from
+    a generator seeded this way (or from a different CSPRNG-backed
+    bitgen). This helper is the canonical way to do so.
+    """
+    seed = int.from_bytes(secrets.token_bytes(8), "big")
+    return np.random.default_rng(seed)
 
 
 @dataclass(slots=True)
@@ -70,11 +87,19 @@ class DPMechanism:
     The mechanism never noises without first deducting from the budget;
     if the deduction would overdraw, we raise *before* drawing noise so
     the caller can't pretend the release was tentative.
+
+    The default `rng` is `secure_rng()` — a `np.random.Generator` seeded
+    from `secrets.token_bytes`. PCG64 is not cryptographically secure
+    standalone, but a CSPRNG-derived seed removes the predictability an
+    adversary needs to subtract the Laplace noise from a release. For
+    full adversarial DP, callers can pass any CSPRNG-backed Generator.
+    Tests that need reproducibility should pass an explicit seeded
+    Generator.
     """
 
     def __init__(self, budget: PrivacyBudget, rng: np.random.Generator | None = None) -> None:
         self._budget = budget
-        self._rng = rng if rng is not None else np.random.default_rng()
+        self._rng = rng if rng is not None else secure_rng()
 
     @property
     def budget(self) -> PrivacyBudget:

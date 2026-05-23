@@ -460,7 +460,11 @@ class DashboardPipeline:
             "changepoints": 5.0,
             "sinkhorn": 5.0,
             "topology": 10.0,
-            "bayesian": 10.0,
+            # `bayesian` runs an SVI fit (NumPyro Adam + Trace_ELBO) every
+            # invocation, which is ~1.4 s on the M4. Bumped to 30 s post-
+            # Phase-2.5 stress test; the richer `bayesian_posterior`
+            # consumer (closed-form Beta, cheap) still updates at 10 s.
+            "bayesian": 30.0,
             "var95": 5.0,
             # Topic modelling is the most expensive consumer — it runs
             # the bge-small embedder over ~200 utterances. 20s cadence
@@ -468,9 +472,15 @@ class DashboardPipeline:
             "topics": 20.0,
             # Multivariate rich-chart analyses. Slower because they
             # ship larger payloads (raw points) to the frontend.
-            "regression": 4.0,
+            # Post-Phase-2.5 stress test (2026-05-23, 7.40 Hz vs 10 Hz
+            # target): the heaviest consumers were nudged to longer
+            # cadences so a single blocking compute doesn't back-pressure
+            # the 10 Hz tick loop. GARCH alone cost ~420 ms per fit and
+            # ran every 10 s; pushing to 30 s reclaims ~28 ms / s on
+            # average and removes the periodic spike.
+            "regression": 10.0,
             "cluster_scatter": 6.0,
-            "monte_carlo": 8.0,
+            "monte_carlo": 12.0,
             "pca": 8.0,
             "arima_forecast": 6.0,
             "logit": 6.0,
@@ -482,7 +492,7 @@ class DashboardPipeline:
             "spectral": 8.0,
             "causal": 12.0,
             "var_irf": 12.0,
-            "garch": 10.0,
+            "garch": 30.0,
             "anova": 8.0,
             "autocorrelation": 6.0,
             "correlations": 6.0,
@@ -617,6 +627,14 @@ class DashboardPipeline:
         if self._due(now, "regression") and len(self._trajectory_lengths) >= 30:
             self._snapshot.regression = self._compute_regression()
             self._last_run["regression"] = now
+            # Q-Q + residual-vs-fitted diagnostics are derived from the
+            # regression points; they only need to re-run when the
+            # regression itself does. Previously they were recomputed
+            # every recompute() call which doubled the per-tick cost of
+            # the regression chart for no incremental information.
+            if self._snapshot.regression is not None:
+                self._snapshot.qq_points = self._compute_qq_points()
+                self._snapshot.residual_vs_fitted = self._compute_residual_vs_fitted()
 
         if self._due(now, "cluster_scatter") and len(self._positions) >= 30:
             self._snapshot.cluster_scatter = self._compute_cluster_scatter()
@@ -674,10 +692,9 @@ class DashboardPipeline:
             self._snapshot.garch = self._compute_garch()
             self._last_run["garch"] = now
 
-        # Q-Q + residual-vs-fitted on regression residuals — cheap.
-        if self._snapshot.regression is not None:
-            self._snapshot.qq_points = self._compute_qq_points()
-            self._snapshot.residual_vs_fitted = self._compute_residual_vs_fitted()
+        # Q-Q + residual-vs-fitted on regression residuals are computed
+        # inside the regression branch above (they only change when the
+        # underlying regression is refit).
 
         if self._due(now, "anova") and len(self._positions) >= 30:
             self._snapshot.anova = self._compute_anova()
