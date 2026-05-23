@@ -57,6 +57,14 @@ class LiveTrainer:
     history: deque[TrainingSample] = field(default_factory=lambda: deque(maxlen=200))
     iteration: int = 0
     enabled: bool = False
+    # Phase 6a Tier 4: optional orchestrator handle. When wired:
+    #   - the internal PenumbraEnv reads the live logistics mempool +
+    #     demand model so the LogisticsRewardShaper actually does
+    #     work (instead of returning zeros against a stub).
+    #   - after every PPO iteration we emit ml.policy.updated on
+    #     the orchestrator's event bus so downstream consumers
+    #     (e.g. the Bench leaderboard tile) can react to convergence.
+    orchestrator: object | None = None
     _task: asyncio.Task[None] | None = field(default=None)
     _env: PenumbraEnv | None = field(default=None)
     _obs_dict: dict[str, np.ndarray] | None = field(default=None)
@@ -94,7 +102,11 @@ class LiveTrainer:
     def _ensure_env(self) -> tuple[PenumbraEnv, dict[str, np.ndarray]]:
         """Lazy-build the training env so trainer construction stays cheap."""
         if self._env is None:
-            self._env = PenumbraEnv(n_agents=self.n_env_agents, seed=0)
+            self._env = PenumbraEnv(
+                n_agents=self.n_env_agents,
+                seed=0,
+                orchestrator=self.orchestrator,
+            )
             obs_dict, _ = self._env.reset(seed=0)
             self._obs_dict = obs_dict
         env = self._env
@@ -164,25 +176,69 @@ class LiveTrainer:
             returns=returns_step,
         )
         self.iteration += 1
+        mean_reward_value = float(rewards_buf.mean().item())
+        kl_value = float(metrics.get("kl", 0.0))
         self.history.append(
             TrainingSample(
                 iteration=self.iteration,
                 actor_loss=float(metrics["actor_loss"]),
                 critic_loss=float(metrics["critic_loss"]),
                 entropy=float(metrics.get("entropy", 0.0)),
-                kl=float(metrics.get("kl", 0.0)),
-                mean_reward=float(rewards_buf.mean().item()),
+                kl=kl_value,
+                mean_reward=mean_reward_value,
             )
         )
+        # Phase 6a Tier 4: announce the PPO update so the orchestrator
+        # can route a downstream policy.improved event when reward
+        # jumps versus the rolling baseline. Best-effort — never let
+        # an event-bus failure stop training.
+        self._maybe_emit_policy_updated(
+            mean_reward=mean_reward_value,
+            kl=kl_value,
+        )
+
+    def _maybe_emit_policy_updated(self, *, mean_reward: float, kl: float) -> None:
+        """Fire ml.policy.updated on the orchestrator's bus if attached."""
+        orch = self.orchestrator
+        if orch is None:
+            return
+        bus = getattr(orch, "event_bus", None)
+        if bus is None:
+            return
+        try:
+            from penumbra_transport.events import Event
+
+            tick = int(getattr(getattr(orch, "simulation", None), "tick_counter", 0))
+            bus.emit(
+                Event(
+                    kind="ml.policy.updated",
+                    tick=tick,
+                    payload={
+                        "iteration": int(self.iteration),
+                        "mean_reward": float(mean_reward),
+                        "kl": float(kl),
+                    },
+                )
+            )
+        except Exception:
+            logger.exception("failed to emit ml.policy.updated")
 
 
-def build_live_trainer(agent_net: MAPPO | None) -> LiveTrainer | None:
+def build_live_trainer(
+    agent_net: MAPPO | None,
+    *,
+    orchestrator: object | None = None,
+) -> LiveTrainer | None:
     """Build a LiveTrainer wired to the live MAPPO actor; None if no actor.
 
     The critic was loaded with a specific n_agents (== checkpoint's
     config.n_agents). We MUST spin up our internal env with the same
     population so the centralised critic receives a global_obs of
     the right shape. Otherwise the first PPO update crashes.
+
+    ``orchestrator`` (Phase 6a Tier 4) attaches the trainer to the live
+    arena so its env reads orchestrator logistics state through the
+    shaper and emits ``ml.policy.updated`` on the event bus.
     """
     if agent_net is None:
         return None
@@ -196,4 +252,8 @@ def build_live_trainer(agent_net: MAPPO | None) -> LiveTrainer | None:
         )
         return None
     _ = MAPPOConfig  # keep import warm so callers can build their own
-    return LiveTrainer(agent_net=agent_net, n_env_agents=int(cfg.n_agents))
+    return LiveTrainer(
+        agent_net=agent_net,
+        n_env_agents=int(cfg.n_agents),
+        orchestrator=orchestrator,
+    )

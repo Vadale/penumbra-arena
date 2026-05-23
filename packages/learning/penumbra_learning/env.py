@@ -79,6 +79,7 @@ class PenumbraEnv(ParallelEnv):  # type: ignore[misc]
         seed: int = 42,
         enable_logistics_rewards: bool = False,
         logistics_shaper: object | None = None,
+        orchestrator: object | None = None,
     ) -> None:
         super().__init__()
         self._n_agents = n_agents
@@ -87,6 +88,17 @@ class PenumbraEnv(ParallelEnv):  # type: ignore[misc]
         self._seed = seed
         self._enable_logistics_rewards = enable_logistics_rewards
         self._logistics_shaper = logistics_shaper
+        # Phase 6a Tier 4: optional orchestrator handle so the env
+        # can read the LIVE logistics mempool + demand model into the
+        # shaper, instead of leaving the shaper as a no-op stub. The
+        # orchestrator is duck-typed (object) to avoid importing
+        # penumbra_transport from a learning module.
+        self._orchestrator = orchestrator
+        if orchestrator is not None and not enable_logistics_rewards:
+            # Auto-enable shaping when an orchestrator is wired so the
+            # live trainer's env actually receives the orchestrator's
+            # logistics signal even when the caller forgot the flag.
+            self._enable_logistics_rewards = True
 
         self.agents: list[str] = []
         self.possible_agents: list[str] = [f"agent_{i}" for i in range(n_agents)]
@@ -106,10 +118,20 @@ class PenumbraEnv(ParallelEnv):  # type: ignore[misc]
         self._sim: Simulation | None = None
         self._seeded: Seeded | None = None
         self._neighbour_index: dict[int, list[int]] = {}
-        if enable_logistics_rewards and logistics_shaper is None:
+        if self._enable_logistics_rewards and logistics_shaper is None:
             from penumbra_learning.logistics_shaper import LogisticsRewardShaper
 
             self._logistics_shaper = LogisticsRewardShaper()
+        # Wire the shaper to the live orchestrator's mempool + demand
+        # immediately so the first env.step sees live state. Done once
+        # at construction; the orchestrator is expected to keep these
+        # references valid for the lifetime of the env.
+        if self._orchestrator is not None and self._logistics_shaper is not None:
+            mempool = getattr(self._orchestrator, "logistics_mempool", None)
+            demand = getattr(self._orchestrator, "demand", None)
+            inject = getattr(self._logistics_shaper, "inject", None)
+            if inject is not None and (mempool is not None or demand is not None):
+                inject(mempool=mempool, demand=demand)
 
     def reset(
         self, seed: int | None = None, options: dict[str, Any] | None = None
@@ -186,6 +208,18 @@ class PenumbraEnv(ParallelEnv):  # type: ignore[misc]
         # derived from the orchestrator's mempool + demand model. The
         # shaper is read-only on the simulation state, so existing
         # MAPPO training paths are unaffected when defaults are zero.
+        # Phase 6a Tier 4: when an orchestrator is wired, re-inject
+        # its mempool + demand each step so newly-built orchestrators
+        # whose state was None at env construction get picked up as
+        # soon as it materialises (defensive — typical bootstraps
+        # build the orchestrator's logistics layer before the env is
+        # constructed).
+        if self._orchestrator is not None and self._logistics_shaper is not None:
+            mempool = getattr(self._orchestrator, "logistics_mempool", None)
+            demand = getattr(self._orchestrator, "demand", None)
+            inject = getattr(self._logistics_shaper, "inject", None)
+            if inject is not None and (mempool is not None or demand is not None):
+                inject(mempool=mempool, demand=demand)
         if self._logistics_shaper is not None:
             try:
                 shaper_rewards = self._logistics_shaper.step(  # type: ignore[attr-defined]

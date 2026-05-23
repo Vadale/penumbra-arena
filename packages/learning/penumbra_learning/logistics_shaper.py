@@ -24,7 +24,7 @@ Spec: LOGISTICS_PLAN.md Tier 4 at repo root.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
     from penumbra_core.logistics import DemandModel, LogisticsMempool
@@ -34,10 +34,27 @@ if TYPE_CHECKING:
 
 
 class _MempoolLike(Protocol):
-    """Subset of LogisticsMempool the shaper relies on."""
+    """Subset of LogisticsMempool the shaper relies on.
 
-    pending: list[object]
-    fulfilled: list[object]
+    ``recent_carrier_rewards`` is the Phase 6a Tier 4 fast-path: a
+    bounded deque of ``(agent_id, reward)`` pairs maintained by the
+    core ``LogisticsMempool.fulfil``. When the shaper sees it on the
+    wired mempool we consume it directly instead of re-scanning the
+    fulfilled book — both faster and correct under concurrent
+    fulfilment from the live orchestrator + the background trainer's
+    env (which can otherwise both observe the same order and double-
+    pay it).
+
+    ``Any`` element types keep the Protocol structurally compatible
+    with both the real ``LogisticsMempool`` (whose pending / fulfilled
+    are typed ``list[Order]`` / ``deque[Order]``) and the lightweight
+    test stubs that use ``list[Any]`` — Python's nominal mutability
+    rules make ``list[X]`` invariant in ``X`` and would otherwise
+    reject every concrete instance.
+    """
+
+    pending: list[Any]
+    fulfilled: list[Any]
 
 
 @dataclass(slots=True)
@@ -59,9 +76,21 @@ class LogisticsRewardShaper:
     # order_id -> tick at which we first observed the assignment
     _tick: int = 0
     _last_terminal_bonus_applied: bool = False
+    _carrier_rewards_consumed: int = 0
+    # Total count of entries the shaper has paid out from the
+    # mempool's recent_carrier_rewards deque. The mempool's append-
+    # only counter only grows; even if the deque trims old entries
+    # on the left, the rightmost N items (where N = len(deque)) are
+    # always the newest, so we credit those if they weren't yet seen.
 
     def reset(self) -> None:
-        """Clear shaper state — called when the env resets."""
+        """Clear shaper state — called when the env resets.
+
+        The carrier-rewards consumed counter is intentionally NOT
+        reset: it tracks the position on the LIVE mempool's monotonic
+        counter (which doesn't restart on env.reset), so resetting it
+        would re-credit historical fulfilments on the next step.
+        """
         self._seen_fulfilled_ids.clear()
         self._assignment_first_seen.clear()
         self._tick = 0
@@ -132,9 +161,33 @@ class LogisticsRewardShaper:
         weights: RewardWeights,
         rewards: dict[str, float],
     ) -> None:
+        # Fast path (Phase 6a Tier 4): the mempool keeps a bounded
+        # ``recent_carrier_rewards`` deque plus a monotonic
+        # ``total_carrier_fulfilments`` counter so we can drain only
+        # the newest entries since the last call WITHOUT re-scanning
+        # the whole ``fulfilled`` book. Falls back to the legacy walk
+        # when the mempool stub (used by some tests) lacks the deque.
+        recent = getattr(mempool, "recent_carrier_rewards", None)
+        total = getattr(mempool, "total_carrier_fulfilments", None)
+        if recent is not None and total is not None:
+            n_new = max(0, int(total) - self._carrier_rewards_consumed)
+            n_in_deque = len(recent)
+            n_take = min(n_new, n_in_deque)
+            self._carrier_rewards_consumed = int(total)
+            if weights.logistics_dispatch_bonus == 0.0 or n_take == 0:
+                return
+            bonus = float(weights.logistics_dispatch_bonus)
+            # Take the rightmost n_take entries (the newest ones).
+            tail = list(recent)[-n_take:]
+            for agent_id, _reward in tail:
+                if agent_id < 0:
+                    continue
+                agent_key = f"agent_{int(agent_id)}"
+                if agent_key in rewards:
+                    rewards[agent_key] += bonus
+            return
+        # Legacy slow path: walk the fulfilled list and dedup by order id.
         if weights.logistics_dispatch_bonus == 0.0:
-            # Still walk the fulfilled list so we keep _seen_fulfilled_ids
-            # in sync for when the weight is enabled mid-episode.
             for order in mempool.fulfilled:
                 self._seen_fulfilled_ids.add(_order_id(order))
             return

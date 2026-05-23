@@ -10,9 +10,13 @@
  *   - logistics_dispatch_bonus: per fulfilled order assigned to a carrier
  *   - logistics_dispatch_penalty: per-tick cost for stale assignments
  *   - fill_rate_bonus: scaled by overall fill rate at episode end
+ *
+ * Phase 6a Tier 4 also adds a live per-agent carrier-rewards
+ * sparkline (top 5 earners over the rolling 200-fulfilment window),
+ * polled from /learning/carrier-reward-stream at 5s.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 interface Weights {
   goal_reward: number;
@@ -81,9 +85,24 @@ const LOGISTICS_PAYLOAD_KEYS: Partial<Record<keyof Weights, string>> = {
   fill_rate_bonus: "fill_rate_bonus",
 };
 
+interface CarrierRewardEntry {
+  agent_id: number;
+  reward: number;
+  tick: number;
+}
+
+interface CarrierRewardStream {
+  available: boolean;
+  rewards: CarrierRewardEntry[];
+  per_agent: { agent_id: number; total_reward: number; count: number }[];
+  total_carrier_fulfilments: number;
+  last_fulfilment_tick: number;
+}
+
 export function RewardShapingChart() {
   const [data, setData] = useState<Weights | null>(null);
   const [pending, setPending] = useState(false);
+  const [stream, setStream] = useState<CarrierRewardStream | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,6 +121,40 @@ export function RewardShapingChart() {
       window.clearInterval(t);
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const pullStream = async () => {
+      try {
+        const res = await fetch("/learning/carrier-reward-stream?limit=200");
+        if (!res.ok) return;
+        const payload = (await res.json()) as CarrierRewardStream;
+        if (!cancelled) setStream(payload);
+      } catch {}
+    };
+    void pullStream();
+    const t = window.setInterval(pullStream, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(t);
+    };
+  }, []);
+
+  const top5 = useMemo(() => {
+    if (!stream?.per_agent) return [];
+    return stream.per_agent.slice(0, 5);
+  }, [stream]);
+
+  const sparklines = useMemo(() => {
+    if (!stream?.rewards) return new Map<number, number[]>();
+    const map = new Map<number, number[]>();
+    for (const entry of stream.rewards) {
+      const arr = map.get(entry.agent_id) ?? [];
+      arr.push(entry.reward);
+      map.set(entry.agent_id, arr);
+    }
+    return map;
+  }, [stream]);
 
   const update = async (key: keyof Weights, value: number) => {
     if (!data) return;
@@ -173,6 +226,81 @@ export function RewardShapingChart() {
           </div>
         );
       })}
+      <CarrierRewardsSparkline top5={top5} sparklines={sparklines} stream={stream} />
     </div>
+  );
+}
+
+function CarrierRewardsSparkline({
+  top5,
+  sparklines,
+  stream,
+}: {
+  top5: { agent_id: number; total_reward: number; count: number }[];
+  sparklines: Map<number, number[]>;
+  stream: CarrierRewardStream | null;
+}) {
+  if (stream === null) {
+    return (
+      <div className="border-t border-[color:var(--color-penumbra-line)] pt-2 text-[10px] text-[color:var(--color-penumbra-muted)]">
+        loading carrier-rewards stream…
+      </div>
+    );
+  }
+  if (!stream.available || top5.length === 0) {
+    return (
+      <div className="border-t border-[color:var(--color-penumbra-line)] pt-2 text-[10px] text-[color:var(--color-penumbra-dim)]">
+        no carrier rewards recorded yet (need orders to be fulfilled by real agents)
+      </div>
+    );
+  }
+  const max = Math.max(1, ...Array.from(sparklines.values()).flatMap((series) => series));
+  return (
+    <div className="border-t border-[color:var(--color-penumbra-line)] pt-2 space-y-1">
+      <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-cyan)]">
+        top 5 carriers (last {stream.rewards.length} fulfilments, {stream.total_carrier_fulfilments}{" "}
+        total)
+      </div>
+      {top5.map((row) => {
+        const series = sparklines.get(row.agent_id) ?? [];
+        return (
+          <div key={row.agent_id} className="flex items-center gap-2 text-[10px]">
+            <span className="w-14 text-[color:var(--color-penumbra-muted)]">
+              agent {row.agent_id}
+            </span>
+            <Sparkline series={series} max={max} />
+            <span className="w-16 text-right tabular-nums text-[color:var(--color-penumbra-text)]">
+              {row.total_reward.toFixed(2)}
+            </span>
+            <span className="w-8 text-right tabular-nums text-[color:var(--color-penumbra-dim)]">
+              ×{row.count}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function Sparkline({ series, max }: { series: number[]; max: number }) {
+  if (series.length === 0) return <span className="flex-1" />;
+  const width = 100;
+  const height = 16;
+  const step = series.length > 1 ? width / (series.length - 1) : width;
+  const points = series
+    .map(
+      (value, idx) => `${(idx * step).toFixed(1)},${(height - (value / max) * height).toFixed(1)}`,
+    )
+    .join(" ");
+  return (
+    <svg width={width} height={height} className="flex-1" aria-hidden="true">
+      <polyline
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1}
+        points={points}
+        className="text-[color:var(--color-penumbra-cyan)]"
+      />
+    </svg>
   );
 }
