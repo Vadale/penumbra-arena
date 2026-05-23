@@ -128,7 +128,7 @@ def analyze_throughput(rows: list[dict[str, str]]) -> list[Finding]:
     if not rows:
         return [Finding("CRIT", "throughput", "no samples")]
     ticks = as_ints(rows, "tick")
-    wall = as_floats(rows, "wall_seconds")
+    wall = as_floats(rows, "uptime_seconds")
     if len(ticks) < 2 or len(wall) < 2:
         return [Finding("WARN", "throughput", "insufficient samples")]
     duration = wall[-1] - wall[0]
@@ -168,7 +168,7 @@ def analyze_throughput(rows: list[dict[str, str]]) -> list[Finding]:
 def analyze_chain(rows: list[dict[str, str]]) -> list[Finding]:
     findings: list[Finding] = []
     heights = as_ints(rows, "chain_height")
-    wall = as_floats(rows, "wall_seconds")
+    wall = as_floats(rows, "uptime_seconds")
     if len(heights) < 2:
         return [Finding("WARN", "chain", "fewer than 2 height samples")]
     duration = wall[-1] - wall[0]

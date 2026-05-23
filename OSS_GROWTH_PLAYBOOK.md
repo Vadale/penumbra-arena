@@ -195,6 +195,112 @@ star. The pin is the cheapest distribution channel that exists.
   Hits the morning rush in US, late morning in Europe, evening
   in Asia. The "global wave" is maximized.
 
+### 3.2a What Hacker News actually is (for newcomers)
+
+If you've never used Hacker News before, here's the model.
+
+**Hacker News** (`news.ycombinator.com`) is a community-driven
+link-aggregation forum operated by Y Combinator (the startup
+accelerator behind Stripe, Airbnb, Dropbox, OpenAI). Founded by
+Paul Graham in 2007. ~5 million monthly visitors — but the audience
+is heavily weighted toward developers, founders, VCs, researchers,
+and the "people who decide what gets popular" in tech.
+
+It is NOT a portal where journalists write articles about you.
+It is a forum where:
+1. YOU submit a link with a title.
+2. OTHER users upvote (or downvote) the submission.
+3. If enough upvotes accumulate in the first 60-90 minutes after
+   submission, the story reaches the **front page** (top 30
+   visible stories).
+4. Front page stories get 50,000-200,000 views in 24 hours.
+
+**Submission categories**:
+
+| Category | When to use | Title format |
+|---|---|---|
+| **Show HN** | When you've built something yourself and want feedback | `Show HN: <name> – <what it does in 5-8 words>` |
+| **Ask HN** | Asking the community a substantive question | `Ask HN: <your question>` |
+| Regular link | Sharing an article, paper, or other content | The article title, no prefix |
+
+For an OSS project launch, use **Show HN**. The community expects:
+- A working demo (link to GitHub repo)
+- An author who responds to comments in real time
+- A clear, technical description (no marketing language)
+
+**Realistic outcomes** for a Show HN submission:
+
+| Result | Upvotes | Visits | GitHub stars typically gained |
+|---|---|---|---|
+| Flop (90% of submissions) | 0-5 | < 500 | 5-10 |
+| Decent (small lift) | 30-100 | 5,000 | 50-100 |
+| Front page (1-2% of submissions) | 200-500 | 50,000-100,000 | 300-800 |
+| Top of front page | 1000+ | 200,000+ | 1500-3000 |
+
+A well-prepared Show HN with a novel project (which Penumbra is)
+has roughly a 30-40% chance of reaching the front page.
+
+**The submission process**:
+
+1. Create an account at `news.ycombinator.com/login` (free,
+   instant; just username + password).
+2. Wait at least 1-2 weeks after creating the account before
+   posting; meanwhile, leave 5-10 helpful comments on other
+   stories. This builds a thin reputation; brand-new accounts
+   are downweighted by the algorithm.
+3. On launch day, go to `news.ycombinator.com/submit`.
+4. Enter the URL of your repo + the Show HN title.
+5. Click "Submit".
+6. Open the submission's page and immediately leave a comment
+   that opens the discussion: 3-5 sentences describing what
+   you built, why, and the key technical decisions.
+7. Stay at the keyboard for the next 6 hours. Reply to every
+   comment within 10-15 minutes. The algorithm penalizes
+   silent authors.
+
+**The first 60 minutes determine the trajectory.** Submissions
+that don't accumulate at least 10-15 upvotes in the first hour
+rarely recover. Submissions that gain 30+ upvotes in the first
+hour are likely to hit the front page.
+
+**Anti-patterns** (do not do these):
+
+- Do NOT ask friends to upvote (vote-ring detection bans the
+  submitter permanently).
+- Do NOT submit the same link more than once per year.
+- Do NOT reply with just "thanks!" — wastes a comment slot. Use
+  the upvote arrow on praise.
+- Do NOT argue defensively with critics. Acknowledge ("you're
+  right, that's a good point") and move on. You lose every
+  public argument.
+
+**Why Hacker News matters more than other channels**:
+- A Reddit post tracks for 6 hours; an HN front-page hit tracks
+  for 24-48 hours.
+- HN comments often get cited in newsletters, blog posts, and
+  academic papers — the discussion has long-tail value beyond
+  the launch day.
+- TechCrunch, The Verge, and other tech publications routinely
+  cover stories that hit HN front page; you might get
+  unsolicited press coverage from a single successful Show HN.
+- The HN audience is the demographic that adopts OSS tools at
+  work. A star from an HN reader is worth ~5× a star from a
+  random Twitter follower in terms of downstream usage.
+
+**You only get one Show HN per project.** If it fails, you cannot
+resubmit with the same title or substantially similar content.
+This is why the launch prep matters: the title, the timing, the
+hero screenshot, the demo video, the response readiness all need
+to be polished BEFORE the submission.
+
+You CAN later submit follow-up stories on HN that are NOT Show HN:
+- "Penumbra 6 months later: what we learned"
+- "How we shipped Penumbra-Bench"
+- "Federated learning with CKKS aggregation in 200 lines"
+
+Each of these is a fresh submission with a fresh chance to reach
+the front page.
+
 ### 3.3 The hour-by-hour playbook
 
 **T+0 — submission**

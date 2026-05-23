@@ -19,6 +19,40 @@ follow-on conditional on OSS demand signals. See
 
 ---
 
+## Timeline note (revised 2026-05-23)
+
+The original draft of this roadmap quoted 6+ weeks pre-launch based
+on the standard solo-developer OSS playbook (build audience first,
+then launch). The author works with AI assistance that accelerates
+implementation significantly, so the realistic timeline compresses
+to **4-5 weeks total** with a COMPLETE product at launch instead
+of progressive waves.
+
+The revised approach:
+
+| Week | Focus | Output |
+|---|---|---|
+| 1 | Stress-test triage + frontend cleanup (extract Stat/Verdict/Block) + RSS leak fix | Clean baseline |
+| 2 | Implement Penumbra-Data Tier 1 + Penumbra-Bench Tier 1 (5 tasks + runner) | Dataset + benchmark base |
+| 3 | Implement Federated Learning Tier 1-2 + Logistics Tier 1 | 2 extensions complete |
+| 4 | Final arXiv preprint, hero screenshot, 90-second demo video, LICENSE/CONTRIBUTING/SECURITY/CODE_OF_CONDUCT, landing page | Launch materials ready |
+| 5 | **LAUNCH** (Tuesday or Wednesday, 9:00 AM EST / 15:00 CET) | Show HN + Reddit + Twitter + LinkedIn + arXiv + Hugging Face publish |
+
+Trade-off vs the original 6-week plan:
+- **Pro**: launch with a complete product (no "coming soon" sections)
+  → stronger first impression; fewer half-finished extensions to
+  maintain in parallel.
+- **Pro**: build-in-public happens DURING implementation (weeks 2-4),
+  not BEFORE. Twitter screenshots of new features as they ship is
+  the natural progress trail.
+- **Con**: smaller pre-built audience at day-1. Expect 50-100
+  launch-day stars vs the 200-500 a 6-week-prep launch could
+  achieve. The post-launch shipping cadence compensates within
+  weeks 1-3 post-launch.
+
+After-launch cadence stays the same as the original Phase L1-L5
+plan: ship something visible every 2 weeks for the first 6 months.
+
 ## Phase L0 — Pre-launch readiness (weeks 1-4)
 
 Goal: the repo public-ready. Anything a curious developer might check
