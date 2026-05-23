@@ -528,6 +528,19 @@ class DashboardPipeline:
     _arena_graph: object | None = field(default=None)
     _last_run: dict[str, float] = field(default_factory=dict)
     _snapshot: DashboardSnapshot = field(default_factory=lambda: DashboardSnapshot(tick=-1))
+    # Optional callback the orchestrator hooks in to bridge analytics
+    # signals into the cross-pillar EventBus. Phase 6a Tier 1.
+    on_signal: object | None = field(default=None)
+    _garch_baseline_persistence: float | None = field(default=None)
+    _last_cpi_value: float | None = field(default=None)
+    # Phase 6a Tier 3 — DP-budget-aware degraded mode. When the privacy
+    # budget runs low the orchestrator calls `degrade_for_dp_warning()`
+    # to halve the cadence of the heaviest consumers; when exhausted,
+    # `enter_dp_fallback()` flips `_dp_degraded` so the `/dp/budget`
+    # endpoint can surface the reason.
+    _dp_degraded: bool = field(default=False)
+    _dp_degradation_reason: str | None = field(default=None)
+    _dp_warning_applied: bool = field(default=False)
 
     def observe(
         self,
@@ -691,6 +704,25 @@ class DashboardPipeline:
         if self._due(now, "garch") and len(self._trajectory_lengths) >= 80:
             self._snapshot.garch = self._compute_garch()
             self._last_run["garch"] = now
+            # Tier 1 — emit garch.spike when conditional persistence
+            # jumps > 50% over a rolling baseline. The "persistence"
+            # field (α + β) is a stable summary of volatility regime.
+            g = self._snapshot.garch
+            if g is not None and self.on_signal is not None:
+                if self._garch_baseline_persistence is None:
+                    self._garch_baseline_persistence = g.persistence
+                baseline = self._garch_baseline_persistence
+                if baseline > 0 and g.persistence > 1.5 * baseline:
+                    self.on_signal(  # type: ignore[operator]
+                        "garch.spike",
+                        {
+                            "persistence": float(g.persistence),
+                            "baseline": float(baseline),
+                            "ratio": float(g.persistence / baseline),
+                        },
+                    )
+                # Slow exponential smoothing keeps baseline current
+                self._garch_baseline_persistence = 0.95 * baseline + 0.05 * g.persistence
 
         # Q-Q + residual-vs-fitted on regression residuals are computed
         # inside the regression branch above (they only change when the
@@ -753,6 +785,43 @@ class DashboardPipeline:
             self._last_run["topics"] = now
 
         return self._snapshot
+
+    def degrade_for_dp_warning(self) -> None:
+        """Halve the cadence of the heaviest DP-noised analytics consumers.
+
+        Phase 6a Tier 3. Called by the orchestrator when the
+        :class:`DPMechanism` signals ``dp.budget.warning``. Idempotent
+        — a second call is a no-op so the wiring can re-emit safely.
+        Targets the three heaviest consumers (GARCH, NumPyro
+        ``bayesian``, BERTopic ``topics``) because each runs at >100 ms
+        per fit; doubling their interval is the cheapest way to claw
+        back enough ε-budget headroom to keep the live dashboard
+        responsive.
+        """
+        if self._dp_warning_applied:
+            return
+        self._dp_warning_applied = True
+        for key in ("garch", "bayesian", "topics"):
+            current = self.cadences.get(key)
+            if current is not None:
+                self.cadences[key] = current * 2.0
+
+    def enter_dp_fallback(self) -> None:
+        """Switch the pipeline to a DP-exhausted fallback mode.
+
+        Phase 6a Tier 3. Called by the orchestrator when the
+        :class:`DPMechanism` signals ``dp.budget.exhausted``. Sets
+        ``_dp_degraded = True`` so the ``/dp/budget`` endpoint can
+        surface ``degraded: true`` to the dashboard. Subsequent
+        heatmap releases naturally fall back to un-noised output
+        because the budget accountant raises :class:`BudgetExceededError`
+        on every further debit (handled by the encrypted-heatmap
+        path). Idempotent.
+        """
+        if self._dp_degraded:
+            return
+        self._dp_degraded = True
+        self._dp_degradation_reason = "dp_budget_exhausted"
 
     def _compute_economy(self) -> EconomySnapshot | None:
         """Roll the recent purchase window into category + top-product counts."""

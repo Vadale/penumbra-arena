@@ -46,6 +46,7 @@ import { ArimaChart } from "./ArimaChart";
 import { BayesianDensity } from "./BayesianDensity";
 import { BeaverChart } from "./BeaverChart";
 import { BLSChart } from "./BLSChart";
+import { BlockedAgentsChart } from "./BlockedAgentsChart";
 import { CandlestickChart } from "./CandlestickChart";
 import { CausalChart } from "./CausalChart";
 import { CKKSCompareChart } from "./CKKSCompareChart";
@@ -54,6 +55,8 @@ import { CorrelationHeatmap } from "./CorrelationHeatmap";
 import { DilithiumChart } from "./DilithiumChart";
 import { DpCompareChart } from "./DpCompareChart";
 import { EconomyChart } from "./EconomyChart";
+import { EventBusChart } from "./EventBusChart";
+import { EventGraphChart } from "./EventGraphChart";
 import { FederatedStatusChart } from "./FederatedStatusChart";
 import { GATAttentionChart } from "./GATAttentionChart";
 import { GarchChart } from "./GarchChart";
@@ -164,7 +167,10 @@ export type MetricKind =
   | "logistics_vrp"
   | "logistics_echelon"
   | "logistics_dispatch"
-  | "federated_status";
+  | "federated_status"
+  | "event_bus"
+  | "event_graph"
+  | "security_blocked";
 
 interface Props {
   open: boolean;
@@ -524,6 +530,21 @@ const META: Record<MetricKind, { label: string; description: string; yUnit?: str
     description:
       "FedAvg (Tier 1) and CKKS-encrypted aggregation (Tier 2) over per-agent local SGD deltas. Optional DP-SGD clip + Gaussian noise (Tier 3). Krum / TrimmedMean Byzantine-robust aggregators are also shipped as functions.",
   },
+  event_bus: {
+    label: "Event bus — cross-pillar signals",
+    description:
+      "Phase 6a: in-process pub-sub. Analytics consumers (GARCH, CPI, Gini) emit signals; logistics + market handlers react (ReorderPolicy retune, Market.pricing_regime). Per-kind p99 handler latency is tracked here so regressions surface immediately.",
+  },
+  event_graph: {
+    label: "Event graph — producer/consumer wiring",
+    description:
+      "Phase 6a Tier 5 cross-pillar observability. Each event kind seen in the recent window is rendered as a node with its emit count on the left and the matching handler call count + p99 latency on the right. Chain block.finalised → Market.credit_block_winners and chain.validator.slashed → FederatedTrainer.block_agent are the new Tier 5 edges.",
+  },
+  security_blocked: {
+    label: "Security — blocked agents",
+    description:
+      "Phase 6a Tier 2: agents whose signing rejections crossed the threshold are auto-blocked from Market trades, logistics dispatch, and FL aggregation. The block lifts after the cool-off window. The history counter never decreases; the gated-trade gauge counts every BUY/SELL skipped because of an active block.",
+  },
 };
 
 export function DetailModal({
@@ -751,6 +772,15 @@ export function DetailModal({
     }
     if (metric === "federated_status") {
       return <FederatedStatusChart />;
+    }
+    if (metric === "event_bus") {
+      return <EventBusChart />;
+    }
+    if (metric === "event_graph") {
+      return <EventGraphChart />;
+    }
+    if (metric === "security_blocked") {
+      return <BlockedAgentsChart />;
     }
     return <LineChart values={values ?? []} label={meta.label} yUnit={meta.yUnit} />;
   })();

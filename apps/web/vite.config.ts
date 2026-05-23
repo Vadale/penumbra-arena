@@ -36,6 +36,8 @@ export default defineConfig({
       "/logistics": API_HTTP,
       "/federated": API_HTTP,
       "/benchmark": API_HTTP,
+      "/events": API_HTTP,
+      "/security": API_HTTP,
       "/ws": { target: API_WS, ws: true },
     },
   },

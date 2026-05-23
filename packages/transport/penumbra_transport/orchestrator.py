@@ -49,6 +49,7 @@ from penumbra_crypto.dp import DPMechanism, PrivacyBudget
 
 from penumbra_transport.agent_signing import AgentKeystore
 from penumbra_transport.encrypted_heatmap import EncryptedHeatmap
+from penumbra_transport.events import Event, EventBus
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,13 @@ BLOCK_INTERVAL_SECONDS_DEFAULT = 10.0
 # faster sampling for a particular demo.
 HEATMAP_INTERVAL_SECONDS_DEFAULT = 5.0
 ANALYTICS_INTERVAL_SECONDS_DEFAULT = 1.0
+
+
+def _is_finite(value: float) -> bool:
+    """math.isfinite shim that avoids the extra import at call sites."""
+    import math
+
+    return math.isfinite(value)
 
 
 def _release_torch_caches() -> None:
@@ -102,6 +110,7 @@ class Orchestrator:
     _last_block_height: int = field(default=-1, init=False)
     _last_signed_tick: int = field(default=-1, init=False)
     market: object | None = field(default=None, init=False)
+    event_bus: EventBus = field(default_factory=EventBus, init=False)
     cargo: CargoConstraints | None = field(default=None, init=False)
     demand: DemandModel | None = field(default=None, init=False)
     reorder_policy: ReorderPolicy | None = field(default=None, init=False)
@@ -110,6 +119,16 @@ class Orchestrator:
     federated_trainer: object | None = field(default=None, init=False)
     _logistics_lead_time_ticks: int = field(default=5, init=False)
     _logistics_iteration: int = field(default=0, init=False)
+    # Phase 6a Tier 4 — EMA of MAPPO mean_reward across PPO iterations
+    # + rolling history of policy.improved events (surfaced by the
+    # /events/policy-improvements endpoint).
+    _policy_reward_baseline: float | None = field(default=None, init=False)
+    _policy_improvements: list[Event] = field(default_factory=list, init=False)
+    # Tier 2 — agent_id → until_tick for an active security block. The
+    # orchestrator scans this dict each analytics tick and calls
+    # ``unblock_agent`` once ``current_tick >= until_tick``.
+    _pending_unblocks: dict[int, int] = field(default_factory=dict, init=False)
+    _blocked_history_count: int = field(default=0, init=False)
 
     @classmethod
     def build(
@@ -167,7 +186,194 @@ class Orchestrator:
         orchestrator.demand = DemandModel.uniform(orchestrator.market)
         orchestrator.reorder_policy = ReorderPolicy.fractional(orchestrator.market)
         orchestrator.logistics_mempool = LogisticsMempool()
+        # Phase 6a Tier 1 — wire analytics→cross-pillar events.
+        orchestrator._wire_event_bus()
         return orchestrator
+
+    def _wire_event_bus(self) -> None:
+        """Connect pipeline + DP-mechanism signals; register Tier 1 + Tier 3 handlers."""
+        bus = self.event_bus
+
+        # Pipeline emits via this hook; orchestrator forwards to the bus.
+        def _forward(kind: str, payload: dict[str, object]) -> None:
+            bus.emit(Event(kind=kind, tick=self.simulation.tick_counter, payload=payload))
+
+        self.pipeline.on_signal = _forward  # type: ignore[attr-defined]
+
+        # Phase 6a Tier 3 — wire the heatmap's DP mechanism's signal
+        # hook into the same bus. NON-CRYPTOGRAPHIC: only signal
+        # emission, no change to noise math or accounting.
+        dp_mechanism = self.heatmap.dp_mechanism
+        if dp_mechanism is not None:
+
+            def _dp_forward(kind: str, payload: dict[str, float]) -> None:
+                bus.emit(
+                    Event(
+                        kind=kind,
+                        tick=self.simulation.tick_counter,
+                        payload=dict(payload),
+                    )
+                )
+
+            dp_mechanism.on_signal = _dp_forward
+
+        # Tier 1 handlers — Stats ↔ Logistics/Market.
+        def on_garch_spike(event: Event) -> None:
+            raw = event.payload.get("ratio", 1.0)
+            ratio = float(raw if isinstance(raw, int | float) else 1.0) - 1.0
+            if self.reorder_policy is not None:
+                self.reorder_policy.react_to_volatility(
+                    sigma_signal=ratio, current_tick=event.tick, decay_ticks=60
+                )
+            if self.market is not None:
+                self.market.set_pricing_regime(  # type: ignore[attr-defined]
+                    "volatile", ticks_active=30, current_tick=event.tick
+                )
+
+        def on_cpi_shock(event: Event) -> None:
+            if self.market is not None:
+                self.market.set_pricing_regime(  # type: ignore[attr-defined]
+                    "crisis", ticks_active=60, current_tick=event.tick
+                )
+
+        # Tier 3 handlers — DP-budget pressure cascades to analytics
+        # cadence + federated trainer gate.
+        def on_dp_budget_warning(_event: Event) -> None:
+            self.pipeline.degrade_for_dp_warning()
+
+        def on_dp_budget_exhausted(_event: Event) -> None:
+            self.pipeline.enter_dp_fallback()
+            trainer = self.federated_trainer
+            if trainer is not None and hasattr(trainer, "block_dp"):
+                trainer.block_dp()  # type: ignore[attr-defined]
+
+        bus.subscribe("garch.spike", on_garch_spike)
+        bus.subscribe("cpi.shock", on_cpi_shock)
+        bus.subscribe("dp.budget.warning", on_dp_budget_warning)
+        bus.subscribe("dp.budget.exhausted", on_dp_budget_exhausted)
+
+        # Tier 2 — Security ↔ Market/Logistics/FL. The keystore detects
+        # rejection-threshold crossings and invokes ``on_agent_blocked``
+        # to emit an ``agent.blocked`` event; the handler below propagates
+        # the block to Market.blocked_agents, queues an auto-unblock at
+        # ``until_tick``, and (if present) blocks the FL trainer too.
+        def _keystore_emit_blocked(agent_id: int, until_tick: int) -> None:
+            bus.emit(
+                Event(
+                    kind="agent.blocked",
+                    tick=self.simulation.tick_counter,
+                    payload={
+                        "agent_id": int(agent_id),
+                        "reason": "signing_rejected",
+                        "until_tick": int(until_tick),
+                    },
+                )
+            )
+
+        self.keystore.on_agent_blocked = _keystore_emit_blocked
+
+        def on_agent_blocked(event: Event) -> None:
+            payload = event.payload
+            agent_id_raw = payload.get("agent_id")
+            until_tick_raw = payload.get("until_tick")
+            if not isinstance(agent_id_raw, int) or not isinstance(until_tick_raw, int):
+                return
+            agent_id = int(agent_id_raw)
+            until_tick = int(until_tick_raw)
+            if self.market is not None:
+                self.market.block_agent(agent_id)  # type: ignore[attr-defined]
+            self._pending_unblocks[agent_id] = until_tick
+            self._blocked_history_count += 1
+            trainer = self.federated_trainer
+            if trainer is not None and hasattr(trainer, "block_agent"):
+                try:
+                    trainer.block_agent(agent_id)  # type: ignore[attr-defined]
+                except Exception:
+                    logger.exception("FederatedTrainer.block_agent raised; continuing")
+
+        bus.subscribe("agent.blocked", on_agent_blocked)
+
+        # Tier 5 — chain emits via on_signal; orchestrator forwards to the
+        # bus. The chain package has no import dependency on transport,
+        # so we install the hook here.
+        def _forward_chain(kind: str, payload: dict[str, object]) -> None:
+            bus.emit(Event(kind=kind, tick=self.simulation.tick_counter, payload=payload))
+
+        self.node.on_signal = _forward_chain
+
+        # Tier 5 — chain.block.finalised → economic reward to winners.
+        def on_block_finalised(event: Event) -> None:
+            if self.market is None:
+                return
+            winners_raw = event.payload.get("winners", [])
+            if not isinstance(winners_raw, list):
+                return
+            winners = [int(w) for w in winners_raw if isinstance(w, int)]
+            self.market.credit_block_winners(winners)  # type: ignore[attr-defined]
+
+        # Tier 5 — chain.validator.slashed → FL trainer excises the
+        # slashed validator's delta (re-uses Tier 2's block_agent API).
+        # Guarded with hasattr so the hook degrades gracefully if Tier 2
+        # hasn't shipped block_agent on FederatedTrainer yet.
+        def on_validator_slashed(event: Event) -> None:
+            trainer = self.federated_trainer
+            if trainer is None:
+                return
+            validator_id = event.payload.get("validator_id")
+            if not isinstance(validator_id, int):
+                return
+            if hasattr(trainer, "block_agent"):
+                try:
+                    trainer.block_agent(validator_id)  # type: ignore[attr-defined]
+                except Exception:
+                    logger.exception("FederatedTrainer.block_agent raised; continuing")
+
+        bus.subscribe("chain.block.finalised", on_block_finalised)
+        bus.subscribe("chain.validator.slashed", on_validator_slashed)
+
+        # Phase 6a Tier 4 — ML/RL ↔ Logistics convergence signal.
+        # Track an EMA baseline of mean_reward across PPO iters; emit a
+        # downstream policy.improved event when the latest mean_reward
+        # exceeds 1.5x the baseline. The Bench leaderboard tile
+        # surfaces these as "live training is converging".
+        ema_alpha = 0.2
+        improvement_ratio = 1.5
+
+        def on_policy_updated(event: Event) -> None:
+            raw_reward = event.payload.get("mean_reward")
+            if not isinstance(raw_reward, int | float):
+                return
+            mean_reward = float(raw_reward)
+            baseline = self._policy_reward_baseline
+            if baseline is None or not _is_finite(baseline):
+                self._policy_reward_baseline = mean_reward
+                return
+            # Trigger only when baseline is meaningfully non-zero; the
+            # 1.5x ratio is meaningless against a 0 baseline.
+            if abs(baseline) > 1e-6 and mean_reward > improvement_ratio * baseline:
+                improved = Event(
+                    kind="policy.improved",
+                    tick=event.tick,
+                    payload={
+                        "iteration": event.payload.get("iteration"),
+                        "mean_reward": mean_reward,
+                        "baseline": float(baseline),
+                        "ratio": float(mean_reward / baseline),
+                    },
+                )
+                self._policy_improvements.append(improved)
+                # Cap the in-memory history so a long-running session
+                # doesn't grow without bound; the bus already keeps a
+                # 1024-event deque so anything older is recoverable
+                # there too.
+                if len(self._policy_improvements) > 256:
+                    del self._policy_improvements[: len(self._policy_improvements) - 256]
+                bus.emit(improved)
+            # Update EMA AFTER the comparison so the spike isn't
+            # immediately absorbed.
+            self._policy_reward_baseline = ema_alpha * mean_reward + (1.0 - ema_alpha) * baseline
+
+        bus.subscribe("ml.policy.updated", on_policy_updated)
 
     def sign_and_verify_moves(self) -> None:
         """Sign-and-verify the current tick's agent positions.
@@ -334,6 +540,15 @@ class Orchestrator:
                             agent_positions=agent_positions,
                             rng=rng,
                         )
+                        # Tier 1 — let market + reorder policy decay
+                        # their event-driven regime modifiers before
+                        # this tick's logistics step.
+                        if self.market is not None:
+                            self.market.tick_pricing(  # type: ignore[attr-defined]
+                                self.simulation.tick_counter
+                            )
+                        if self.reorder_policy is not None:
+                            self.reorder_policy.tick(self.simulation.tick_counter)
                         self._step_logistics()
                         self._maybe_ingest_federated()
                         self._maybe_step_federated()
@@ -530,6 +745,9 @@ class Orchestrator:
         ):
             return
         tick = self.simulation.tick_counter
+        # Tier 2 — drain any expired security cool-offs BEFORE dispatch
+        # so a freshly-unblocked agent can be picked this very tick.
+        self._drain_pending_unblocks(tick)
         self.demand.step(self.market)
         self.reorder_policy.evaluate(market=self.market, mempool=self.logistics_mempool, tick=tick)
         agent_positions = {a.id: a.position for a in self.simulation.agents}
@@ -540,6 +758,7 @@ class Orchestrator:
             agent_positions=agent_positions,
             cargo=self.cargo,
             tick=tick,
+            blocked_agents=self.market.blocked_agents,  # type: ignore[attr-defined]
         )
         lead = self._logistics_lead_time_ticks
         stale_threshold = max(1, 3 * lead)
@@ -584,6 +803,33 @@ class Orchestrator:
                 self.logistics_mempool.fulfil(order_id=order.id, agent_id=-1, tick=tick)
         self._step_echelon_network()
         self._logistics_iteration += 1
+
+    def _drain_pending_unblocks(self, current_tick: int) -> None:
+        """Tier 2 — clear expired security blocks from Market + FL trainer.
+
+        Walks ``_pending_unblocks``; for every entry whose ``until_tick``
+        is in the past, the agent is unblocked on the Market and (if a
+        FederatedTrainer is attached) on the trainer too. The keystore's
+        own block bookkeeping is left untouched — the cool-off there
+        simply prevents redundant emits, which is fine.
+        """
+        if not self._pending_unblocks:
+            return
+        expired = [
+            agent_id
+            for agent_id, until_tick in self._pending_unblocks.items()
+            if current_tick >= until_tick
+        ]
+        for agent_id in expired:
+            del self._pending_unblocks[agent_id]
+            if self.market is not None:
+                self.market.unblock_agent(agent_id)  # type: ignore[attr-defined]
+            trainer = self.federated_trainer
+            if trainer is not None and hasattr(trainer, "unblock_agent"):
+                try:
+                    trainer.unblock_agent(agent_id)  # type: ignore[attr-defined]
+                except Exception:
+                    logger.exception("FederatedTrainer.unblock_agent raised; continuing")
 
     def _step_echelon_network(self) -> None:
         """Tier 3: advance the multi-echelon supply chain by one tick.

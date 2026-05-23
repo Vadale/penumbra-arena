@@ -27,6 +27,7 @@ DEFAULT_STOCKOUT_COST_PER_UNIT: Final[float] = 0.05
 DEFAULT_REORDER_FRACTION: Final[float] = 0.3
 DEFAULT_ORDER_UP_TO_FRACTION: Final[float] = 0.8
 DEFAULT_FULFILLED_HISTORY_CAP: Final[int] = 4096
+DEFAULT_CARRIER_REWARDS_CAP: Final[int] = 200
 
 
 @dataclass(slots=True)
@@ -135,13 +136,29 @@ class Order:
 
 @dataclass(slots=True)
 class LogisticsMempool:
-    """Pending + fulfilled order book."""
+    """Pending + fulfilled order book.
+
+    Phase 6a Tier 4: also exposes a bounded ``recent_carrier_rewards``
+    deque of ``(agent_id, reward)`` pairs appended on every real (non-
+    phantom) fulfilment. ``LogisticsRewardShaper`` reads it to issue
+    per-agent dispatch bonuses without re-scanning the full fulfilled
+    book on every env step.
+    """
 
     pending: list[Order] = field(default_factory=list)
     fulfilled: deque[Order] = field(
         default_factory=lambda: deque(maxlen=DEFAULT_FULFILLED_HISTORY_CAP)
     )
     next_id: int = 0
+    recent_carrier_rewards: deque[tuple[int, float]] = field(
+        default_factory=lambda: deque(maxlen=DEFAULT_CARRIER_REWARDS_CAP)
+    )
+    last_fulfilment_tick: int = -1
+    total_carrier_fulfilments: int = 0
+    # Monotonic count of real-carrier fulfilments since boot. Survives
+    # the recent_carrier_rewards deque's left-trim, so subscribers like
+    # ``LogisticsRewardShaper`` can drain only the entries appended
+    # since the last time they consumed.
 
     def place(
         self,
@@ -168,13 +185,24 @@ class LogisticsMempool:
         return order
 
     def fulfil(self, order_id: int, agent_id: int, tick: int) -> Order | None:
-        """Mark an order fulfilled and return it. Idempotent on already-fulfilled."""
+        """Mark an order fulfilled and return it. Idempotent on already-fulfilled.
+
+        Real carriers (``agent_id != -1``) also push an
+        ``(agent_id, reward)`` entry into ``recent_carrier_rewards`` so
+        downstream consumers (the MAPPO logistics shaper, the
+        ``/learning/carrier-reward-stream`` endpoint) can read a fixed-
+        size rolling window without scanning the full fulfilled history.
+        """
         for i, o in enumerate(self.pending):
             if o.id == order_id:
                 o.fulfilled_tick = tick
                 o.fulfilled_by = agent_id
                 self.pending.pop(i)
                 self.fulfilled.append(o)
+                if agent_id != -1:
+                    self.recent_carrier_rewards.append((int(agent_id), float(o.reward)))
+                    self.last_fulfilment_tick = int(tick)
+                    self.total_carrier_fulfilments += 1
                 return o
         return None
 
@@ -207,6 +235,39 @@ class ReorderPolicy:
     s: dict[tuple[int, int], int]
     big_s: dict[tuple[int, int], int]
     base_reward: float = 5.0
+    _baseline_s: dict[tuple[int, int], int] = field(default_factory=dict)
+    _volatility_until_tick: int = -1
+    _volatility_multiplier: float = 1.0
+
+    def react_to_volatility(
+        self, sigma_signal: float, current_tick: int, decay_ticks: int = 60
+    ) -> None:
+        """Bump reorder points to defend against forecasted volatility.
+
+        ``sigma_signal`` is the GARCH sigma^2 spike fraction over baseline
+        (e.g. 1.5 = +150%). We multiply ``s`` by ``(1 + min(sigma_signal,
+        2.0))`` so volatility triggers earlier reorders (defensive
+        stocking). Decays back to baseline after ``decay_ticks``.
+        Idempotent: re-calling refreshes the decay window without
+        compounding the multiplier.
+        """
+        if not self._baseline_s:
+            self._baseline_s = dict(self.s)
+        mult = 1.0 + min(max(sigma_signal, 0.0), 2.0)
+        self._volatility_multiplier = mult
+        self._volatility_until_tick = current_tick + decay_ticks
+        for key, base in self._baseline_s.items():
+            self.s[key] = max(1, int(base * mult))
+
+    def tick(self, current_tick: int) -> None:
+        """Revert to baseline if the volatility window expired."""
+        if (
+            self._volatility_multiplier != 1.0
+            and current_tick >= self._volatility_until_tick
+            and self._baseline_s
+        ):
+            self.s = dict(self._baseline_s)
+            self._volatility_multiplier = 1.0
 
     @classmethod
     def fractional(
@@ -448,6 +509,7 @@ def assign_carriers(
     agent_positions: dict[int, int],
     cargo: CargoConstraints,
     tick: int,
+    blocked_agents: set[int] | None = None,
 ) -> int:
     """Greedy nearest-agent dispatcher.
 
@@ -457,6 +519,12 @@ def assign_carriers(
     that (a) is not already assigned to a different pending order and
     (b) has spare cargo capacity ≥ order.quantity. Returns the number
     of orders newly assigned this call.
+
+    ``blocked_agents`` (Tier 2): when provided, those agent ids are
+    excluded from dispatch consideration — a security block has teeth
+    not just on trade settlement but also on logistics participation.
+    Default ``None`` preserves backwards compatibility for tests and
+    legacy callers that don't track the blocked set.
 
     Performance: when there are multiple unassigned orders we pre-compute
     a single-source Dijkstra from each unique destination city (orders
@@ -470,6 +538,7 @@ def assign_carriers(
     if not unassigned:
         return 0
     busy: set[int] = {o.assigned_to for o in mempool.pending if o.assigned_to is not None}  # type: ignore[misc]
+    blocked: set[int] = set(blocked_agents) if blocked_agents else set()
     import networkx as nx  # local import keeps the module light at import time
 
     graph = getattr(arena, "graph", None)
@@ -496,6 +565,8 @@ def assign_carriers(
         city_distances = distances_from.get(order.city)
         for agent_id, pos in agent_positions.items():
             if agent_id in busy:
+                continue
+            if agent_id in blocked:
                 continue
             wallet = wallets.get(agent_id)
             if wallet is None:

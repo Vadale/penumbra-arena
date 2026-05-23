@@ -146,7 +146,10 @@ def build_app(
             try:
                 from penumbra_learning.live_trainer import build_live_trainer
 
-                live_trainer = build_live_trainer(mappo_runtime.agent_net)  # type: ignore[attr-defined]
+                live_trainer = build_live_trainer(
+                    mappo_runtime.agent_net,  # type: ignore[attr-defined]
+                    orchestrator=orchestrator,
+                )
             except Exception:
                 logger.exception("failed to build live trainer; continuing without it")
         app.state.penumbra = AppState(
@@ -391,6 +394,74 @@ def build_app(
             "verified": keystore.stats.verified,
             "rejected": keystore.stats.rejected,
             "n_agents": len(keystore.keypairs),
+        }
+
+    @app.get("/events/recent")
+    async def events_recent(limit: int = 50) -> dict[str, object]:
+        """Phase 6a — most recent cross-pillar events from the bus."""
+        bus = app.state.penumbra.orchestrator.event_bus
+        limit = max(1, min(int(limit), 500))
+        events = bus.recent(limit=limit)
+        return {
+            "events": [{"kind": e.kind, "tick": e.tick, "payload": e.payload} for e in events],
+        }
+
+    @app.get("/security/blocked-agents")
+    async def security_blocked_agents() -> dict[str, object]:
+        """Phase 6a Tier 2 — live blocked-agent list + history counter.
+
+        Returns the agents currently in an active security block, the
+        lifetime count of block events fired (history_count), and the
+        Market's gated-trade counter so the dashboard can show "this
+        many trade attempts were stopped by an active block".
+        """
+        orchestrator = app.state.penumbra.orchestrator
+        market = orchestrator.market
+        pending = orchestrator._pending_unblocks  # type: ignore[attr-defined]
+        blocked = [
+            {
+                "agent_id": int(agent_id),
+                "reason": "signing_rejected",
+                "until_tick": int(until_tick),
+            }
+            for agent_id, until_tick in pending.items()
+        ]
+        blocked.sort(key=lambda row: row["agent_id"])
+        return {
+            "blocked": blocked,
+            "history_count": int(orchestrator._blocked_history_count),  # type: ignore[attr-defined]
+            "blocked_trade_attempts": (
+                int(market.blocked_trade_attempts) if market is not None else 0
+            ),
+        }
+
+    @app.get("/events/stats")
+    async def events_stats() -> dict[str, object]:
+        """Phase 6a — bus stats for the EventBus tile."""
+        return app.state.penumbra.orchestrator.event_bus.stats()
+
+    @app.get("/events/policy-improvements")
+    async def events_policy_improvements(limit: int = 50) -> dict[str, object]:
+        """Phase 6a Tier 4 — history of policy.improved events.
+
+        Emitted by the orchestrator's ``ml.policy.updated`` handler
+        whenever the live MAPPO trainer's ``mean_reward`` jumps above
+        1.5x the EMA baseline. Surfaces "live training is converging"
+        on the Bench leaderboard tile.
+        """
+        orch = app.state.penumbra.orchestrator
+        history = list(getattr(orch, "_policy_improvements", []))
+        limit = max(1, min(int(limit), 500))
+        out = [{"kind": e.kind, "tick": e.tick, "payload": e.payload} for e in history[-limit:]]
+        return {
+            "available": True,
+            "n_total": len(history),
+            "events": out,
+            "baseline_reward": (
+                float(orch._policy_reward_baseline)  # type: ignore[arg-type]
+                if getattr(orch, "_policy_reward_baseline", None) is not None
+                else None
+            ),
         }
 
     @app.post("/coach/exec")
@@ -760,10 +831,24 @@ def build_app(
 
     @app.get("/dp/budget")
     async def dp_budget() -> dict[str, object]:
-        """Snapshot of the DP accountant for the encrypted-heatmap mechanism."""
-        mechanism = app.state.penumbra.orchestrator.heatmap.dp_mechanism
+        """Snapshot of the DP accountant for the encrypted-heatmap mechanism.
+
+        Phase 6a Tier 3 — payload extended with ``degraded`` +
+        ``degradation_reason`` so the dashboard can surface the
+        DP-fallback banner whenever the pipeline has been switched
+        into degraded mode by the orchestrator event handler.
+        """
+        orchestrator = app.state.penumbra.orchestrator
+        mechanism = orchestrator.heatmap.dp_mechanism
+        pipeline = orchestrator.pipeline
+        degraded = bool(getattr(pipeline, "_dp_degraded", False))
+        degradation_reason = getattr(pipeline, "_dp_degradation_reason", None)
         if mechanism is None:
-            return {"enabled": False}
+            return {
+                "enabled": False,
+                "degraded": degraded,
+                "degradation_reason": degradation_reason,
+            }
         budget = mechanism.budget
         return {
             "enabled": True,
@@ -772,6 +857,8 @@ def build_app(
             "epsilon_remaining": budget.remaining_epsilon,
             "delta_total": budget.delta,
             "delta_spent": budget.delta_spent,
+            "degraded": degraded,
+            "degradation_reason": degradation_reason,
         }
 
     @app.post("/world/save")
@@ -1103,6 +1190,51 @@ def build_app(
             raise HTTPException(status_code=404, detail="live trainer unavailable")
         trainer.stop()  # type: ignore[attr-defined]
         return {"enabled": False, "iteration": int(trainer.iteration)}  # type: ignore[attr-defined]
+
+    @app.get("/learning/carrier-reward-stream")
+    async def learning_carrier_reward_stream(limit: int = 100) -> dict[str, object]:
+        """Phase 6a Tier 4 — last N real-carrier fulfilment rewards.
+
+        Streams the orchestrator's ``LogisticsMempool.recent_carrier_rewards``
+        deque, one entry per real (non-phantom) order fulfilment. Each
+        entry carries the carrier agent_id, the order reward, and the
+        ``last_fulfilment_tick`` snapshot so the dashboard can scale the
+        sparkline against the sim clock.
+        """
+        orch = app.state.penumbra.orchestrator
+        mempool = orch.logistics_mempool
+        if mempool is None:
+            return {"available": False, "rewards": []}
+        limit = max(1, min(int(limit), 500))
+        pairs = list(mempool.recent_carrier_rewards)[-limit:]
+        last_tick = int(getattr(mempool, "last_fulfilment_tick", -1))
+        rewards = [
+            {"agent_id": int(aid), "reward": float(rwd), "tick": last_tick} for aid, rwd in pairs
+        ]
+        # Per-agent aggregates: total + count, sorted by total descending.
+        per_agent_totals: dict[int, float] = {}
+        per_agent_counts: dict[int, int] = {}
+        for aid, rwd in pairs:
+            per_agent_totals[int(aid)] = per_agent_totals.get(int(aid), 0.0) + float(rwd)
+            per_agent_counts[int(aid)] = per_agent_counts.get(int(aid), 0) + 1
+        per_agent = sorted(
+            (
+                {
+                    "agent_id": aid,
+                    "total_reward": tot,
+                    "count": per_agent_counts[aid],
+                }
+                for aid, tot in per_agent_totals.items()
+            ),
+            key=lambda row: (-row["total_reward"], row["agent_id"]),
+        )
+        return {
+            "available": True,
+            "rewards": rewards,
+            "per_agent": per_agent,
+            "total_carrier_fulfilments": int(getattr(mempool, "total_carrier_fulfilments", 0)),
+            "last_fulfilment_tick": last_tick,
+        }
 
     @app.get("/learning/training/curves")
     async def learning_training_curves() -> dict[str, object]:

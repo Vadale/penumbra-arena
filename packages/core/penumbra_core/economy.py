@@ -209,6 +209,15 @@ class Market:
     markets: dict[int, MarketState]
     _previous_node: dict[int, int] = field(default_factory=dict)
     cargo: object | None = None  # CargoConstraints; opt-in cap on BUY qty
+    pricing_regime: str = "normal"  # "normal" | "volatile" | "crisis"
+    _pricing_regime_until_tick: int = -1  # when to revert to "normal"
+    blocked_agents: set[int] = field(default_factory=set)
+    _blocked_trade_attempts: int = 0
+    # Phase 6a Tier 5 — coins credited to a winner's wallet on each
+    # ``chain.block.finalised`` event. Winning matches → on-chain reward
+    # → real wealth change visible in Gini + wealth distribution. The
+    # bus payload's winner list is iterated by ``credit_block_winners``.
+    block_reward_coins: float = 10.0
 
     @classmethod
     def build(
@@ -257,7 +266,22 @@ class Market:
                     ms.inventory[pid] = min(ms.max_inventory, int(next_cur))
 
     def update_prices(self) -> None:
-        """Move each ask price up if stocks are low, down if high."""
+        """Move each ask price up if stocks are low, down if high.
+
+        In ``volatile`` regime (set by the event bus on a GARCH spike)
+        the price band tightens so defensive stocking doesn't induce
+        a runaway price spiral. The regime auto-reverts to ``normal``
+        after `_pricing_regime_until_tick` (the orchestrator passes
+        the current tick before each call via ``tick_pricing()``).
+        """
+        min_ratio = _PRICE_MIN_RATIO
+        max_ratio = _PRICE_MAX_RATIO
+        if self.pricing_regime == "volatile":
+            min_ratio = 0.7
+            max_ratio = 1.6
+        elif self.pricing_regime == "crisis":
+            min_ratio = 0.85
+            max_ratio = 1.3
         for ms in self.markets.values():
             for pid in ms.stocked_products:
                 cap = ms.max_inventory
@@ -269,9 +293,49 @@ class Market:
                     cur *= _PRICE_INFLATE
                 elif fill > _HIGH_STOCK_PCT:
                     cur *= _PRICE_DEFLATE
-                # Clip to [base * min, base * max] so prices stay in a sane band.
                 base = PRODUCT_CATALOG[pid].base_price
-                ms.ask_price[pid] = max(base * _PRICE_MIN_RATIO, min(base * _PRICE_MAX_RATIO, cur))
+                ms.ask_price[pid] = max(base * min_ratio, min(base * max_ratio, cur))
+
+    def tick_pricing(self, tick: int) -> None:
+        """Revert to ``normal`` regime if its decay deadline passed."""
+        if self.pricing_regime != "normal" and tick >= self._pricing_regime_until_tick:
+            self.pricing_regime = "normal"
+
+    def set_pricing_regime(self, regime: str, ticks_active: int, current_tick: int) -> None:
+        """Switch regime for ``ticks_active`` simulation ticks."""
+        if regime not in {"normal", "volatile", "crisis"}:
+            raise ValueError(f"unknown pricing regime {regime!r}")
+        self.pricing_regime = regime
+        self._pricing_regime_until_tick = current_tick + ticks_active
+
+    # ── Tier 2 — security ↔ market gate ──────────────────────────
+
+    def block_agent(self, agent_id: int) -> None:
+        """Add ``agent_id`` to the blocked set; idempotent on already-blocked."""
+        self.blocked_agents.add(int(agent_id))
+
+    def unblock_agent(self, agent_id: int) -> None:
+        """Remove ``agent_id`` from the blocked set; no-op if absent."""
+        self.blocked_agents.discard(int(agent_id))
+
+    @property
+    def blocked_trade_attempts(self) -> int:
+        """Lifetime counter of BUY/SELL attempts gated by a block."""
+        return self._blocked_trade_attempts
+
+    def credit_block_winners(self, winner_agent_ids: list[int]) -> None:
+        """Mint ``block_reward_coins`` into each winner's wallet.
+
+        Phase 6a Tier 5 — wired from the EventBus on
+        ``chain.block.finalised``. Idempotent w.r.t. unknown agent ids
+        (silently skipped); winners that appear twice in the same block
+        get credited twice (matches the chain's view of the block).
+        """
+        for agent_id in winner_agent_ids:
+            wallet = self.wallets.get(int(agent_id))
+            if wallet is None:
+                continue
+            wallet.coins += self.block_reward_coins
 
     def settle_arrivals(
         self,
@@ -289,6 +353,13 @@ class Market:
             prev = self._previous_node.get(agent_id)
             self._previous_node[agent_id] = node_id
             if prev is None or prev == node_id:
+                continue
+            if agent_id in self.blocked_agents:
+                # Tier 2 — security event has teeth. Blocked agents
+                # neither SELL nor BUY; we increment a counter so the
+                # dashboard can surface how many trade attempts were
+                # gated by an active block.
+                self._blocked_trade_attempts += 1
                 continue
             ms = self.markets.get(node_id)
             if ms is None:

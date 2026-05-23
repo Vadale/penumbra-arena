@@ -651,6 +651,27 @@ export function AnalyticsPanel() {
           accent
           onClick={() => open("federated_status")}
         />
+        <Cell
+          label="event bus"
+          value="cross-pillar"
+          caption="signals propagating"
+          accent
+          onClick={() => open("event_bus")}
+        />
+        <Cell
+          label="event graph"
+          value="producer → consumer"
+          caption="kinds + handler latency"
+          accent
+          onClick={() => open("event_graph")}
+        />
+        <Cell
+          label="security — blocked"
+          value="signing rejected"
+          caption="market + logistics + FL gated"
+          accent
+          onClick={() => open("security_blocked")}
+        />
       </div>
 
       {summary && (
@@ -732,6 +753,9 @@ export function AnalyticsPanel() {
             case "logistics_echelon":
             case "logistics_dispatch":
             case "federated_status":
+            case "event_bus":
+            case "event_graph":
+            case "security_blocked":
               return undefined;
             default:
               return histories[mapMetricToHistoryKey(openMetric)];
@@ -824,6 +848,9 @@ function mapMetricToHistoryKey(
     | "logistics_echelon"
     | "logistics_dispatch"
     | "federated_status"
+    | "event_bus"
+    | "event_graph"
+    | "security_blocked"
   >,
 ): keyof ReturnType<typeof useDashboardLive>["history"] {
   switch (m) {
