@@ -250,13 +250,15 @@ class Orchestrator:
                 except Exception:
                     logger.exception("encrypted-heatmap compute raised; continuing")
                 iterations += 1
-                # Stress-test fix: CKKS + torch MPS allocate
-                # C-extension memory that Python's GC doesn't sweep on
-                # its normal generation cadence. gc.collect every 10s +
-                # torch.mps.empty_cache every 30s caps the residue.
-                if iterations % 10 == 0:
+                # Post-Phase-8 stress test (2026-05-23) showed RSS
+                # climbing ~435 MB/h despite the previous gc.collect /
+                # empty_cache cadence. The Phase 8 additions (live
+                # MAPPO inference + LiveTrainer + extra crypto demo
+                # endpoints) increased C-extension allocation
+                # pressure. Tightened cadences below.
+                if iterations % 2 == 0:  # every 10s (heatmap is 5s)
                     gc.collect()
-                if iterations % 30 == 0:
+                if iterations % 6 == 0:  # every 30s
                     _release_torch_caches()
         except asyncio.CancelledError:
             raise
@@ -314,12 +316,14 @@ class Orchestrator:
                 except Exception:
                     logger.exception("analytics pipeline raised; continuing")
                 iterations += 1
-                # Stress-test fix: pqcrypto Dilithium sign+verify + numpy
-                # buffers from the consumers (ripser, scipy, numpyro)
-                # accumulate temporaries that Python's normal GC sweeps
-                # too lazily. Full-collect every 10s caps the working set.
-                if iterations % 10 == 0:
+                # Tightened post-Phase-8 (2026-05-23): the analytics
+                # consumers + market.tick + per-tick MAPPO inference
+                # allocate enough temporaries that 10s gc was lagging
+                # the working set. 5s is the new floor.
+                if iterations % 5 == 0:
                     gc.collect()
+                if iterations % 60 == 0:  # every 60s
+                    _release_torch_caches()
         except asyncio.CancelledError:
             raise
 

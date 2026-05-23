@@ -173,7 +173,12 @@ class MAPPO:
             # Rebuild Categorical from scaled logits.
             logits = self.actor.net(obs_t) / float(temperature)
             actions = Categorical(logits=logits).sample()
-        return actions.cpu().numpy()
+        # Explicit detach + move to CPU + free the MPS allocation.
+        # The C++ caching allocator does not always release these
+        # eagerly without a hint.
+        result = actions.detach().cpu().numpy()
+        del obs_t, actions
+        return result
 
     def compute_gae(
         self,

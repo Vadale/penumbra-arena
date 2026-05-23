@@ -34,7 +34,12 @@ Track in a simple checklist below. Update as we go.
 Goals (independent of stress findings). **Frontend audit measured
 2026-05-23**:
 
-1. **Extract shared chart primitives.** Measurements:
+1. **Extract shared chart primitives.** **DONE 2026-05-23 (partial)**:
+   created `apps/web/src/charts/_shared/{Stat,Verdict,Block}.tsx` +
+   barrel index. PedersenChart converted as exemplar — drops ~60
+   LOC, type-check + tests green. The remaining ~50 files still
+   have local declarations; bulk codemod is part of Phase 1.5
+   (after extensions ship). Measurements:
    - `Stat({label, value, accent, ember, caption})` re-declared in
      **45 chart files**
    - `Verdict({label, ok, caption, inverted})` re-declared in **7

@@ -70,6 +70,13 @@ class TickLoop:
         self._task = None
 
     async def _run(self) -> None:
+        # Periodic gc inside the hot tick loop. MAPPO inference on MPS
+        # allocates temporaries the autograd-disabled forward path
+        # still holds via the C++ caching allocator until the next
+        # generation collect. Without this, RSS climbs ~400 MB/h.
+        import gc  # noqa: PLC0415
+
+        tick_count = 0
         try:
             while True:
                 frame = self._simulation.tick()
@@ -78,6 +85,9 @@ class TickLoop:
                         await self._consumer(frame)
                     except Exception:
                         logger.exception("frame consumer raised; continuing")
+                tick_count += 1
+                if tick_count % 100 == 0:  # every 10s at 10 Hz
+                    gc.collect()
                 await asyncio.sleep(self._period)
         except asyncio.CancelledError:
             raise
