@@ -26,10 +26,14 @@ References
 from __future__ import annotations
 
 import secrets
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
 from numpy.typing import NDArray
+
+SignalHandler = Callable[[str, dict[str, float]], None]
+_WARNING_THRESHOLD: float = 0.05
 
 
 def secure_rng() -> np.random.Generator:
@@ -80,6 +84,18 @@ class PrivacyBudget:
     def remaining_epsilon(self) -> float:
         return max(self.epsilon - self.epsilon_spent, 0.0)
 
+    def reset(self) -> None:
+        """Zero the spent counters so the budget can be re-used.
+
+        Used by operator tooling (and Phase 6a Tier 3 tests) to lift a
+        DP-degraded mode without having to rebuild the mechanism. Note
+        that this is an OPERATIONAL reset; from a DP-theory standpoint
+        each reset starts a NEW privacy run and the accountant's
+        guarantees do not compose across resets.
+        """
+        self.epsilon_spent = 0.0
+        self.delta_spent = 0.0
+
 
 class DPMechanism:
     """Laplace-mechanism wrapper that *requires* a budget accountant.
@@ -97,13 +113,56 @@ class DPMechanism:
     Generator.
     """
 
-    def __init__(self, budget: PrivacyBudget, rng: np.random.Generator | None = None) -> None:
+    def __init__(
+        self,
+        budget: PrivacyBudget,
+        rng: np.random.Generator | None = None,
+        *,
+        on_signal: SignalHandler | None = None,
+    ) -> None:
         self._budget = budget
         self._rng = rng if rng is not None else secure_rng()
+        self.on_signal: SignalHandler | None = on_signal
+        self._warned: bool = False
+        self._exhausted: bool = False
 
     @property
     def budget(self) -> PrivacyBudget:
         return self._budget
+
+    def reset_budget_flags(self) -> None:
+        """Clear the warned/exhausted latches AND the underlying budget.
+
+        Phase 6a Tier 3: the orchestrator calls this when a human
+        operator manually lifts the DP-degraded mode. Re-arms the
+        signalling so the next drain past the threshold fires again.
+        """
+        self._budget.reset()
+        self._warned = False
+        self._exhausted = False
+
+    def _maybe_signal(self) -> None:
+        """Post-debit hook that fires warning + exhausted exactly once each.
+
+        Phase 6a Tier 3 (NON-CRYPTOGRAPHIC — no noise math touched).
+        The two latches (``_warned``, ``_exhausted``) keep the bus from
+        being spammed on every release once the threshold has been
+        crossed. They are reset by :meth:`reset_budget_flags`. Once
+        exhausted, the warning latch is implicitly closed too: the
+        operator is already aware of the more severe condition.
+        """
+        if self.on_signal is None or self._exhausted:
+            return
+        total = float(self._budget.epsilon)
+        remaining = float(self._budget.remaining_epsilon)
+        if remaining <= 0.0:
+            self._exhausted = True
+            self._warned = True
+            self.on_signal("dp.budget.exhausted", {"total": total})
+            return
+        if not self._warned and total > 0.0 and remaining / total < _WARNING_THRESHOLD:
+            self._warned = True
+            self.on_signal("dp.budget.warning", {"remaining": remaining, "total": total})
 
     def laplace(self, value: float, *, sensitivity: float, epsilon: float) -> float:
         """Release a noisy `value` with ε-DP.
@@ -115,7 +174,12 @@ class DPMechanism:
             raise ValueError("sensitivity must be > 0")
         if epsilon <= 0:
             raise ValueError("epsilon must be > 0")
-        self._budget.deduct(epsilon)
+        try:
+            self._budget.deduct(epsilon)
+        except BudgetExceededError:
+            self._maybe_signal()
+            raise
+        self._maybe_signal()
         scale = sensitivity / epsilon
         return float(value + self._rng.laplace(loc=0.0, scale=scale))
 
@@ -134,7 +198,12 @@ class DPMechanism:
         """
         if sensitivity <= 0 or epsilon <= 0:
             raise ValueError("sensitivity and epsilon must be > 0")
-        self._budget.deduct(epsilon)
+        try:
+            self._budget.deduct(epsilon)
+        except BudgetExceededError:
+            self._maybe_signal()
+            raise
+        self._maybe_signal()
         scale = sensitivity / epsilon
         noise = self._rng.laplace(loc=0.0, scale=scale, size=values.shape)
         return values + noise

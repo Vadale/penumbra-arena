@@ -18,6 +18,11 @@ interface DPComparison {
   tick?: number;
 }
 
+interface DPBudget {
+  degraded?: boolean;
+  degradation_reason?: string | null;
+}
+
 interface Props {
   width?: number;
 }
@@ -26,15 +31,21 @@ const M = { top: 14, right: 12, bottom: 22, left: 36 };
 
 export function DpCompareChart({ width = 560 }: Props) {
   const [data, setData] = useState<DPComparison | null>(null);
+  const [budget, setBudget] = useState<DPBudget | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     const poll = async () => {
       try {
-        const res = await fetch("/dp/compare");
-        if (!res.ok) return;
-        const payload = (await res.json()) as DPComparison;
-        if (!cancelled) setData(payload);
+        const [compRes, budgetRes] = await Promise.all([fetch("/dp/compare"), fetch("/dp/budget")]);
+        if (compRes.ok) {
+          const payload = (await compRes.json()) as DPComparison;
+          if (!cancelled) setData(payload);
+        }
+        if (budgetRes.ok) {
+          const payload = (await budgetRes.json()) as DPBudget;
+          if (!cancelled) setBudget(payload);
+        }
       } catch {
         // ignore
       }
@@ -106,6 +117,14 @@ export function DpCompareChart({ width = 560 }: Props) {
 
   return (
     <div className="font-mono space-y-3">
+      {budget?.degraded && (
+        <div
+          role="status"
+          className="rounded border border-[color:var(--color-penumbra-ember)] bg-[color:color-mix(in_srgb,var(--color-penumbra-ember)_15%,transparent)] px-2 py-1 text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-ember)]"
+        >
+          DP degraded mode · {budget.degradation_reason ?? "budget exhausted"}
+        </div>
+      )}
       <div className="grid grid-cols-4 gap-2 text-[10px]">
         <Stat
           label="DP applied"
