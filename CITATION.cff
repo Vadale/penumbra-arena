@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+message: "If you use Penumbra in your research or teaching, please cite it."
+title: "Penumbra: a privacy-preserving perpetual multi-agent arena"
+type: software
+authors:
+  - family-names: "Vadale"
+    given-names: ""
+repository-code: "https://github.com/Vadale/penumbra-arena"
+license: MIT
+license-url: "https://github.com/Vadale/penumbra-arena/blob/main/LICENSE"
+date-released: "2026-05-23"
+keywords:
+  - reinforcement-learning
+  - multi-agent
+  - federated-learning
+  - homomorphic-encryption
+  - differential-privacy
+  - benchmark
+  - synthetic-data
+abstract: >
+  Penumbra is a privacy-preserving perpetual multi-agent arena where
+  N=20-50 agents compete on a procedurally dynamic graph. Agent state
+  is encrypted at rest and in transit; a live dashboard streams
+  encrypted aggregates, statistical inference summaries, and on-chain
+  match-outcome proofs. The codebase ships a teaching platform, the
+  Penumbra-Bench evaluation suite (5 tasks across privacy, adversarial
+  resilience, multi-agent cooperation, privacy-budget management, and
+  linkability resistance), and the Penumbra-Data synthetic dataset
+  family (4 tiers, 7 modalities, CC-BY-4.0).
