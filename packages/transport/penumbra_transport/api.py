@@ -1425,7 +1425,7 @@ def build_app(
 
         from penumbra_crypto.snark import load_proof, load_verifying_key, verify
 
-        artifacts = Path(__file__).resolve().parents[3] / "circuits" / "artifacts"
+        artifacts = Path(__file__).resolve().parents[3] / "circuits" / "artifacts"  # noqa: ASYNC240
         vk_path = artifacts / "vk.json"
         proof_path = artifacts / "proof.json"
         public_path = artifacts / "public.json"
@@ -1441,7 +1441,7 @@ def build_app(
             tampered_ok = verify(vk, proof, tampered)
             return {
                 "available": True,
-                "circuit": "multiplier (a × b === c)",
+                "circuit": "multiplier (a * b === c)",
                 "n_public_inputs": len(public),
                 "honest": {"inputs": public, "verified": bool(honest_ok)},
                 "tamper_output": {"inputs": tampered, "verified": bool(tampered_ok)},

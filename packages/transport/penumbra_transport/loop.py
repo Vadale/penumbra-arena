@@ -74,7 +74,7 @@ class TickLoop:
         # allocates temporaries the autograd-disabled forward path
         # still holds via the C++ caching allocator until the next
         # generation collect. Without this, RSS climbs ~400 MB/h.
-        import gc  # noqa: PLC0415
+        import gc
 
         tick_count = 0
         try:

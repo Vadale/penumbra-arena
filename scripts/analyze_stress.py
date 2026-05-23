@@ -22,7 +22,7 @@ Report sections
    appear? Did the spend cadence match expectations?
 6. **Signatures** — verified/rejected; rejected MUST stay 0.
 7. **CPU** — process CPU%; flag > 80% sustained for 5+ minutes.
-8. **Anomalies** — any single-sample outliers > 3 σ from the median.
+8. **Anomalies** — any single-sample outliers > 3 sigma from the median.
 
 Reading the report
 ------------------
@@ -190,7 +190,9 @@ def analyze_chain(rows: list[dict[str, str]]) -> list[Finding]:
     # Detect plateaus: spans of ≥ N consecutive samples with no growth.
     max_plateau = 0
     cur_plateau = 0
-    for a, b in zip(heights, heights[1:], strict=False):
+    import itertools
+
+    for a, b in itertools.pairwise(heights):
         if a == b:
             cur_plateau += 1
             max_plateau = max(max_plateau, cur_plateau)
