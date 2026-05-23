@@ -946,13 +946,24 @@ def build_app(
             "step_penalty": float(REWARD_WEIGHTS.step_penalty),
             "illegal_move_penalty": float(REWARD_WEIGHTS.illegal_move_penalty),
             "crowding_penalty": float(REWARD_WEIGHTS.crowding_penalty),
+            "logistics_dispatch_bonus": float(REWARD_WEIGHTS.logistics_dispatch_bonus),
+            "logistics_dispatch_penalty": float(REWARD_WEIGHTS.logistics_dispatch_penalty),
+            "fill_rate_bonus": float(REWARD_WEIGHTS.fill_rate_bonus),
         }
 
     @app.post("/learning/reward-weights")
     async def learning_set_reward_weights(payload: dict[str, float]) -> dict[str, object]:
         from penumbra_learning.env import REWARD_WEIGHTS
 
-        for key in ("goal_reward", "step_penalty", "illegal_move_penalty", "crowding_penalty"):
+        for key in (
+            "goal_reward",
+            "step_penalty",
+            "illegal_move_penalty",
+            "crowding_penalty",
+            "logistics_dispatch_bonus",
+            "logistics_dispatch_penalty",
+            "fill_rate_bonus",
+        ):
             if key in payload:
                 setattr(REWARD_WEIGHTS, key, float(payload[key]))
         return {
@@ -960,6 +971,39 @@ def build_app(
             "step_penalty": float(REWARD_WEIGHTS.step_penalty),
             "illegal_move_penalty": float(REWARD_WEIGHTS.illegal_move_penalty),
             "crowding_penalty": float(REWARD_WEIGHTS.crowding_penalty),
+            "logistics_dispatch_bonus": float(REWARD_WEIGHTS.logistics_dispatch_bonus),
+            "logistics_dispatch_penalty": float(REWARD_WEIGHTS.logistics_dispatch_penalty),
+            "fill_rate_bonus": float(REWARD_WEIGHTS.fill_rate_bonus),
+        }
+
+    @app.post("/learning/reward-weights/logistics")
+    async def learning_set_logistics_reward_weights(
+        payload: dict[str, float],
+    ) -> dict[str, object]:
+        """Update the Tier-4 logistics reward components live.
+
+        Accepts any subset of {dispatch_bonus, dispatch_penalty,
+        fill_rate_bonus} and writes through to the shared
+        REWARD_WEIGHTS singleton so the next training iteration
+        picks the new values up.
+        """
+        from penumbra_learning.env import REWARD_WEIGHTS
+
+        mapping = {
+            "dispatch_bonus": "logistics_dispatch_bonus",
+            "dispatch_penalty": "logistics_dispatch_penalty",
+            "fill_rate_bonus": "fill_rate_bonus",
+            "logistics_dispatch_bonus": "logistics_dispatch_bonus",
+            "logistics_dispatch_penalty": "logistics_dispatch_penalty",
+        }
+        for key, attr in mapping.items():
+            if key in payload:
+                setattr(REWARD_WEIGHTS, attr, float(payload[key]))
+        return {
+            "available": True,
+            "logistics_dispatch_bonus": float(REWARD_WEIGHTS.logistics_dispatch_bonus),
+            "logistics_dispatch_penalty": float(REWARD_WEIGHTS.logistics_dispatch_penalty),
+            "fill_rate_bonus": float(REWARD_WEIGHTS.fill_rate_bonus),
         }
 
     @app.get("/learning/value-map")
@@ -1896,6 +1940,447 @@ def build_app(
             "tampered_match": bool(recovered_tampered == result.shared_secret),
         }
 
+    # ── Logistics endpoints (Tier 1) ──────────────────────────────
+    @app.get("/logistics/fill-rate")
+    async def logistics_fill_rate() -> dict[str, object]:
+        """End-customer demand fill rate: served / requested + per-product breakdown."""
+        from penumbra_core.logistics import compute_fill_rate
+
+        orch = app.state.penumbra.orchestrator
+        if orch.demand is None:
+            return {"available": False, "reason": "demand model not initialised"}
+        report = compute_fill_rate(orch.demand)
+        return {
+            "available": True,
+            "overall_fill_rate": report.overall_fill_rate,
+            "total_served": report.total_served,
+            "total_requested": report.total_requested,
+            "total_backlog": report.total_backlog,
+            "per_product": [list(p) for p in report.per_product],
+        }
+
+    @app.get("/logistics/inventory-health")
+    async def logistics_inventory_health() -> dict[str, object]:
+        """Per-city per-product inventory + holding/stockout cost."""
+        from penumbra_core.logistics import compute_inventory_health
+
+        orch = app.state.penumbra.orchestrator
+        if orch.market is None:
+            return {"available": False, "reason": "market not initialised"}
+        report = compute_inventory_health(orch.market, demand=orch.demand)
+        return {
+            "available": True,
+            "cells": [list(c) for c in report.cells[:200]],
+            "holding_cost_total": report.holding_cost_total,
+            "stockout_cost_total": report.stockout_cost_total,
+            "n_stockouts": report.n_stockouts,
+            "n_cells_total": len(report.cells),
+        }
+
+    @app.get("/logistics/orders")
+    async def logistics_orders() -> dict[str, object]:
+        """Pending + fulfilled order book + lead-time stats."""
+        from penumbra_core.logistics import compute_order_book
+
+        orch = app.state.penumbra.orchestrator
+        if orch.logistics_mempool is None:
+            return {"available": False, "reason": "mempool not initialised"}
+        report = compute_order_book(orch.logistics_mempool)
+        return {
+            "available": True,
+            "n_pending": report.n_pending,
+            "n_fulfilled": report.n_fulfilled,
+            "median_lead_time_ticks": report.median_lead_time_ticks,
+            "p95_lead_time_ticks": report.p95_lead_time_ticks,
+            "pending_sample": [list(p) for p in report.pending_sample],
+        }
+
+    @app.get("/logistics/reorder-policy")
+    async def logistics_reorder_get() -> dict[str, object]:
+        """Current (s, S) policy snapshot (sample of pairs)."""
+        orch = app.state.penumbra.orchestrator
+        if orch.reorder_policy is None:
+            return {"available": False, "reason": "no reorder policy"}
+        pairs = list(orch.reorder_policy.s.items())[:50]
+        return {
+            "available": True,
+            "n_pairs_total": len(orch.reorder_policy.s),
+            "sample": [
+                {
+                    "city": k[0],
+                    "product": k[1],
+                    "s": v,
+                    "S": orch.reorder_policy.big_s.get(k, v + 1),
+                }
+                for k, v in pairs
+            ],
+            "lead_time_ticks": orch._logistics_lead_time_ticks,
+        }
+
+    @app.post("/logistics/reorder-policy")
+    async def logistics_reorder_set(
+        s_fraction: float,
+        S_fraction: float,  # noqa: N803 — (s, S) is the OR convention
+    ) -> dict[str, object]:
+        """Reset (s, S) using fractions of each city's max_inventory."""
+        from penumbra_core.logistics import ReorderPolicy
+
+        orch = app.state.penumbra.orchestrator
+        if orch.market is None:
+            raise HTTPException(status_code=400, detail="market not initialised")
+        if not (0.0 < s_fraction < S_fraction <= 1.0):
+            raise HTTPException(
+                status_code=400,
+                detail="require 0 < s_fraction < S_fraction <= 1.0",
+            )
+        orch.reorder_policy = ReorderPolicy.fractional(
+            orch.market, s_fraction=s_fraction, S_fraction=S_fraction
+        )
+        return {
+            "ok": True,
+            "s_fraction": s_fraction,
+            "S_fraction": S_fraction,
+            "n_pairs": len(orch.reorder_policy.s),
+        }
+
+    @app.get("/logistics/capacity")
+    async def logistics_capacity() -> dict[str, object]:
+        """Per-agent cargo utilization."""
+        from penumbra_core.logistics import compute_cargo_utilization
+
+        orch = app.state.penumbra.orchestrator
+        if orch.cargo is None or orch.market is None:
+            return {"available": False, "reason": "cargo not initialised"}
+        report = compute_cargo_utilization(orch.cargo, orch.market)
+        return {
+            "available": True,
+            "mean_utilization": report.mean_utilization,
+            "per_agent": [list(p) for p in report.per_agent[:100]],
+        }
+
+    @app.get("/logistics/dispatch")
+    async def logistics_dispatch() -> dict[str, object]:
+        """Carrier-dispatch KPIs: assignments, earnings, fulfilment efficiency."""
+        from penumbra_core.logistics import compute_dispatch_report
+
+        orch = app.state.penumbra.orchestrator
+        if orch.logistics_mempool is None or orch.market is None:
+            return {"available": False, "reason": "logistics not initialised"}
+        report = compute_dispatch_report(orch.market, orch.logistics_mempool)
+        return {
+            "available": True,
+            "n_pending": report.n_pending,
+            "n_assigned": report.n_assigned,
+            "n_unassigned": report.n_unassigned,
+            "n_fulfilled": report.n_fulfilled,
+            "n_placed": report.n_placed,
+            "n_phantom_fulfilled": report.n_phantom_fulfilled,
+            "mean_carrier_revenue": report.mean_carrier_revenue,
+            "fulfilment_efficiency": report.fulfilment_efficiency,
+            "top_carriers": [list(p) for p in report.top_carriers],
+            "agent_earnings": [list(p) for p in report.agent_earnings[:100]],
+        }
+
+    @app.get("/logistics/vrp-baseline")
+    async def logistics_vrp_baseline(
+        solver: str = "two_opt",
+        max_orders: int = 32,
+    ) -> dict[str, object]:
+        """Snapshot VRP solve over current pending orders.
+
+        Solvers: `greedy`, `two_opt` (default), `or_tools`. Returns the
+        solver's total cost + per-agent route lengths plus a comparison
+        against a naive baseline (sum of order quantities × mean edge
+        cost) — the "actual_fulfilment_cost" the system would pay if it
+        moved one unit per edge with no routing intelligence.
+        """
+        orch = app.state.penumbra.orchestrator
+        if orch.logistics_mempool is None:
+            return {"available": False, "reason": "mempool not initialised"}
+        if solver not in ("greedy", "two_opt", "or_tools"):
+            raise HTTPException(
+                status_code=400, detail="solver must be one of greedy / two_opt / or_tools"
+            )
+        solution = await asyncio.to_thread(
+            orch.compute_vrp_baseline, solver=solver, max_orders=int(max_orders)
+        )
+        if solution is None:
+            return {"available": False, "reason": "no pending orders or no agents"}
+        arena = orch.simulation.arena
+        edge_costs = list(arena.edge_cost.values()) if arena.edge_cost else [1.0]
+        mean_edge_cost = float(sum(edge_costs) / max(len(edge_costs), 1))
+        total_quantity = sum(o.quantity for o in orch.logistics_mempool.pending[: int(max_orders)])
+        actual_fulfilment_cost = float(total_quantity) * mean_edge_cost
+        gap = 0.0
+        if actual_fulfilment_cost > 0:
+            gap = (actual_fulfilment_cost - solution.total_cost) / actual_fulfilment_cost
+        per_agent_routes: list[dict[str, object]] = []
+        for idx, route in enumerate(solution.routes):
+            if not route:
+                continue
+            per_agent_routes.append(
+                {
+                    "agent_idx": idx,
+                    "n_stops": len(route),
+                    "cost": float(solution.per_agent_cost[idx]),
+                }
+            )
+        return {
+            "available": True,
+            "solver": solution.solver,
+            "solver_total_cost": float(solution.total_cost),
+            "actual_fulfilment_cost": actual_fulfilment_cost,
+            "gap_fraction": gap,
+            "n_orders_served": len(solution.served_order_ids),
+            "n_orders_unserved": len(solution.unserved_order_ids),
+            "n_orders_considered": len(solution.served_order_ids)
+            + len(solution.unserved_order_ids),
+            "compute_time_ms": float(solution.compute_time_ms),
+            "per_agent_routes": per_agent_routes[:50],
+            "metadata": dict(solution.metadata),
+        }
+
+    @app.get("/logistics/echelon")
+    async def logistics_echelon() -> dict[str, object]:
+        """Tier 3: multi-echelon supply chain snapshot + bullwhip ratio."""
+        from penumbra_core.logistics_echelon import compute_echelon_report
+
+        orch = app.state.penumbra.orchestrator
+        net = orch.echelon_network
+        if net is None:
+            return {"available": False, "reason": "echelon network not initialised"}
+        report = compute_echelon_report(net)
+
+        def _clean(value: float) -> float | None:
+            if value != value:  # NaN check
+                return None
+            return float(value)
+
+        return {
+            "available": True,
+            "tick": report.tick,
+            "n_suppliers": report.n_suppliers,
+            "n_distributors": report.n_distributors,
+            "n_cities": report.n_cities,
+            "inventory_by_tier": [list(row) for row in report.inventory_by_tier],
+            "mean_inventory_by_tier": [
+                [row[0], float(row[1])] for row in report.mean_inventory_by_tier
+            ],
+            "in_flight_count": report.in_flight_count,
+            "in_flight_quantity": report.in_flight_quantity,
+            "demand_variance": float(report.demand_variance),
+            "bullwhip_per_tier": [[row[0], _clean(row[1])] for row in report.bullwhip_per_tier],
+            "variance_per_tier": [[row[0], float(row[1])] for row in report.variance_per_tier],
+            "edges": [list(e) for e in report.edges[:200]],
+            "role_for_node": [list(r) for r in report.role_for_node[:200]],
+        }
+
+    # ── Federated Learning endpoints (Tier 1 + 2) ─────────────────
+    @app.get("/federated/status")
+    async def federated_status() -> dict[str, object]:
+        """Snapshot of the FL trainer state."""
+        orch = app.state.penumbra.orchestrator
+        if orch.federated_trainer is None:
+            return {"available": False, "reason": "FL trainer not initialised"}
+        return {"available": True, **orch.federated_trainer.summary()}  # type: ignore[attr-defined]
+
+    @app.post("/federated/start")
+    async def federated_start(method: str = "fedavg") -> dict[str, object]:
+        """Initialise the FederatedTrainer from the live MAPPO actor."""
+        from penumbra_learning.federated import FederatedTrainer
+
+        state: AppState = app.state.penumbra
+        runtime = state.mappo_runtime
+        if runtime is None:
+            raise HTTPException(status_code=400, detail="MAPPO checkpoint not loaded")
+        if method not in ("fedavg", "ckks_sum"):
+            raise HTTPException(status_code=400, detail="method must be fedavg or ckks_sum")
+        trainer = FederatedTrainer.from_mappo(
+            runtime.agent_net,  # type: ignore[attr-defined]
+            n_agents=len(state.simulation.agents),
+            method=method,
+        )
+        trainer.start()
+        state.orchestrator.federated_trainer = trainer
+        return {"ok": True, "method": method, "n_participants": len(trainer.local_actors)}
+
+    @app.post("/federated/stop")
+    async def federated_stop() -> dict[str, object]:
+        orch = app.state.penumbra.orchestrator
+        if orch.federated_trainer is None:
+            return {"ok": True, "was_running": False}
+        orch.federated_trainer.stop()  # type: ignore[attr-defined]
+        return {"ok": True, "was_running": True}
+
+    @app.post("/federated/round")
+    async def federated_round() -> dict[str, object]:
+        """Run one FL round manually (local SGD → aggregate → broadcast)."""
+        orch = app.state.penumbra.orchestrator
+        if orch.federated_trainer is None:
+            raise HTTPException(status_code=400, detail="FL not started")
+        record = await asyncio.to_thread(orch.federated_trainer.step)  # type: ignore[attr-defined]
+        return {
+            "round_id": record.round_id,
+            "method": record.aggregation_method,
+            "encrypted": record.encrypted,
+            "bandwidth_bytes": record.bandwidth_bytes,
+            "aggregation_time_ms": record.aggregation_time_ms,
+            "l2_change": record.parameter_l2_norm_change,
+        }
+
+    @app.post("/federated/dp")
+    async def federated_dp(sigma: float, clip: float) -> dict[str, object]:
+        """Set DP-SGD parameters (Tier 3 toggle)."""
+        orch = app.state.penumbra.orchestrator
+        if orch.federated_trainer is None:
+            raise HTTPException(status_code=400, detail="FL not started")
+        if sigma < 0 or clip < 0:
+            raise HTTPException(status_code=400, detail="sigma and clip must be >= 0")
+        orch.federated_trainer.dp_noise_sigma = float(sigma)  # type: ignore[attr-defined]
+        orch.federated_trainer.dp_l2_clip = float(clip)  # type: ignore[attr-defined]
+        return {"ok": True, "sigma": sigma, "clip": clip}
+
+    @app.post("/federated/method/{method}")
+    async def federated_set_method(method: str) -> dict[str, object]:
+        """Switch the aggregation method (fedavg / ckks_sum / krum / trimmed_mean)."""
+        orch = app.state.penumbra.orchestrator
+        if orch.federated_trainer is None:
+            raise HTTPException(status_code=400, detail="FL not started")
+        try:
+            orch.federated_trainer.set_method(method)  # type: ignore[attr-defined]
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"ok": True, "method": method}
+
+    @app.post("/federated/fedprox")
+    async def federated_fedprox(mu: float) -> dict[str, object]:
+        """Tier 5: set the FedProx proximal-term coefficient mu (>= 0)."""
+        orch = app.state.penumbra.orchestrator
+        if orch.federated_trainer is None:
+            raise HTTPException(status_code=400, detail="FL not started")
+        try:
+            orch.federated_trainer.set_fedprox(mu)  # type: ignore[attr-defined]
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"ok": True, "mu": float(mu)}
+
+    @app.post("/federated/compress")
+    async def federated_compress(topk: float = 1.0, quantize: int = 0) -> dict[str, object]:
+        """Tier 5: set top-k sparsification + optional 8-bit quantisation."""
+        orch = app.state.penumbra.orchestrator
+        if orch.federated_trainer is None:
+            raise HTTPException(status_code=400, detail="FL not started")
+        try:
+            orch.federated_trainer.set_compression(  # type: ignore[attr-defined]
+                topk_fraction=topk,
+                quantize_bits=quantize,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"ok": True, "topk_fraction": float(topk), "quantize_bits": int(quantize)}
+
+    @app.get("/federated/privacy")
+    async def federated_privacy(delta: float = 1e-5) -> dict[str, object]:
+        """Tier 3: real Rényi DP (ε, δ) for the FL trainer's DP-SGD steps.
+
+        Returns ``{epsilon, delta, n_steps_accounted, mode}`` where
+        ``mode == "rdp"`` iff at least one DP-SGD step has been
+        composed into the accountant. Without a trainer or before any
+        noisy step, returns ``mode == "toy"`` with ε=0.
+        """
+        orch = app.state.penumbra.orchestrator
+        if orch.federated_trainer is None:
+            return {
+                "available": False,
+                "reason": "FL trainer not initialised",
+                "epsilon": 0.0,
+                "delta": float(delta),
+                "n_steps_accounted": 0,
+                "mode": "toy",
+            }
+        if not 0.0 < delta < 1.0:
+            raise HTTPException(status_code=400, detail="delta must be in (0, 1)")
+        trainer = orch.federated_trainer
+        accountant = trainer.rdp_accountant  # type: ignore[attr-defined]
+        if accountant is None or accountant.n_steps == 0:
+            return {
+                "available": True,
+                "epsilon": 0.0,
+                "delta": float(delta),
+                "n_steps_accounted": 0,
+                "mode": "toy",
+            }
+        eps = float(trainer.epsilon(delta=float(delta)))  # type: ignore[attr-defined]
+        return {
+            "available": True,
+            "epsilon": eps,
+            "delta": float(delta),
+            "n_steps_accounted": int(accountant.n_steps),
+            "mode": "rdp",
+        }
+
+    # ── Penumbra-Bench Tier 2: public leaderboard ─────────────────
+    @app.get("/benchmark/leaderboard")
+    async def benchmark_leaderboard(
+        tier: str = "tiny",
+        limit: int = 50,
+    ) -> dict[str, object]:
+        """Scan `state/bench/*.json` and return the leaderboard for a tier.
+
+        Each entry's `tasks` list is collapsed into a `task_scores`
+        mapping (task_id → score) so the frontend can render a
+        sortable table without nested traversal. Sorted by
+        `composite_score` descending.
+        """
+        valid_tiers = {"tiny", "small", "medium", "large"}
+        if tier not in valid_tiers:
+            raise HTTPException(
+                status_code=400,
+                detail=f"tier must be one of {sorted(valid_tiers)}",
+            )
+        limit = max(1, min(limit, 200))
+        entries = _scan_bench_directory()
+        filtered = [e for e in entries if e.get("tier") == tier]
+        filtered.sort(
+            key=lambda e: _as_float(e.get("composite_score", 0.0)),
+            reverse=True,
+        )
+        truncated = filtered[:limit]
+        return {
+            "available": True,
+            "tier": tier,
+            "n_total": len(filtered),
+            "entries": [_format_leaderboard_entry(i, e, tier) for i, e in enumerate(truncated)],
+        }
+
+    @app.get("/benchmark/submission/{filename}")
+    async def benchmark_submission(filename: str) -> dict[str, object]:
+        """Return the full submission JSON for one file under state/bench/."""
+        from pathlib import Path
+
+        if "/" in filename or "\\" in filename or filename.startswith("."):
+            raise HTTPException(status_code=400, detail="invalid filename")
+        if not filename.endswith(".json"):
+            raise HTTPException(status_code=400, detail="filename must end with .json")
+        bench_dir = Path(__file__).resolve().parents[3] / "state" / "bench"  # noqa: ASYNC240
+        path = bench_dir / filename
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail=f"no submission named {filename}")
+        try:
+            import json
+
+            data = json.loads(path.read_text())
+        except (OSError, ValueError) as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"failed to read submission: {exc}",
+            ) from exc
+        if not isinstance(data, dict):
+            raise HTTPException(status_code=500, detail="malformed submission file")
+        data["filename"] = filename
+        data["available"] = True
+        return data
+
     @app.get("/chain/latest")
     async def chain_latest() -> dict[str, object]:
         node = app.state.penumbra.orchestrator.node
@@ -2096,6 +2581,93 @@ def _build_simulation_with_optional_mappo() -> tuple[Simulation, object | None]:
     except ImportError:
         logger.warning("penumbra_learning not importable; falling back to random walk")
         return Simulation.build(config, seeded), None
+
+
+def _as_float(value: object) -> float:
+    """Coerce an arbitrary JSON value to float, defaulting to 0.0."""
+    try:
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            return float(value)
+    except (TypeError, ValueError):
+        pass
+    return 0.0
+
+
+def _as_int(value: object) -> int:
+    """Coerce an arbitrary JSON value to int, defaulting to 0."""
+    try:
+        if isinstance(value, (int, float)):
+            return int(value)
+        if isinstance(value, str):
+            return int(value)
+    except (TypeError, ValueError):
+        pass
+    return 0
+
+
+def _as_str(value: object, default: str = "") -> str:
+    """Coerce an arbitrary JSON value to str."""
+    if isinstance(value, str):
+        return value
+    if value is None:
+        return default
+    return str(value)
+
+
+def _format_leaderboard_entry(
+    rank_index: int,
+    entry: dict[str, object],
+    tier: str,
+) -> dict[str, object]:
+    """Flatten one bench submission for the leaderboard payload."""
+    tasks_raw = entry.get("tasks", [])
+    task_scores: dict[str, float] = {}
+    if isinstance(tasks_raw, list):
+        for t in tasks_raw:
+            if isinstance(t, dict):
+                task_scores[_as_str(t.get("task_id"), "")] = _as_float(t.get("score"))
+    return {
+        "rank": rank_index + 1,
+        "filename": _as_str(entry.get("__filename")),
+        "submitter": _as_str(entry.get("submitter"), "anonymous"),
+        "method": _as_str(entry.get("method"), "untitled"),
+        "tier": _as_str(entry.get("tier"), tier),
+        "composite_score": _as_float(entry.get("composite_score")),
+        "task_scores": task_scores,
+        "hardware": _as_str(entry.get("hardware")),
+        "pytorch_version": _as_str(entry.get("pytorch_version")),
+        "penumbra_commit": _as_str(entry.get("penumbra_commit")),
+        "submission_timestamp_ns": _as_int(entry.get("submission_timestamp_ns")),
+    }
+
+
+def _scan_bench_directory() -> list[dict[str, object]]:
+    """Read every `state/bench/*.json` submission into a list of dicts.
+
+    Each entry gains a `__filename` key for downstream linking. Files
+    that fail to parse are skipped silently so a corrupted submission
+    can't take down the whole leaderboard endpoint.
+    """
+    import json
+    from pathlib import Path
+
+    bench_dir = Path(__file__).resolve().parents[3] / "state" / "bench"
+    if not bench_dir.is_dir():
+        return []
+    entries: list[dict[str, object]] = []
+    for path in sorted(bench_dir.glob("*.json")):
+        try:
+            data = json.loads(path.read_text())
+        except (OSError, ValueError):
+            logger.warning("could not parse bench submission %s", path.name)
+            continue
+        if not isinstance(data, dict):
+            continue
+        data["__filename"] = path.name
+        entries.append(data)
+    return entries
 
 
 def _block_view(blk: object) -> dict[str, object]:
