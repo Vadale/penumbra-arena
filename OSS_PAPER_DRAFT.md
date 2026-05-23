@@ -4,12 +4,17 @@
 
 ¹ Independent
 
-**Status**: working draft for OSS launch announcement / paper. Refine
-before submission. Target venues:
-- *NeurIPS Datasets & Benchmarks Track* (large benchmark angle)
-- *USENIX Security CSET workshop* (security-education angle)
-- *ICML AutoRL workshop* (live-training-mutation angle)
-- arXiv preprint as the lowest-friction release
+**Status**: working draft for the OSS launch announcement (planned
+per [`OSS_LAUNCH_ROADMAP.md`](OSS_LAUNCH_ROADMAP.md)). The arXiv
+preprint is the FIRST artefact in the launch window — it must be
+ready by the end of week 4. Target venues for full submission:
+
+- **arXiv** (cs.CR primary, cs.LG cross-list) — submission target:
+  end of week 4 of the launch roadmap.
+- *NeurIPS Datasets & Benchmarks Track* (benchmark angle).
+- *USENIX Security CSET workshop* (security-education angle).
+- *ICML AutoRL workshop* (live-training-mutation angle).
+- *Real World Crypto* (post-quantum + adversarial pedagogy angle).
 
 ---
 

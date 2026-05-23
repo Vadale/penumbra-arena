@@ -7,6 +7,13 @@ teams, large logistics + healthcare orgs.
 **Use this document to**: structure a sales call, draft a one-pager,
 write a landing page, or pitch a paid pilot.
 
+**Current status (2026-05-23)**: this commercial direction is
+deferred until the OSS launch (see `OSS_LAUNCH_ROADMAP.md`) generates
+demand signals (≥ 500 stars, ≥ 2 talk invites, or inbound consulting
+requests at ≥ $5k/day rate). Without those signals, B2B-Edu pursuit
+risks 9-15 months of solo-founder sales work before the first dollar
+of revenue — wasteful versus the OSS path's near-zero marginal cost.
+
 ---
 
 ## The pitch in one paragraph

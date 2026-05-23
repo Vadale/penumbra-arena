@@ -5,10 +5,11 @@
 > cryptography in one integrated runtime — with a hands-on adversarial
 > console and a real macOS/Unix shell coach baked in.
 
-**Status**: post-Phase-8. 326 tests green (302 backend + 24 frontend),
-strict typing across the stack, ~33.6k LOC, 66+ git tags. See
-[`ROADMAP.md`](ROADMAP.md) for the build history and what shipped
-where.
+**Status**: post-Phase-8, preparing OSS launch. 326 tests green
+(302 backend + 24 frontend), strict typing across the stack,
+~33.6k LOC, 66+ git tags. See [`ROADMAP.md`](ROADMAP.md) for the
+build history and [`OSS_LAUNCH_ROADMAP.md`](OSS_LAUNCH_ROADMAP.md)
+for the public-release plan.
 
 ## Concept
 
@@ -116,9 +117,10 @@ The full per-package contracts + endpoint table live in
 | [`ROADMAP.md`](ROADMAP.md) | Build phases, what shipped where, tag-by-tag. |
 | [`PROMPTING_GUIDE.md`](PROMPTING_GUIDE.md) | Step-by-step recipes for adding features. |
 | [`CLAUDE.md`](CLAUDE.md) | Claude Code instructions: conventions, agent guide, M4 budget. |
-| [`LOGISTICS_PLAN.md`](LOGISTICS_PLAN.md) | Proposed Tier-1-to-4 logistics extension (not yet built). |
-| [`OSS_PAPER_DRAFT.md`](OSS_PAPER_DRAFT.md) | Working draft for OSS launch / paper announcement. |
-| [`EDU_B2B_PITCH.md`](EDU_B2B_PITCH.md) | Enterprise training commercial direction. |
+| [`OSS_LAUNCH_ROADMAP.md`](OSS_LAUNCH_ROADMAP.md) | The 12-week plan to take Penumbra public + the OSS promotion playbook. |
+| [`OSS_PAPER_DRAFT.md`](OSS_PAPER_DRAFT.md) | Working draft of the academic preprint for the OSS launch. |
+| [`LOGISTICS_PLAN.md`](LOGISTICS_PLAN.md) | Proposed Tier-1-to-4 logistics extension (post-launch). |
+| [`EDU_B2B_PITCH.md`](EDU_B2B_PITCH.md) | Enterprise training — secondary commercial direction layered on top of OSS if demand validates. |
 | [`REVIEW_PLAN.md`](REVIEW_PLAN.md) | Operating script for the post-stress review pass. |
 | `packages/<name>/README.md` | Per-package "concept taught" + endpoints + experiments. |
 
@@ -130,4 +132,12 @@ are documented in [`CLAUDE.md`](CLAUDE.md).
 
 ## License
 
-See [`LICENSE`](LICENSE) (when added). Sole author: **Vadale**.
+MIT (planned for the public release; see
+[`OSS_LAUNCH_ROADMAP.md`](OSS_LAUNCH_ROADMAP.md) week 2). Sole
+author: **Vadale**.
+
+## Contributing
+
+Pre-launch the repo is private; once public, contribution guidelines
+will live in `CONTRIBUTING.md` and the security policy in
+`SECURITY.md`. Both are tracked in the OSS launch roadmap.

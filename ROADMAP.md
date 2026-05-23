@@ -273,6 +273,43 @@ description + live interaction.
 | Mobile responsive | Explicitly out of scope per plan |
 | GPU-accelerated FHE (FIDESlib) | Needs CUDA, not Metal — out of scope on M4 |
 
+## Phase 9 — OSS launch (planned, weeks 1-12 from 2026-05-23)
+
+The repo will be made public following the plan in
+[`OSS_LAUNCH_ROADMAP.md`](OSS_LAUNCH_ROADMAP.md). Summary:
+
+- **L0 (weeks 1-4)** — readiness: stress-test triage, code
+  consolidation (extract shared chart primitives, drop ~600 LOC),
+  LICENSE / CONTRIBUTING / SECURITY / CODE_OF_CONDUCT, hero
+  screenshot + 90-second demo, arXiv preprint submission.
+- **L1 (week 5)** — launch day: Show HN, Reddit, LinkedIn, X/Twitter,
+  dev.to. Tuesday or Wednesday at 9 AM EST. Tight 6-hour artefact
+  window for the 48-hour algorithm advantage.
+- **L2 (week 5 days 2-7)** — sustainment: < 24h issue response,
+  fast-merge first PRs, follow-up blog post.
+- **L3 (months 2-3)** — newsletter outreach, "Awesome" list
+  submissions, conference workshop submissions (NeurIPS D&B,
+  USENIX CSET, ICML AutoRL, PyCon, RWC), talks / podcasts /
+  YouTube tutorials.
+- **L4 (months 4-6)** — Discussions categories, hackathon,
+  university outreach, Tier 1 logistics layer release as v1.1 news.
+- **L5 (month 6)** — decision: continue OSS / layer B2B services
+  (open core) / pivot.
+
+**KPI targets**:
+| Metric | Week 5 | Week 12 | Month 12 |
+|---|---|---|---|
+| GitHub stars | 100 | 500 | 1500 |
+| External contributors | 0 | 5 | 30 |
+| Conference talks | 0 | 0 | 3 |
+
+Detailed promotion playbook (HN/Reddit/LinkedIn/Twitter tactics,
+anti-patterns, second-wave rule) in `OSS_LAUNCH_ROADMAP.md`.
+
+The B2B Edu pitch (`EDU_B2B_PITCH.md`) is intentionally deferred —
+to be activated only if Phase 9 generates the demand signals
+(stars, invites, consulting requests) listed in the roadmap.
+
 ## Cadence reality
 
 This was a multi-week project's worth of work, condensed into a
