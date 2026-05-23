@@ -134,7 +134,31 @@ In Tier 3 we'd extend to N echelons (supplier → distributor → retailer
 
 ## 4. Tier-by-tier implementation
 
-### Tier 1 — Logistics base (~3-5h)
+### Tier 1 — Logistics base (~3-5h) — **SHIPPED 2026-05-23**
+
+Implementation:
+- `packages/core/penumbra_core/logistics.py` — `CargoConstraints`,
+  `DemandModel`, `Order`, `LogisticsMempool`, `ReorderPolicy`
+  ((s,S) policy), plus the four KPI report dataclasses + their
+  `compute_*` functions.
+- `packages/transport/penumbra_transport/orchestrator.py` — owns
+  the live `cargo`, `demand`, `reorder_policy`, `logistics_mempool`;
+  `_step_logistics()` runs once per analytics tick (1 Hz): demand
+  consumption → reorder evaluation → 5-tick-lead-time fulfilment.
+- `packages/transport/penumbra_transport/api.py` — six endpoints
+  under `/logistics/*` (fill-rate, inventory-health, orders,
+  reorder-policy GET/POST, capacity).
+- `apps/web/src/charts/Logistics{FillRate,InventoryHealth,Orders,
+  ReorderPolicy,Capacity}Chart.tsx` — five DetailModal tiles wired
+  into AnalyticsPanel.
+- `packages/core/penumbra_core/economy.py` — Market.settle_arrivals
+  BUY path now caps qty by `cargo.available(agent_id, inventory)`.
+
+Tests (all green):
+- `packages/core/tests/test_logistics.py` — 11 unit tests covering
+  cargo, demand, mempool, reorder policy + KPI computations.
+- `packages/transport/tests/test_logistics_fl_endpoints.py` —
+  endpoint integration tests.
 
 **New file**: `packages/core/penumbra_core/logistics.py`
 

@@ -24,16 +24,32 @@ Hexagonal (ports & adapters). Pure domain in `packages/core/`; adapters elsewher
 ```
 packages/
   core/          domain — arena, agent, match, simulation tick (integration seam)
+                 + economy (market, wallets, trades)
+                 + logistics (cargo cap, demand, (s,S) reorder, KPIs)
+                 + logistics_or (VRP solvers: greedy / 2-opt / OR-Tools)
+                 + logistics_echelon (multi-echelon supplier → distributor → city
+                                       w/ bullwhip)
   crypto/        CKKS, TFHE, DP, PQ (Kyber/Dilithium), BLS, VRF, VDF, Groth16
   crypto/educational/   from-scratch SMPC + ZK primitives (offline-only)
   chain/         block, Merkle, PoS-VRF consensus, BLS aggregation, explorer API
   learning/      MAPPO (CleanRL-style) + GATv2 pathfinder
+                 + federated (Tier 1-5: real local SGD + CKKS / Krum / TrimmedMean
+                              aggregation + FedProx + per-client heads + top-k + 8-bit
+                              quantize)
+                 + federated_dp (Rényi DP accountant, Sampled Gaussian Mechanism)
+                 + logistics_shaper (reward weights: dispatch bonus/penalty,
+                                     fill-rate bonus)
+                 + supply_gnn (PyG GATv2Conv encoder over supply graph)
   analytics/     descriptive/inferential/econometrics/MC/causal/survival/Bayes/
                  clustering/linalg/topology/transport/topics + dashboard_pipeline
   attacker/      console + attacks + pna CLI
   shell_coach/   lessons (YAML) + suggester + explain + error_helper + psh CLI
-  transport/     FastAPI + WS + PTY bridge + REPL bridge
+  transport/     FastAPI + WS + PTY bridge + REPL bridge + orchestrator
+                 (drives logistics + multi-echelon + FL ingest + carrier dispatch
+                  every analytics tick)
 apps/web/        React + Vite + TS strict + r3f
+                 + Bench page (/bench leaderboard route)
+                 + ~75 dashboard tiles (was ~57 pre-Phase 2.5)
 infra/           docker compose + Dockerfiles
 ```
 

@@ -9,11 +9,13 @@
 > concept tiles), a **benchmark suite** (Penumbra-Bench), and a
 > **synthetic dataset** on Hugging Face Hub (Penumbra-Data).
 
-**Status**: post-Phase-8, preparing OSS launch. 326 tests green
-(302 backend + 24 frontend), strict typing across the stack,
-~33.6k LOC, 66+ git tags. See [`ROADMAP.md`](ROADMAP.md) for the
-build history and [`OSS_LAUNCH_ROADMAP.md`](OSS_LAUNCH_ROADMAP.md)
-for the public-release plan.
+**Status**: post-Phase-2.5/3/4, OSS-launch-ready. 478+ tests green
+(454+ backend + 24 frontend), strict typing across the stack,
+~50k LOC. See [`ROADMAP.md`](ROADMAP.md) for the build history,
+[`CHANGELOG.md`](CHANGELOG.md) for recent additions,
+[`SECURITY_AUDIT.md`](SECURITY_AUDIT.md) for the crypto/chain/
+attacker review, and [`USER_TODO.md`](USER_TODO.md) for the
+maintainer checklist before the public launch.
 
 ## Concept
 
@@ -140,12 +142,33 @@ are documented in [`CLAUDE.md`](CLAUDE.md).
 
 ## License
 
-MIT (planned for the public release; see
-[`OSS_LAUNCH_ROADMAP.md`](OSS_LAUNCH_ROADMAP.md) week 2). Sole
-author: **Vadale**.
+- Code: **MIT** — see [`LICENSE`](LICENSE).
+- Data: **CC-BY-4.0** — applies to `state/datasets/**` and Hugging
+  Face dataset publications. See [`LICENSE-DATA`](LICENSE-DATA).
+
+Sole author: **Vadale**.
+
+## Citation
+
+If you use Penumbra in research or teaching, please cite via the
+[`CITATION.cff`](CITATION.cff) at the repo root, or use:
+
+```bibtex
+@software{vadale2026penumbra,
+  author = {Vadale},
+  title  = {Penumbra: a privacy-preserving perpetual multi-agent arena},
+  year   = {2026},
+  url    = {https://github.com/Vadale/penumbra-arena},
+  note   = {MIT-licensed code + CC-BY-4.0 dataset}
+}
+```
+
+Paper draft: [`PAPER.md`](PAPER.md) (arXiv-ready).
 
 ## Contributing
 
-Pre-launch the repo is private; once public, contribution guidelines
-will live in `CONTRIBUTING.md` and the security policy in
-`SECURITY.md`. Both are tracked in the OSS launch roadmap.
+Read [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup, coding
+conventions, and how to open a PR. Security disclosures go through
+[`SECURITY.md`](SECURITY.md). Community conduct in
+[`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md). Recent changes in
+[`CHANGELOG.md`](CHANGELOG.md).

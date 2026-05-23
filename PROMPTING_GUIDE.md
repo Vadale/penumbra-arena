@@ -681,3 +681,56 @@ merging.
 | Doc / README / roadmap update | `@doc-writer` |
 | Understand a concept (Italian) | `@learner` |
 | Learn / practice a shell command | `@shell-coach` |
+
+---
+
+## Phase 2.5 endpoints (logistics + federated + benchmark)
+
+All endpoints below were added during Phase 2.5. They follow the
+same "available + reason" envelope pattern as the existing crypto
+endpoints, so the frontend can render an empty state cleanly.
+
+### Logistics
+- `GET /logistics/fill-rate` — overall + per-product fill rate +
+  backlog. Polled by the LogisticsFillRateChart tile.
+- `GET /logistics/inventory-health` — per-(city, product) stock vs
+  cap + holding/stockout cost totals.
+- `GET /logistics/orders` — pending + fulfilled order book + lead
+  time stats (median + p95).
+- `GET /logistics/reorder-policy` — (s, S) thresholds snapshot.
+- `POST /logistics/reorder-policy?s_fraction=...&S_fraction=...` —
+  retune (s, S) live.
+- `GET /logistics/capacity` — per-agent cargo utilisation.
+- `GET /logistics/vrp-baseline?solver={greedy|two_opt|or_tools}` —
+  optimisation reference (read-only snapshot solve).
+- `GET /logistics/dispatch` — carrier assignment KPIs (n_assigned,
+  agent_earnings, mean_carrier_revenue, fulfilment_efficiency).
+- `GET /logistics/echelon` — multi-echelon snapshot (per-tier
+  inventory, bullwhip ratio, DAG edges).
+
+### Federated Learning
+- `GET /federated/status` — trainer summary.
+- `POST /federated/start?method={fedavg|ckks_sum}` — boot the
+  trainer from the live MAPPO actor. Requires a checkpoint loaded.
+- `POST /federated/stop` — disable scheduled rounds.
+- `POST /federated/round` — fire a single round manually.
+- `POST /federated/dp?sigma=...&clip=...` — set DP-SGD knobs.
+- `POST /federated/method/{method}` — switch aggregator live
+  (`fedavg` / `ckks_sum` / `krum` / `trimmed_mean`).
+- `POST /federated/fedprox?mu=...` — FedProx proximal coefficient.
+- `POST /federated/compress?topk=...&quantize=...` — top-k
+  sparsification + 8-bit quantisation.
+- `GET /federated/privacy?delta=1e-5` — Rényi DP accountant
+  conversion to (ε, δ).
+
+### Benchmark
+- `GET /benchmark/leaderboard?tier={tiny|small|medium|large}&limit=50`
+  — flat sorted list with per-task scores expanded.
+- `GET /benchmark/submission/{filename}` — full submission detail.
+
+### How to drive them from the dashboard
+
+Every endpoint above has a tile registered through
+`apps/web/src/charts/DetailModal.tsx`. The 5-step tile pattern from
+the main CLAUDE.md applies; the `/bench` page is a separate route in
+`apps/web/src/pages/Bench.tsx`.

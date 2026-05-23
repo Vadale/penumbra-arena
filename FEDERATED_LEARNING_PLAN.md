@@ -128,7 +128,39 @@ This becomes the 7th adversarial attack in the catalogue.
 
 ## 4. Tier-by-tier implementation
 
-### Tier 1 — FedAvg baseline (~5-6h)
+### Tier 1 — FedAvg baseline (~5-6h) — **SHIPPED 2026-05-23**
+### Tier 2 — CKKS-encrypted aggregation skeleton — **SHIPPED 2026-05-23**
+### Tier 3 — DP-SGD wiring — **partial (DP knobs exposed, accountant is toy)**
+### Tier 4 — Byzantine-robust functions (`krum`, `trimmed_mean`) — **shipped as library functions**
+
+Implementation:
+- `packages/learning/penumbra_learning/federated.py` — `LocalActor`,
+  `FederatedRound`, `FederatedTrainer` (`from_mappo` + `step`),
+  `fedavg`, `krum`, `trimmed_mean`, optional DP-SGD clip/noise.
+- `packages/transport/penumbra_transport/orchestrator.py` — owns
+  `federated_trainer`; `_maybe_step_federated()` fires one FL round
+  every 30 ticks when `trainer.enabled`.
+- `packages/transport/penumbra_transport/api.py` — `/federated/status`,
+  `/federated/start?method={fedavg,ckks_sum}`, `/federated/stop`,
+  `/federated/round`, `/federated/dp?sigma=..&clip=..`.
+- `apps/web/src/charts/FederatedStatusChart.tsx` — start/stop/run-
+  round + DP-SGD controls + recent-round table.
+
+Caveats:
+- Tier 1 LocalActor updates are SYNTHETIC gradients (per-agent
+  Gaussian noise) — adequate to exercise the round-trip + the
+  encrypted-aggregation visual; Tier 2-3 will swap in real local
+  SGD over each agent's observation history.
+- Tier 2 keeps `ckks_sum` semantics (server never sees individuals)
+  but uses a numerical equivalent of FedAvg — actual CKKS sum is
+  available in the standalone `/crypto/federated-ckks/demo` for
+  inspection.
+- DP-SGD privacy accountant is a TOY (epsilon ≈ clip/sigma per step);
+  production needs RDP / Gaussian moment accountant.
+
+Tests: 11 unit tests in `packages/learning/tests/test_federated.py`
+(FedAvg means, Krum on outliers, TrimmedMean robustness, CKKS-sum
+round trips, DP-SGD privacy spend recording, etc.) — all green.
 
 **New file**: `packages/learning/penumbra_learning/federated.py`
 

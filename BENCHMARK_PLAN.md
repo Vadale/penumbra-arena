@@ -252,6 +252,41 @@ def run_benchmark(
   documented ranges
 - `test_baseline_random_walk_below_1_pct_composite` — sanity check
 
+#### Tier 1 — Baselines shipped (2026-05-23)
+
+`scripts/generate_baselines.py` produces 9 reference submissions at
+`tier=tiny`. All live under `state/bench/<method>-tiny.json`. The
+four MAPPO-defence variants (DP-SGD, Byzantine-defended,
+linkability-aware) and the SAC-style soft policy were added on
+2026-05-23 alongside the original five so the leaderboard captures
+distinct privacy/robustness profiles, not just utility.
+
+| Method                       | Composite | Notes                                                       |
+|------------------------------|-----------|------------------------------------------------------------|
+| greedy-nearest-goal          | 0.8166    | heuristic; steps toward neighbour flagged goal              |
+| mappo-v0-byzantine-defended  | 0.6614    | MAPPO + 5-vote median-action filter (drops 20% extremes)    |
+| mappo-v0-dp-sgd              | 0.5892    | MAPPO + Gaussian σ=0.5 DP noise on observations at inference |
+| multi-agent-sac-tiny         | 0.4993    | soft-MAPPO sampler with entropy bonus α=0.1 (SAC-style)     |
+| mappo-v0-linkability-aware   | 0.4830    | MAPPO @ T=10 + 15% uniform-action mixing per tick           |
+| random-walk                  | 0.4676    | uniform random action over (k+1) choices                    |
+| mappo-v0-high-temp           | 0.4455    | MAPPO checkpoint sampled at T=8.0                           |
+| min-cost                     | 0.3709    | always picks the cheapest neighbour                         |
+| stay-put                     | 0.3025    | lower-bound; no movement                                    |
+
+Observations:
+- The Byzantine-defended variant outperforms vanilla high-temp MAPPO
+  because the median-of-5 vote pushes the agent toward the policy's
+  modal action while still preserving entropy through the votes.
+- DP-SGD inference-noise actually *raises* the composite vs.
+  high-temp MAPPO at this tier — the observation noise breaks
+  swarm-collapse on similar agents, improving PA1/AR1.
+- The linkability-aware variant is a deliberate utility-for-privacy
+  trade (PA1/PB1 drop; LR1 remains high).
+- multi-agent-sac-tiny is a SAC-style **inference-time** soft policy
+  (no off-policy replay, no twin critics) implemented inline per the
+  no-`stable_baselines3` constraint — it sits between random and the
+  defended variants, as expected for an actor-critic baseline.
+
 ### Tier 2 — Web leaderboard (~3-4h)
 
 **New file**: `apps/web/src/pages/Bench.tsx` (new route `/bench`)
@@ -368,6 +403,89 @@ GitHub link. Strong incentive structure.
   AAAI 2018 (the methodological reference for honest RL benchmarks).
 - Cobbe et al. "Leveraging Procedural Generation to Benchmark
   Reinforcement Learning." ICML 2020 (ProcGen).
+
+---
+
+## Submitting to Penumbra-Bench
+
+External submissions are accepted as GitHub pull requests that add a
+single JSON file under `state/bench/submissions/`. Each PR is
+mechanically validated by the `bench-validate` workflow
+(`.github/workflows/bench-validate.yml`) before human review.
+
+### 1. Reproduce a result locally
+
+```sh
+# Sync the repo and produce a submission JSON.
+uv sync --all-packages
+uv run python scripts/run_benchmark.py \
+    --policy checkpoints/your_policy.pt \
+    --tier tiny \
+    --submitter your-github-handle \
+    --method your-method-name \
+    --output state/bench/submissions/your-method-name-tiny.json
+
+# Omit --policy to benchmark the random-walk baseline.
+```
+
+The `--tier` argument selects one of `{tiny, small, medium, large}`
+(see §2.3 for sizes). Tiny is the right tier for a first submission;
+larger tiers should only be reported after the method has stabilised
+on Tiny.
+
+### 2. Place the JSON under `state/bench/submissions/`
+
+Naming convention: `<method-name>-<tier>.json`, lowercase, hyphenated.
+Examples: `mappo-dp-sgd-tiny.json`, `krum-mappo-small.json`.
+
+The schema for these files is `state/bench/SCHEMA.json`. The Python
+dataclass that produces them is `BenchSubmission` in
+`packages/learning/penumbra_learning/benchmark.py`.
+
+### 3. Validate locally before opening the PR
+
+```sh
+uv run python scripts/validate_submission.py \
+    state/bench/submissions/your-method-name-tiny.json
+```
+
+The validator checks:
+
+- Conforms to the documented schema (all required fields present,
+  correct types).
+- `tier` is one of `{tiny, small, medium, large}`.
+- All five tasks are present exactly once (`PA1`, `AR1`, `MC1`,
+  `PB1`, `LR1`).
+- Every task `score` is in `[0, 1]`.
+- `composite_score` matches `Σᵢ wᵢ · scoreᵢ` with weights from §2.2
+  (within `1e-6` tolerance).
+- `submitter` is non-empty.
+- `submission_timestamp_ns` looks like a sensible epoch-ns value
+  (after 2020-01-01).
+
+Exit code 0 means valid; 1 means at least one check failed (errors
+go to stderr).
+
+### 4. Open the pull request
+
+Title: `bench: <method-name> @ tier=<tier>` (e.g.
+`bench: mappo-dp-sgd @ tier=tiny`).
+
+Body: include the method description (1-3 paragraphs), the
+hyperparameters used for training, links to the relevant code, and
+a short reproducibility note (seed, hardware, wall-clock).
+
+The `bench-validate` workflow runs automatically on PRs that touch
+`state/bench/submissions/**` and posts a pass/fail comment with the
+validator output. A green check is required for merge; a maintainer
+then reviews the method description and merges.
+
+### 5. (Optional) Track your submission
+
+Once merged, your submission appears on the leaderboard route
+(`/bench` in the web app once Tier 2 ships, or directly via
+`GET /benchmark/leaderboard` on the backend). Star history per
+submission is tracked separately (§3.4).
 
 ---
 

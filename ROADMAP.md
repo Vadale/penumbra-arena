@@ -253,13 +253,66 @@ description + live interaction.
 - Sinkhorn divide-by-zero + ripser cols>rows warning suppressed at
   call site (cosmetic but log-spamming).
 
-## Test + tag counts (current)
+## Test + tag counts (current — post-Phase-2.5/3/4)
 
 - **40+ tags** on GitHub, every one a runnable repo state.
-- **60+ commits** (Phase 8 added ~15).
-- **302 backend tests** + **24 vitest** = **326 total**, all green.
-- **CI**: green.
-- **52 dashboard chart tiles**, each cliccable to its own modal.
+- **60+ commits**.
+- **444+ backend tests** + **24 vitest** = **468+ total**, all green.
+- **CI**: green (Python + Web workflows in `.github/workflows/ci.yml`).
+- **~75 dashboard chart tiles** (52 pre-Phase-2.5 + 7 logistics + 1 FL +
+  Bench leaderboard page).
+- **9 Penumbra-Bench baselines** at tier=tiny (greedy 0.8166 →
+  stay-put 0.3025).
+- **4 dataset tiers** generated (mini/standard/large/mega).
+
+## Phase 2.5 — Logistics + Federated Learning + Benchmark Tier 2-3 (shipped 2026-05-23)
+
+Major expansion that turns Penumbra from a teaching demo into a
+3-in-1 artefact (teaching + benchmark + dataset):
+
+- **Logistics (Tier 1-4)** — cargo-cap on Market.BUY, (s,S) reorder,
+  carrier dispatch (greedy nearest-agent + Dijkstra over arena),
+  VRP solver (greedy / 2-opt / OR-Tools), multi-echelon supply chain
+  (supplier → distributor → city w/ bullwhip metric), RL reward
+  shaping + GNN encoder over the supply graph (`SupplyGraphEncoder`
+  using PyG GATv2Conv).
+- **Federated Learning (Tier 1-5)** — REAL local SGD on per-agent
+  (obs, greedy-label) buffers (no synthetic gradients); real CKKS
+  encrypted aggregation w/ slot batching; Rényi DP accountant
+  (Sampled Gaussian Mechanism); Krum + TrimmedMean Byzantine-robust
+  aggregators wired into `FederatedTrainer.step()` as live `method=`
+  choices; FedProx proximal term, per-client personalisation heads
+  (never aggregated), top-k sparsification + 8-bit quantization w/
+  realised wire-byte savings on the dashboard.
+- **Penumbra-Bench (Tier 1-3)** — formal 5-task suite (PA1/AR1/MC1/
+  PB1/LR1) with composite scoring, 9 reference baselines, web
+  leaderboard at `/bench`, stdlib-only submission validator + GitHub
+  Actions CI workflow for external PRs.
+- **Penumbra-Data** — generated 4 tiers (mini=500, standard=36k,
+  large=864k, mega=5M ticks) across 7 modalities (positions, trades,
+  inventory, prices, heatmaps, matches, attacks); generator now
+  writes parquet incrementally in 100k-tick shards so mega fits in
+  M4 16 GB RAM budget.
+
+## Phase 3 — Post-Phase-2.5 stress test (shipped 2026-05-23)
+
+10-minute clean stress test, 0 CRIT findings:
+- Memory: sustained drift 69 MB/h after warmup (warmup +481 MB);
+  well within 8 GB budget.
+- Chain: 53 blocks / 10 min (0.088 blocks/s).
+- Signing: 20 550 Dilithium signatures verified, 0 rejected.
+- DP budget: healthy (1.06 / 1000 ε spent).
+- Single WARN: tick throughput 7.40 Hz vs 10 Hz target — the true
+  cost of the Phase 2.5 stack; profiling + targeted optimization
+  recovered to ≥ 9 Hz in a follow-up pass (see commit history).
+
+## Phase 4 — OSS launch materials (shipped 2026-05-23)
+
+LICENSE (MIT) + LICENSE-DATA (CC-BY-4.0) + CONTRIBUTING + SECURITY +
+CODE_OF_CONDUCT + FUNDING.yml + 3 issue templates + PR template +
+CITATION.cff + CHANGELOG + PAPER.md (arXiv-ready) + ci.yml workflow.
+Hero + OG image SPECS in `docs/` (image capture is a maintainer
+task — see `USER_TODO.md`).
 
 ## Deferred (intentional, with rationale)
 
