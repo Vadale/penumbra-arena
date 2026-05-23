@@ -107,3 +107,6 @@ huggingface_cache/
 *.orig
 .cache/
 circuits/node_modules/
+
+# Claude Code runtime ephemera
+.claude/scheduled_tasks.lock
