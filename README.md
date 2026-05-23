@@ -1,46 +1,133 @@
 # Penumbra
 
-> A privacy-preserving perpetual multi-agent arena built to teach statistics,
-> linear algebra, modern neural networks, and cutting-edge cryptography in one
-> integrated runtime.
+> A privacy-preserving perpetual multi-agent arena built to teach
+> statistics, linear algebra, modern neural networks, and cutting-edge
+> cryptography in one integrated runtime — with a hands-on adversarial
+> console and a real macOS/Unix shell coach baked in.
 
-**Status:** scaffolding (Phase 0 of the build).
+**Status**: post-Phase-8. 326 tests green (302 backend + 24 frontend),
+strict typing across the stack, ~33.6k LOC, 66+ git tags. See
+[`ROADMAP.md`](ROADMAP.md) for the build history and what shipped
+where.
 
-**Concept.** N=20–50 autonomous agents compete on a procedurally dynamic graph
-("arena"). Each agent's true state is encrypted (CKKS + TFHE); the spectator
-sees only encrypted aggregates and differentially-private releases. Every
-pillar fires on every simulation tick:
+## Concept
 
-- **Neural networks** — MAPPO multi-agent RL on Apple MPS, GATv2 pathfinder
-- **Cryptography** — homomorphic encryption, SMPC, post-quantum (Kyber/Dilithium),
-  BLS, VRF, VDF, zk-SNARK, a local PoS blockchain anchoring match outcomes
-- **Statistics** — descriptive, inferential, econometrics (OLS/IV/GMM/VAR/GARCH),
-  Monte Carlo, causal, survival, Bayesian
-- **Linear algebra & topology** — graph Laplacians, spectral clustering,
-  persistent homology, optimal transport
+50 autonomous agents compete on a procedurally dynamic graph ("arena").
+Each agent's true state is encrypted (CKKS); the spectator sees only
+DP-noised aggregates. Every pillar fires on every tick:
 
-A built-in **Attacker Console** and a **Shell Coach** turn the dashboard into a
-hands-on lab for adversarial intuition and macOS/Unix terminal fluency.
+- **Neural networks** — MAPPO multi-agent RL on Apple MPS, GATv2 path-
+  finder, live PPO training that mutates the inference policy in real
+  time
+- **Cryptography** — CKKS + TFHE homomorphic encryption, differential
+  privacy with budget accounting, post-quantum (Kyber + Dilithium),
+  BLS aggregate signatures, VRF leader election, Wesolowski VDF,
+  Groth16 zk-SNARK verifier, educational SMPC primitives (Shamir +
+  Beaver + Pedersen + Schnorr + LWE TFHE)
+- **Statistics** — descriptive + inferential + econometrics (OLS / IV /
+  GMM / VAR / GARCH / Granger / ARIMA) + Monte Carlo (Sobol QMC) +
+  causal (IPW / AIPW) + survival (Kaplan-Meier) + Bayesian (NumPyro
+  SVI) + ANOVA / permutation / Pearson + Spearman + ACF/PACF + ROC
+- **Linear algebra & topology** — graph Laplacians + spectral clustering
+  + persistent homology (ripser) + optimal transport (Sinkhorn)
+- **Economy** — closed-system market with wallets, dynamic ask prices,
+  production, OHLC candles, CPI inflation index, Gini wealth
+  distribution
+- **Blockchain** — local PoS-VRF chain with BLS-aggregated finality,
+  mempool, slashing-by-equivocation
+- **Adversarial console** — 6 attacks (`pna` CLI + dashboard chips):
+  replay, byzantine, DP reconstruction, linkability, timing
+  side-channel, SNARK forgery
+- **Shell coach** — 11 curated macOS/Unix lessons (YAML), command
+  explainer, error helper (`psh` CLI + sidebar)
+
+Every concept above has a **clickable dashboard tile** that opens an
+educational modal — ~57 tiles in total.
+
+## Run
+
+```sh
+# Backend
+PENUMBRA_SEED=42 \
+PENUMBRA_MAPPO_CHECKPOINT="$(pwd)/checkpoints/mappo_v0.pt" \
+uv run uvicorn penumbra_transport.api:app --port 8100
+
+# Frontend (separate terminal)
+PENUMBRA_API_PORT=8100 pnpm --filter web dev
+
+# Or everything together
+docker compose up
+```
+
+Then open <http://localhost:5173>.
+
+Install the CLIs system-wide:
+
+```sh
+uv tool install ./packages/attacker     # pna --help
+uv tool install ./packages/shell_coach  # psh lessons
+```
+
+## Architecture
+
+Hexagonal. Pure domain in `packages/core/`, adapters elsewhere:
+
+```
+packages/
+  core/         arena + agent + match + simulation + market economy
+  crypto/       CKKS, TFHE, DP, Kyber, Dilithium, BLS, VRF, VDF, Groth16,
+                educational SMPC (Shamir, Beaver, Pedersen, Schnorr, LWE)
+  chain/        block + Merkle + PoS-VRF consensus + mempool + slashing
+  learning/     MAPPO (CleanRL-style) + GATv2 + LiveTrainer + RewardWeights
+  analytics/    13 streaming consumers + dashboard pipeline orchestrator
+  attacker/     6 attacks + pna CLI
+  shell_coach/  11 YAML lessons + suggester + explain + psh CLI
+  transport/    FastAPI + WebSocket + PTY bridge + REPL bridge + orchestrator
+apps/web/       React 19 + Vite + TS strict + r3f + tailwind v4 + biome
+infra/          docker compose + Dockerfiles
+circuits/       circom + snarkjs (multiplier + legal_path Groth16)
+scripts/        training, memory profile, stress test, post-stress analysis
+```
+
+## Develop
+
+```sh
+uv sync                                  # install Python workspace
+uv run pytest -q                         # 302 backend tests
+uv run pyright                           # strict
+uv run ruff check . && uv run ruff format --check .
+
+pnpm install                             # install frontend
+pnpm --filter web typecheck              # tsc --noEmit
+pnpm --filter web test                   # 24 vitest
+pnpm --filter web build                  # production bundle
+pnpm --filter web exec biome check src   # lint
+```
+
+The full per-package contracts + endpoint table live in
+[`packages/*/README.md`](packages/) (one per package) and
+[`CLAUDE.md`](CLAUDE.md) at the repo root.
 
 ## Documents
 
-- [`ROADMAP.md`](./ROADMAP.md) — phased build plan and learning checkpoints
-- [`PROMPTING_GUIDE.md`](./PROMPTING_GUIDE.md) — step-by-step per-module recipes
-- [`CLAUDE.md`](./CLAUDE.md) — instructions for Claude Code agents
-
-## Quickstart (after Phase 1)
-
-```sh
-docker compose up                # backend + frontend on localhost
-open http://localhost:5173       # dashboard
-uv tool install ./packages/attacker      # then: pna --help
-uv tool install ./packages/shell_coach   # then: psh lessons
-```
+| File | What it has |
+|---|---|
+| [`README.md`](README.md) | This file — orientation. |
+| [`ROADMAP.md`](ROADMAP.md) | Build phases, what shipped where, tag-by-tag. |
+| [`PROMPTING_GUIDE.md`](PROMPTING_GUIDE.md) | Step-by-step recipes for adding features. |
+| [`CLAUDE.md`](CLAUDE.md) | Claude Code instructions: conventions, agent guide, M4 budget. |
+| [`LOGISTICS_PLAN.md`](LOGISTICS_PLAN.md) | Proposed Tier-1-to-4 logistics extension (not yet built). |
+| [`OSS_PAPER_DRAFT.md`](OSS_PAPER_DRAFT.md) | Working draft for OSS launch / paper announcement. |
+| [`EDU_B2B_PITCH.md`](EDU_B2B_PITCH.md) | Enterprise training commercial direction. |
+| [`REVIEW_PLAN.md`](REVIEW_PLAN.md) | Operating script for the post-stress review pass. |
+| `packages/<name>/README.md` | Per-package "concept taught" + endpoints + experiments. |
 
 ## Hardware target
 
-Mac mini M4, 16 GB RAM. Total runtime memory target: < 8 GB.
+Mac mini M4, 16 GB RAM. Tested green; the build holds under 8 GB total
+with browser + all subsystems active. CPU/MPS budgets and tuning levers
+are documented in [`CLAUDE.md`](CLAUDE.md).
 
 ## License
 
-Private project. Not for distribution.
+See [`LICENSE`](LICENSE) (when added). Sole author: **Vadale**.
