@@ -22,13 +22,39 @@ Pedagogical caveats
   own host and sign there.
 - We track verify counters so the dashboard can surface aggregate
   stats — `/agents/signing-stats` is the inspection seam.
+
+Phase 6a Tier 2: per-agent rejection counters drive an automatic
+trade-block event. When agent X accumulates ``_TRADE_BLOCK_THRESHOLD``
+rejections within ``_TRADE_BLOCK_WINDOW_TICKS``, the keystore invokes
+the injected ``on_agent_blocked`` callback so the orchestrator can
+emit ``agent.blocked`` and propagate the block to Market + logistics +
+FL trainer. The cool-off window (``_BLOCK_COOLOFF_TICKS``) defines
+``until_tick`` so the auto-unblock at the orchestrator can fire on the
+right tick.
 """
 
 from __future__ import annotations
 
+from collections import defaultdict, deque
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Final
 
 from penumbra_crypto import pq
+
+_TRADE_BLOCK_THRESHOLD: Final[int] = 3
+_TRADE_BLOCK_WINDOW_TICKS: Final[int] = 300  # 30s @ 10 Hz
+_BLOCK_COOLOFF_TICKS: Final[int] = 600  # 60s @ 10 Hz
+_REJECTION_HISTORY_CAP: Final[int] = 20
+
+
+BlockCallback = Callable[[int, int], None]
+"""Callback signature: (agent_id, until_tick) -> None.
+
+Wired by the orchestrator to emit an ``agent.blocked`` event onto
+the bus. Kept as a plain callable so the keystore stays independent
+of the transport layer at import time.
+"""
 
 
 @dataclass(slots=True)
@@ -49,6 +75,11 @@ class AgentKeystore:
 
     keypairs: list[pq.SigKeypair] = field(default_factory=list)
     stats: SigningStats = field(default_factory=SigningStats)
+    on_agent_blocked: BlockCallback | None = None
+    _recent_rejections: dict[int, deque[int]] = field(
+        default_factory=lambda: defaultdict(lambda: deque(maxlen=_REJECTION_HISTORY_CAP))
+    )
+    _blocked_until: dict[int, int] = field(default_factory=dict)
 
     @classmethod
     def for_n_agents(cls, n: int) -> AgentKeystore:
@@ -71,6 +102,7 @@ class AgentKeystore:
         """Check that `signature` is a valid Dilithium sig on the canonical bytes."""
         if not 0 <= agent_id < len(self.keypairs):
             self.stats.rejected += 1
+            self._record_rejection(agent_id=agent_id, tick=tick)
             return False
         message = canonical_move_bytes(tick=tick, agent_id=agent_id, target_node=target_node)
         ok = pq.verify(self.keypairs[agent_id].public_key, message, signature)
@@ -78,7 +110,31 @@ class AgentKeystore:
             self.stats.verified += 1
         else:
             self.stats.rejected += 1
+            self._record_rejection(agent_id=agent_id, tick=tick)
         return ok
+
+    def _record_rejection(self, *, agent_id: int, tick: int) -> None:
+        """Append a rejection tick and fire ``on_agent_blocked`` on threshold.
+
+        The rolling window is bounded by ``_REJECTION_HISTORY_CAP``
+        entries; only those within ``_TRADE_BLOCK_WINDOW_TICKS`` of the
+        current tick count toward the threshold. While an agent is in
+        an active cool-off (``until_tick`` not yet reached) we skip
+        emitting to keep the callback idempotent under bursty rejects.
+        """
+        history = self._recent_rejections[agent_id]
+        history.append(int(tick))
+        cutoff = int(tick) - _TRADE_BLOCK_WINDOW_TICKS
+        recent_in_window = sum(1 for t in history if t >= cutoff)
+        if recent_in_window < _TRADE_BLOCK_THRESHOLD:
+            return
+        active_until = self._blocked_until.get(agent_id, -1)
+        if active_until > int(tick):
+            return
+        until_tick = int(tick) + _BLOCK_COOLOFF_TICKS
+        self._blocked_until[agent_id] = until_tick
+        if self.on_agent_blocked is not None:
+            self.on_agent_blocked(int(agent_id), until_tick)
 
 
 def canonical_move_bytes(*, tick: int, agent_id: int, target_node: int) -> bytes:

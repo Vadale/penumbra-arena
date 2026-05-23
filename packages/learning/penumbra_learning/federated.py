@@ -83,6 +83,16 @@ _AGGREGATION_METHODS: Final[frozenset[str]] = frozenset(
 )
 
 
+class DPBudgetExhaustedError(RuntimeError):
+    """Raised when a DP-SGD round is started after the global DP budget
+    is exhausted (Phase 6a Tier 3). The trainer's ``dp_blocked`` flag
+    is flipped by the orchestrator on receipt of ``dp.budget.exhausted``;
+    the operator must call :meth:`FederatedTrainer.unblock_dp` (after a
+    deliberate budget refresh) to resume DP-SGD rounds. Non-DP rounds
+    (``dp_noise_sigma == 0``) are NOT blocked.
+    """
+
+
 @dataclass(slots=True)
 class LocalActor:
     """Per-agent actor module + replay buffer + privacy accumulator.
@@ -237,6 +247,12 @@ class FederatedTrainer:
     topk_fraction: float = 1.0
     quantize_bits: int = 0
     rdp_accountant: RDPAccountant | None = None
+    # Phase 6a Tier 3 — flipped by the orchestrator when the global DP
+    # mechanism signals ``dp.budget.exhausted``. While True, attempting
+    # to start a DP-SGD round (``dp_noise_sigma > 0``) raises
+    # :class:`DPBudgetExhaustedError`; non-DP rounds proceed normally.
+    dp_blocked: bool = False
+    blocked_agents: set[int] = field(default_factory=set)
 
     @classmethod
     def from_mappo(
@@ -526,7 +542,18 @@ class FederatedTrainer:
         wire_bytes = 0
         topk_active = 0.0 < self.topk_fraction < 1.0
         quant_active = self.quantize_bits == 8
-        for state in self.local_actors.values():
+        for agent_id, state in self.local_actors.items():
+            if agent_id in self.blocked_agents:
+                # Tier 2 — security event has teeth on FL too. A blocked
+                # client's delta is silently replaced by zeros so it can
+                # neither poison the aggregate nor consume bandwidth-
+                # accounting (still zero bytes for the zero tensors).
+                zero_delta = {
+                    name: torch.zeros_like(self.global_baseline[name])
+                    for name in self.global_baseline
+                }
+                deltas.append(zero_delta)
+                continue
             delta = state.delta_against(self.global_baseline)
             compressed: dict[str, Tensor] = {}
             for name, tensor in delta.items():
@@ -659,6 +686,12 @@ class FederatedTrainer:
 
     def step(self) -> FederatedRound:
         """One full round: real local SGD → aggregate → broadcast."""
+        if self.dp_blocked and self.dp_noise_sigma > 0.0:
+            msg = (
+                "DP-SGD round refused: global DP budget exhausted. "
+                + "Call unblock_dp() after a deliberate budget refresh to resume."
+            )
+            raise DPBudgetExhaustedError(msg)
         mean_loss = self._local_phase()
         t0 = time.perf_counter()
         method = self.aggregation_method
@@ -705,6 +738,22 @@ class FederatedTrainer:
     def stop(self) -> None:
         self.enabled = False
 
+    def block_dp(self) -> None:
+        """Refuse further DP-SGD rounds (Phase 6a Tier 3).
+
+        Idempotent — re-blocking a blocked trainer is a no-op.
+        """
+        self.dp_blocked = True
+
+    def unblock_dp(self) -> None:
+        """Lift the DP-SGD block (Phase 6a Tier 3).
+
+        Idempotent — unblocking an unblocked trainer is a no-op.
+        Intended to be called by an operator AFTER deliberately
+        refreshing the global ``PrivacyBudget``.
+        """
+        self.dp_blocked = False
+
     def set_method(self, method: str) -> None:
         if method not in _AGGREGATION_METHODS:
             raise ValueError(
@@ -720,6 +769,19 @@ class FederatedTrainer:
         if mu < 0:
             raise ValueError("fedprox mu must be >= 0")
         self.fedprox_mu = float(mu)
+
+    def block_agent(self, agent_id: int) -> None:
+        """Phase 6a Tier 2: gate ``agent_id`` from contributing FL deltas.
+
+        Idempotent. Blocked agents' deltas are zeroed in ``_collect_deltas``
+        so a compromised client can neither poison the aggregate nor
+        leak gradients via the wire.
+        """
+        self.blocked_agents.add(int(agent_id))
+
+    def unblock_agent(self, agent_id: int) -> None:
+        """Restore ``agent_id`` to active FL participation. No-op if absent."""
+        self.blocked_agents.discard(int(agent_id))
 
     def set_compression(self, topk_fraction: float, quantize_bits: int) -> None:
         """Set Tier 5 communication compression knobs.
