@@ -6,6 +6,9 @@ to launch, with month-by-month sustainment plan after launch.
 
 Sister documents:
 - `OSS_PAPER_DRAFT.md` — academic / technical preprint for arXiv
+- `OSS_GROWTH_PLAYBOOK.md` — **deep tactical manual** for getting
+  stars + visibility (free + organic only); pre-launch SEO, channel-
+  by-channel etiquette, anti-patterns, KPI dashboard
 - `EDU_B2B_PITCH.md` — commercial follow-on if OSS validates demand
 - `REVIEW_PLAN.md` — code-cleanup pass that precedes launch
 - `LOGISTICS_PLAN.md` — Tier-1-to-4 logistics extension (post-launch)
@@ -279,7 +282,14 @@ logistics layer + Tier 3 (multi-echelon supply chain).
 
 ---
 
-## The promotion playbook (tactics that matter)
+## The promotion playbook (deep version: `OSS_GROWTH_PLAYBOOK.md`)
+
+The detailed tactical manual for free + organic promotion lives in
+its own document, [`OSS_GROWTH_PLAYBOOK.md`](OSS_GROWTH_PLAYBOOK.md).
+Read that as the field manual; the brief summary below stays as a
+quick reference.
+
+### Quick-reference summary
 
 Below is the **specific** how-to for getting an OSS project noticed.
 General "build great software" advice is omitted because it's

@@ -117,7 +117,8 @@ The full per-package contracts + endpoint table live in
 | [`ROADMAP.md`](ROADMAP.md) | Build phases, what shipped where, tag-by-tag. |
 | [`PROMPTING_GUIDE.md`](PROMPTING_GUIDE.md) | Step-by-step recipes for adding features. |
 | [`CLAUDE.md`](CLAUDE.md) | Claude Code instructions: conventions, agent guide, M4 budget. |
-| [`OSS_LAUNCH_ROADMAP.md`](OSS_LAUNCH_ROADMAP.md) | The 12-week plan to take Penumbra public + the OSS promotion playbook. |
+| [`OSS_LAUNCH_ROADMAP.md`](OSS_LAUNCH_ROADMAP.md) | The 12-week timeline to take Penumbra public. |
+| [`OSS_GROWTH_PLAYBOOK.md`](OSS_GROWTH_PLAYBOOK.md) | Deep tactical manual: free + organic stars and visibility (pre-launch SEO, channel etiquette, anti-patterns, KPI dashboard). |
 | [`OSS_PAPER_DRAFT.md`](OSS_PAPER_DRAFT.md) | Working draft of the academic preprint for the OSS launch. |
 | [`LOGISTICS_PLAN.md`](LOGISTICS_PLAN.md) | Proposed Tier-1-to-4 logistics extension (post-launch). |
 | [`EDU_B2B_PITCH.md`](EDU_B2B_PITCH.md) | Enterprise training — secondary commercial direction layered on top of OSS if demand validates. |
