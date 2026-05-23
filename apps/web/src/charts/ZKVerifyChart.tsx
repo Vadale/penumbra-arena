@@ -41,7 +41,8 @@ export function ZKVerifyChart() {
     // any transient error during initial mount.
     const t = window.setInterval(() => void run(), 8000);
     return () => window.clearInterval(t);
-  }, [run]);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: poll on mount
+  }, []);
 
   if (!data) {
     return (

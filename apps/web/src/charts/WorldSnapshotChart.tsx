@@ -33,7 +33,8 @@ export function WorldSnapshotChart() {
     void refresh();
     const t = window.setInterval(refresh, 4000);
     return () => window.clearInterval(t);
-  }, [refresh]);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: poll on mount
+  }, []);
 
   const save = async () => {
     setBusy(true);

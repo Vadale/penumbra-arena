@@ -31,7 +31,8 @@ export function PolicyInspector({ initialAgent = 0, nAgents = 50 }: Props) {
       }
     };
     void tick();
-    const t = window.setInterval(tick, 800);
+    // 2s — actor forward pass per poll; 800ms burned MPS for no gain.
+    const t = window.setInterval(tick, 2000);
     return () => {
       cancelled = true;
       window.clearInterval(t);

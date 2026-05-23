@@ -36,7 +36,9 @@ export function ValueMapChart() {
       } catch {}
     };
     void tick();
-    const t = window.setInterval(tick, 1200);
+    // 4s — value_estimate + per-agent action_probabilities is a heavy
+    // PyTorch forward pass; slow the poll under stress.
+    const t = window.setInterval(tick, 4000);
     return () => {
       cancelled = true;
       window.clearInterval(t);

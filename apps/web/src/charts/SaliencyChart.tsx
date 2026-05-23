@@ -33,7 +33,9 @@ export function SaliencyChart() {
       } catch {}
     };
     void grab();
-    const t = window.setInterval(grab, 1500);
+    // 6s — saliency is a torch.autograd backward pass, expensive enough
+    // that we don't want to poll it at 1Hz under heavy load.
+    const t = window.setInterval(grab, 6000);
     return () => {
       cancelled = true;
       window.clearInterval(t);

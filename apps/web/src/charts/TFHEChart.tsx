@@ -38,7 +38,8 @@ export function TFHEChart() {
 
   useEffect(() => {
     void run();
-  }, [run]);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: one-shot on mount
+  }, []);
 
   if (!data?.available) {
     return (

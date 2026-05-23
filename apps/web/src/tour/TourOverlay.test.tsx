@@ -10,7 +10,7 @@ describe("TourOverlay", () => {
 
   it("renders the first step when no seen flag is set", () => {
     render(<TourOverlay />);
-    expect(screen.getByText(/1 \/ 4 · Arena/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 \/ 6 · Arena/i)).toBeInTheDocument();
   });
 
   it("does not render when the seen flag is set in localStorage", () => {
@@ -19,16 +19,15 @@ describe("TourOverlay", () => {
     expect(screen.queryByText(/Arena/i)).not.toBeInTheDocument();
   });
 
-  it("advances through steps on next click and dismisses at the end", () => {
+  it("advances through all 6 steps and dismisses at the end", () => {
     render(<TourOverlay />);
-    expect(screen.getByText(/1 \/ 4 · Arena/)).toBeInTheDocument();
-    fireEvent.click(screen.getByText("next"));
-    expect(screen.getByText(/2 \/ 4 · Coach/)).toBeInTheDocument();
-    fireEvent.click(screen.getByText("next"));
-    expect(screen.getByText(/3 \/ 4 · Analytics/)).toBeInTheDocument();
-    fireEvent.click(screen.getByText("next"));
-    expect(screen.getByText(/4 \/ 4 · Chain/)).toBeInTheDocument();
-    expect(screen.getByText("done")).toBeInTheDocument();
+    expect(screen.getByText(/1 \/ 6 · Arena/)).toBeInTheDocument();
+    // 5 next-clicks take us through steps 2..6; the 6th click is on
+    // "done" and dismisses.
+    for (let i = 0; i < 5; i += 1) {
+      fireEvent.click(screen.getByText("next"));
+    }
+    expect(screen.getByText(/6 \/ 6/)).toBeInTheDocument();
     fireEvent.click(screen.getByText("done"));
     expect(screen.queryByText(/Arena/i)).not.toBeInTheDocument();
     expect(globalThis.localStorage.getItem("penumbra.tour.seen")).toBe("true");

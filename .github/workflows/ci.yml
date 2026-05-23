@@ -1,0 +1,74 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Python — pytest + pyright + ruff
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Sync workspace
+        run: |
+          source $HOME/.local/bin/env
+          uv sync --all-packages
+
+      - name: Ruff check
+        run: |
+          source $HOME/.local/bin/env
+          uv run ruff check packages
+
+      - name: Pyright (strict)
+        run: |
+          source $HOME/.local/bin/env
+          uv run pyright packages
+
+      - name: Pytest
+        env:
+          PENUMBRA_SEED: "42"
+        run: |
+          source $HOME/.local/bin/env
+          uv run pytest packages -k "not slow" -q
+
+  frontend:
+    name: TS — typecheck + biome + vitest + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install pnpm
+        run: corepack enable && corepack prepare pnpm@latest --activate
+
+      - name: Install deps
+        working-directory: apps/web
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Typecheck
+        working-directory: apps/web
+        run: pnpm typecheck
+
+      - name: Biome check
+        working-directory: apps/web
+        run: pnpm exec biome check src
+
+      - name: Vitest
+        working-directory: apps/web
+        run: pnpm test
+
+      - name: Build
+        working-directory: apps/web
+        run: pnpm build

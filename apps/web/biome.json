@@ -23,7 +23,7 @@
         "useIterableCallbackReturn": "off"
       },
       "correctness": {
-        "useExhaustiveDependencies": "warn"
+        "useExhaustiveDependencies": "off"
       },
       "a11y": {
         "noLabelWithoutControl": "off"

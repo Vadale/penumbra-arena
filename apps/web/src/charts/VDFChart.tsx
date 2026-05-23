@@ -38,8 +38,8 @@ export function VDFChart() {
 
   useEffect(() => {
     void run();
-    // biome-ignore lint/correctness/useExhaustiveDependencies: only on mount
-  }, [run]);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: one-shot on mount
+  }, []);
 
   return (
     <div className="font-mono space-y-3">

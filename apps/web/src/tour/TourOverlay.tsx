@@ -18,23 +18,33 @@ interface Step {
 
 const STEPS: Step[] = [
   {
-    title: "1 / 4 · Arena",
-    body: "The 3D view shows N=50 agents as fuzzy halos — radius and alpha encode recent position variance. The agents act under the MAPPO policy you trained earlier (random-walk if no checkpoint).",
+    title: "1 / 6 · Arena (left)",
+    body: "N=50 agents on a procedurally dynamic graph. The DF-style tile map renders fuzzy halos sized by recent position variance. Agents act under the live MAPPO policy — toggle MAPPO/RANDOM in the status bar to switch on the fly.",
     emphasis: "left",
   },
   {
-    title: "2 / 4 · Coach",
-    body: "Below the arena is the Coach panel. It runs `pna` (attacker CLI) and `psh` (shell tutor) inside the dashboard. Try `pna replay-cmd` or `psh lessons` for one-click learning.",
+    title: "2 / 6 · Status bar (bottom)",
+    body: "Live counters: tick, match, chain height, DP ε remaining, signing stats. The two interactive controls on the right are the MAPPO/RANDOM toggle and the temperature slider — they mutate the live inference policy without restart.",
     emphasis: "bottom",
   },
   {
-    title: "3 / 4 · Analytics",
-    body: "12 streaming consumers — descriptive stats, ARIMA, HDBSCAN, persistent homology, Sinkhorn, Bayesian θ, DP budget, Dilithium sigs. All updated every second from the live tick stream.",
-    emphasis: "middle",
+    title: "3 / 6 · Coach console (bottom)",
+    body: "In-dashboard runner for pna (attacker CLI) + psh (shell tutor). 5 attack chips (replay, byzantine, DP reconstruction, linkability, timing side-channel) plus shell-coach lessons.",
+    emphasis: "bottom",
   },
   {
-    title: "4 / 4 · Chain",
-    body: "The local PoS-VRF blockchain anchors match outcomes. Each block carries match results + any slashings + a BLS-aggregate finality bundle. `pna world save <name>` snapshots the whole thing.",
+    title: "4 / 6 · Analytics tiles (right)",
+    body: "52 clickable tiles covering descriptive + inferential + econometrics + ML + crypto + chain + economy. Stats panels open detail modals with educational descriptions. Live polling rates tuned per panel weight.",
+    emphasis: "right",
+  },
+  {
+    title: "5 / 6 · ML interaction",
+    body: "Click 'MAPPO π' for the policy inspector, 'training' for live PPO start/stop + curves, 'V(s)' for critic + per-node entropy, 'reward' for live reward shaping sliders, 'A/B π' to load a second checkpoint.",
+    emphasis: "right",
+  },
+  {
+    title: "6 / 6 · Crypto & chain",
+    body: "Click 'ZK proof' for Groth16 verify ACCEPT vs REJECT, 'BLS agg' to inspect block signatures, 'Kyber'/'Dilithium' for PQ key sizes, 'VDF' for the compute/verify asymmetry, 'Shamir' for secret splitting, 'snapshots' to save/load the perpetual state.",
     emphasis: "right",
   },
 ];

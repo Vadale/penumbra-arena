@@ -580,6 +580,97 @@ The project is now your curriculum. Recommended order of "explain this" sessions
 
 Each step is anchored by code that runs. No slides.
 
+---
+
+## Phase 8 — Dashboard expansion (post-original-plan)
+
+After the original phases shipped, ~30 new dashboard tiles were
+added. The recipes below capture the patterns so future additions
+follow the same shape.
+
+### 8.1 — Add a dashboard tile (5-step recipe)
+
+📐 Decisions baked in by this recipe:
+- Backend endpoint lives in `packages/transport/penumbra_transport/api.py`.
+- Frontend chart lives in `apps/web/src/charts/FooChart.tsx`.
+- Modal route + tile + Vite proxy all need updating.
+
+`[ ]` 1. **Endpoint** — add a `@app.get("/foo/bar")` (or POST) returning a
+   flat JSON dict. Mandatory: `available: bool` so the frontend renders
+   an empty state cleanly. Use `await asyncio.to_thread(...)` for any
+   call slower than ~50ms (PyTorch forward passes, py_ecc verify,
+   etc.) so the event loop doesn't stall.
+
+`[ ]` 2. **Chart component** — `FooChart.tsx`. Use the existing patterns:
+   - One-shot panels (Kyber, CKKS, Shamir): `useEffect(()=>{ void run(); }, [])`.
+   - Polling panels: `useEffect(()=>{ const t = setInterval(grab, MS); ... }, [])`.
+     Cadence rule: PyTorch forward passes ≥ 4s; static fetches 1.5-2s.
+   - Heavy expensive panels: poll on demand or only when the modal
+     is open.
+
+`[ ]` 3. **Modal route** — in `apps/web/src/charts/DetailModal.tsx`:
+   - Extend `MetricKind` with the new id.
+   - Add META entry: `{ label, description }`.
+   - Add `if (metric === "foo") return <FooChart />`.
+
+`[ ]` 4. **Tile** — in `apps/web/src/charts/AnalyticsPanel.tsx`:
+   - Add a `<Cell label="..." caption="..." onClick={() => open("foo")} />`.
+   - Add the id to BOTH the `mapMetricToHistoryKey` Exclude type AND
+     the switch-case that returns undefined for "no history" metrics.
+
+`[ ]` 5. **Vite proxy** — if the endpoint is under a NEW path prefix
+   (e.g. `/foo/...`), add `"/foo": API_HTTP` to `apps/web/vite.config.ts`.
+   Skip this and the panel will show "loading…" forever.
+
+→ Verification: boot backend + frontend, click the new tile, see the
+modal populate within 1-2 polls.
+
+### 8.2 — Add a live ML interaction (Policy Inspector pattern)
+
+Reach into the live MAPPO actor without restart.
+
+`[ ]` 1. The actor is at `app.state.penumbra.mappo_runtime.agent_net`.
+   It's a real `penumbra_learning.mappo.MAPPO` instance.
+`[ ]` 2. For inference inspection, use `MAPPO.action_probabilities(obs)`
+   or `.value_estimate(global_obs)`. Both are `@torch.no_grad()`.
+`[ ]` 3. For gradients (saliency, attribution), build the tensor on
+   `runtime.agent_net.device` and set `requires_grad_(True)`. Use
+   `torch.autograd.grad(scalar, tensor)`.
+`[ ]` 4. For interactive mutation (temperature, enabled, reward weights),
+   write to `MappoRuntime` fields directly — they're closure-captured
+   by the batch policy and read at next inference.
+
+### 8.3 — Add a background training loop (LiveTrainer pattern)
+
+`[ ]` 1. Reuse `LiveTrainer` if you just want PPO updates against the
+   live actor — see `packages/learning/penumbra_learning/live_trainer.py`.
+`[ ]` 2. For a different algorithm: copy `LiveTrainer`'s shape — `enabled`
+   flag + `_train_loop` that sleeps when disabled + `_one_iteration`
+   that runs in an `asyncio.to_thread`. Critic dim MUST match the
+   loaded checkpoint's `MAPPOConfig.n_agents`.
+
+### 8.4 — Add a new crypto demo panel
+
+`[ ]` 1. Look at `crypto_kyber_demo` or `crypto_vdf_demo` for the
+   honest+tampered+sizes pattern.
+`[ ]` 2. Always include implicit-rejection / tamper variant — that's
+   the pedagogical heart of the panel.
+`[ ]` 3. For slow primitives (py_ecc Groth16, Wesolowski VDF), cache
+   the result at module scope; warm the cache in `lifespan` if cold
+   path is > 1s.
+
+🔒 All crypto endpoints must pass `crypto-auditor` review before
+merging.
+
+### 8.5 — Pre-commit hygiene
+
+`[ ]` After any commit, run `git log --oneline -1` and confirm HEAD
+   advanced. Biome/ruff hooks can reformat files; you may need
+   `git add -A && git commit ...` again. The silent-rollback class
+   of bugs is documented in CLAUDE.md.
+
+---
+
 ## Reference: agent quick-dispatch
 
 | Want to … | Invoke |

@@ -37,7 +37,8 @@ export function KyberKEMChart() {
 
   useEffect(() => {
     void grab();
-  }, [grab]);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: one-shot on mount
+  }, []);
 
   if (!data?.available) {
     return (

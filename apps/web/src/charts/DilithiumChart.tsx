@@ -37,7 +37,7 @@ export function DilithiumChart() {
   useEffect(() => {
     void run();
     // biome-ignore lint/correctness/useExhaustiveDependencies: re-run when agent changes
-  }, [run]);
+  }, [agentId]);
 
   if (!data?.available) {
     return (

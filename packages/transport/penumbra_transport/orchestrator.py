@@ -84,7 +84,6 @@ class Orchestrator:
     _started_at: float | None = field(default=None, init=False)
     _last_block_height: int = field(default=-1, init=False)
     _last_signed_tick: int = field(default=-1, init=False)
-    purchase_clock: object | None = field(default=None, init=False)
     market: object | None = field(default=None, init=False)
 
     @classmethod

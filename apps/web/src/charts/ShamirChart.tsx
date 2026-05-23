@@ -43,7 +43,7 @@ export function ShamirChart() {
   useEffect(() => {
     void run();
     // biome-ignore lint/correctness/useExhaustiveDependencies: re-run when params change
-  }, [run]);
+  }, [n, t]);
 
   return (
     <div className="font-mono space-y-3">
