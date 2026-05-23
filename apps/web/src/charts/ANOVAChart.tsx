@@ -6,6 +6,7 @@
  */
 
 import type { ANOVAReport } from "../streams/dashboard";
+import { Stat } from "./_shared";
 
 interface Props {
   data: ANOVAReport;
@@ -128,34 +129,6 @@ export function ANOVAChart({ data, width = 560 }: Props) {
           );
         })}
       </svg>
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  digits,
-  accent,
-  ember,
-}: {
-  label: string;
-  value: number;
-  digits: number;
-  accent?: boolean;
-  ember?: boolean;
-}) {
-  const cls = ember
-    ? "text-[color:var(--color-penumbra-ember)]"
-    : accent
-      ? "text-[color:var(--color-penumbra-cyan)]"
-      : "text-[color:var(--color-penumbra-text)]";
-  return (
-    <div className="border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-2 py-1">
-      <div className="text-[8px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
-        {label}
-      </div>
-      <div className={`tabular-nums ${cls}`}>{value.toFixed(digits)}</div>
     </div>
   );
 }

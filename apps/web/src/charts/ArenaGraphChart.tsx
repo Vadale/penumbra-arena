@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import { Stat } from "./_shared";
 
 interface Topology {
   nodes: number[];
@@ -183,21 +184,6 @@ export function ArenaGraphChart() {
       <div className="text-[9px] text-[color:var(--color-penumbra-dim)]">
         Fruchterman-Reingold layout, 80 relaxation iterations. Ember nodes = goals; edge thickness ∝
         cost. Layout recomputed every 6s as the arena topology mutates.
-      </div>
-    </div>
-  );
-}
-
-function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <div className="border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-2 py-1">
-      <div className="text-[8px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
-        {label}
-      </div>
-      <div
-        className={`tabular-nums ${accent ? "text-[color:var(--color-penumbra-cyan)]" : "text-[color:var(--color-penumbra-text)]"}`}
-      >
-        {value}
       </div>
     </div>
   );

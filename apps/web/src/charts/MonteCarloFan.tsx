@@ -8,6 +8,7 @@
  */
 
 import type { MonteCarloFan as MCFan } from "../streams/dashboard";
+import { Stat } from "./_shared";
 
 interface Props {
   fan: MCFan;
@@ -142,41 +143,15 @@ export function MonteCarloFan({ fan, width = 560, height = 300 }: Props) {
       </svg>
 
       <div className="mt-2 grid grid-cols-5 gap-2 text-[10px]">
-        <Stat label="p05" value={p5} />
-        <Stat label="p50" value={p50} accent />
-        <Stat label="p95" value={p95} />
-        <Stat label="VaR.95" value={fan.var} ember />
-        <Stat label="CVaR.95" value={fan.cvar} ember />
+        <Stat label="p05" value={p5} digits={2} />
+        <Stat label="p50" value={p50} digits={2} accent />
+        <Stat label="p95" value={p95} digits={2} />
+        <Stat label="VaR.95" value={fan.var} digits={2} ember />
+        <Stat label="CVaR.95" value={fan.cvar} digits={2} ember />
       </div>
       <div className="mt-1 text-[9px] text-[color:var(--color-penumbra-dim)]">
         bootstrap n = {fan.n_samples}
       </div>
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  accent,
-  ember,
-}: {
-  label: string;
-  value: number;
-  accent?: boolean;
-  ember?: boolean;
-}) {
-  const cls = ember
-    ? "text-[color:var(--color-penumbra-ember)]"
-    : accent
-      ? "text-[color:var(--color-penumbra-cyan)]"
-      : "text-[color:var(--color-penumbra-text)]";
-  return (
-    <div className="border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-2 py-1">
-      <div className="text-[8px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
-        {label}
-      </div>
-      <div className={`tabular-nums ${cls}`}>{value.toFixed(2)}</div>
     </div>
   );
 }

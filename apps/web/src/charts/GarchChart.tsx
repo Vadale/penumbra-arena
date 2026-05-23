@@ -6,6 +6,7 @@
  */
 
 import type { GarchResult } from "../streams/dashboard";
+import { Stat } from "./_shared";
 
 interface Props {
   data: GarchResult;
@@ -117,39 +118,6 @@ export function GarchChart({ data, width = 560, height = 320 }: Props) {
           caption={persistence > 0.98 ? "near-unit-root" : ""}
         />
       </div>
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  digits,
-  accent,
-  ember,
-  caption,
-}: {
-  label: string;
-  value: number;
-  digits: number;
-  accent?: boolean;
-  ember?: boolean;
-  caption?: string;
-}) {
-  const cls = ember
-    ? "text-[color:var(--color-penumbra-ember)]"
-    : accent
-      ? "text-[color:var(--color-penumbra-cyan)]"
-      : "text-[color:var(--color-penumbra-text)]";
-  return (
-    <div className="border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-2 py-1">
-      <div className="text-[8px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
-        {label}
-      </div>
-      <div className={`tabular-nums ${cls}`}>{value.toFixed(digits)}</div>
-      {caption ? (
-        <div className="text-[8px] text-[color:var(--color-penumbra-dim)]">{caption}</div>
-      ) : null}
     </div>
   );
 }

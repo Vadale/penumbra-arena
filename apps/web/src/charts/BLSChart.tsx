@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { Stat, Verdict } from "./_shared";
 
 interface BLSPayload {
   block_hash: string;
@@ -76,7 +77,7 @@ export function BLSChart() {
       <div className="grid grid-cols-3 gap-2 text-[10px]">
         <Stat label="block height" value={String(data.block_height)} accent />
         <Stat label="signers" value={String(data.n_signers)} accent />
-        <Verdict verified={data.verified} />
+        <Verdict label="aggregate" ok={data.verified} okWord="OK" rejectWord="FAIL" />
       </div>
 
       <div>
@@ -107,35 +108,6 @@ export function BLSChart() {
       <div className="text-[9px] text-[color:var(--color-penumbra-dim)]">
         block_hash = {data.block_hash.slice(0, 24)}… · fast_aggregate_verify (same message) on
         BLS12-381 G1/G2.
-      </div>
-    </div>
-  );
-}
-
-function Verdict({ verified }: { verified: boolean }) {
-  return (
-    <div
-      className={
-        verified
-          ? "border border-[color:var(--color-penumbra-cyan)] bg-[color:var(--color-penumbra-cyan-bg)] px-2 py-1 text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-cyan)]"
-          : "border border-[color:var(--color-penumbra-ember)] bg-[color:var(--color-penumbra-ember-bg)] px-2 py-1 text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-ember)]"
-      }
-    >
-      {verified ? "AGGREGATE OK" : "AGGREGATE FAIL"}
-    </div>
-  );
-}
-
-function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <div className="border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-2 py-1">
-      <div className="text-[8px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
-        {label}
-      </div>
-      <div
-        className={`tabular-nums ${accent ? "text-[color:var(--color-penumbra-cyan)]" : "text-[color:var(--color-penumbra-text)]"}`}
-      >
-        {value}
       </div>
     </div>
   );

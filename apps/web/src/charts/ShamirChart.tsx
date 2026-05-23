@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { Stat, Verdict } from "./_shared";
 
 interface Share {
   x: number;
@@ -112,12 +113,16 @@ export function ShamirChart() {
               label={`${data.threshold} shares → recover`}
               ok={data.recovered_matches ?? false}
               caption={`recovered = ${data.recovered_from_t}`}
+              okWord="MATCH"
+              rejectWord="NO MATCH"
             />
             <Verdict
               label={`${(data.threshold ?? 2) - 1} shares → noise`}
               ok={data.leaks_at_t_minus_1 ?? false}
               inverted
               caption={`recovered = ${data.recovered_from_t_minus_1} (garbage)`}
+              okWord="MATCH"
+              rejectWord="NO MATCH"
             />
           </div>
 
@@ -128,55 +133,6 @@ export function ShamirChart() {
           </div>
         </>
       )}
-    </div>
-  );
-}
-
-function Verdict({
-  label,
-  ok,
-  caption,
-  inverted,
-}: {
-  label: string;
-  ok: boolean;
-  caption: string;
-  inverted?: boolean;
-}) {
-  const passing = inverted ? !ok : ok;
-  return (
-    <div
-      className={
-        passing
-          ? "border border-[color:var(--color-penumbra-cyan)] bg-[color:var(--color-penumbra-cyan-bg)] p-2"
-          : "border border-[color:var(--color-penumbra-ember)] bg-[color:var(--color-penumbra-ember-bg)] p-2"
-      }
-    >
-      <div
-        className={
-          passing
-            ? "text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-cyan)]"
-            : "text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-ember)]"
-        }
-      >
-        {label}: {ok ? "MATCH" : "NO MATCH"}
-      </div>
-      <div className="text-[9px] text-[color:var(--color-penumbra-dim)]">{caption}</div>
-    </div>
-  );
-}
-
-function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <div className="border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-2 py-1">
-      <div className="text-[8px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
-        {label}
-      </div>
-      <div
-        className={`tabular-nums ${accent ? "text-[color:var(--color-penumbra-cyan)]" : "text-[color:var(--color-penumbra-text)]"}`}
-      >
-        {value}
-      </div>
     </div>
   );
 }

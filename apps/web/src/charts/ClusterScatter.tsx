@@ -7,6 +7,7 @@
  */
 
 import type { ClusterScatter as ClusterScatterData } from "../streams/dashboard";
+import { Stat } from "./_shared";
 
 interface Props {
   data: ClusterScatterData;
@@ -136,32 +137,6 @@ export function ClusterScatter({ data, width = 560, height = 360 }: Props) {
             </span>
           ))}
       </div>
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  accent,
-  ember,
-}: {
-  label: string;
-  value: number;
-  accent?: boolean;
-  ember?: boolean;
-}) {
-  const cls = ember
-    ? "text-[color:var(--color-penumbra-ember)]"
-    : accent
-      ? "text-[color:var(--color-penumbra-cyan)]"
-      : "text-[color:var(--color-penumbra-text)]";
-  return (
-    <div className="border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-2 py-1">
-      <div className="text-[8px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
-        {label}
-      </div>
-      <div className={`tabular-nums ${cls}`}>{value}</div>
     </div>
   );
 }

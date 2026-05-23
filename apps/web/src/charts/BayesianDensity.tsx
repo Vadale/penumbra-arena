@@ -3,6 +3,7 @@
  */
 
 import type { BayesianPosterior } from "../streams/dashboard";
+import { Stat } from "./_shared";
 
 interface Props {
   data: BayesianPosterior;
@@ -143,36 +144,6 @@ export function BayesianDensity({ data, width = 560, height = 320 }: Props) {
           caption={`–${credible_high.toFixed(3)}`}
         />
       </div>
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  digits,
-  accent,
-  caption,
-}: {
-  label: string;
-  value: number;
-  digits: number;
-  accent?: boolean;
-  caption?: string;
-}) {
-  return (
-    <div className="border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-2 py-1">
-      <div className="text-[8px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
-        {label}
-      </div>
-      <div
-        className={`tabular-nums ${accent ? "text-[color:var(--color-penumbra-cyan)]" : "text-[color:var(--color-penumbra-text)]"}`}
-      >
-        {value.toFixed(digits)}
-      </div>
-      {caption ? (
-        <div className="text-[8px] text-[color:var(--color-penumbra-dim)]">{caption}</div>
-      ) : null}
     </div>
   );
 }

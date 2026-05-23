@@ -8,6 +8,7 @@
  */
 
 import type { LogitResult } from "../streams/dashboard";
+import { Stat } from "./_shared";
 
 interface Props {
   data: LogitResult;
@@ -143,32 +144,6 @@ export function LogitChart({ data, width = 560, height = 320 }: Props) {
         <Stat label="β slope" value={slope} digits={4} accent />
         <Stat label="pseudo R²" value={pseudo_r2} digits={3} accent />
         <Stat label="n" value={n} digits={0} />
-      </div>
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  digits,
-  accent,
-}: {
-  label: string;
-  value: number;
-  digits: number;
-  accent?: boolean;
-}) {
-  const display = digits === 0 ? value.toFixed(0) : value.toFixed(digits);
-  return (
-    <div className="border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-2 py-1">
-      <div className="text-[8px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
-        {label}
-      </div>
-      <div
-        className={`tabular-nums ${accent ? "text-[color:var(--color-penumbra-cyan)]" : "text-[color:var(--color-penumbra-text)]"}`}
-      >
-        {display}
       </div>
     </div>
   );

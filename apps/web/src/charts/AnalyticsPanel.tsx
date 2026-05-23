@@ -591,6 +591,68 @@ export function AnalyticsPanel() {
         />
       </div>
 
+      <div className="grid grid-cols-2 gap-1">
+        <Cell
+          label="logistics — fill rate"
+          value="served / requested"
+          caption="end-customer demand vs inventory"
+          accent
+          onClick={() => open("logistics_fill_rate")}
+        />
+        <Cell
+          label="logistics — inventory"
+          value="health"
+          caption="stockouts + holding cost"
+          onClick={() => open("logistics_inventory_health")}
+        />
+        <Cell
+          label="logistics — orders"
+          value="(s, S) book"
+          caption="pending + lead-time stats"
+          onClick={() => open("logistics_orders")}
+        />
+        <Cell
+          label="logistics — reorder"
+          value="(s, S) policy"
+          caption="tweak s/S fractions"
+          onClick={() => open("logistics_reorder_policy")}
+        />
+        <Cell
+          label="logistics — capacity"
+          value="cargo util"
+          caption="fleet utilisation"
+          onClick={() => open("logistics_capacity")}
+        />
+        <Cell
+          label="logistics — VRP"
+          value="OR baseline"
+          caption="solver vs actual gap"
+          accent
+          onClick={() => open("logistics_vrp")}
+        />
+        <Cell
+          label="logistics — echelon"
+          value="bullwhip"
+          caption="supplier → distributor → city"
+          accent
+          onClick={() => open("logistics_echelon")}
+        />
+        <Cell
+          label="logistics — dispatch"
+          value="carriers + rewards"
+          caption="greedy assignment + earnings"
+          accent
+          onClick={() => open("logistics_dispatch")}
+        />
+        <Cell
+          label="federated learning"
+          value="FedAvg + CKKS"
+          caption="encrypted aggregation"
+          accent
+          onClick={() => open("federated_status")}
+        />
+      </div>
+
       {summary && (
         <div className="border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-2 py-1 text-[10px] text-[color:var(--color-penumbra-muted)]">
           <span className="text-[color:var(--color-penumbra-dim)]">95% ci </span>
@@ -661,6 +723,15 @@ export function AnalyticsPanel() {
             case "schnorr":
             case "zk_multiplier":
             case "snark_forge":
+            case "logistics_fill_rate":
+            case "logistics_inventory_health":
+            case "logistics_orders":
+            case "logistics_reorder_policy":
+            case "logistics_capacity":
+            case "logistics_vrp":
+            case "logistics_echelon":
+            case "logistics_dispatch":
+            case "federated_status":
               return undefined;
             default:
               return histories[mapMetricToHistoryKey(openMetric)];
@@ -744,6 +815,15 @@ function mapMetricToHistoryKey(
     | "schnorr"
     | "zk_multiplier"
     | "snark_forge"
+    | "logistics_fill_rate"
+    | "logistics_inventory_health"
+    | "logistics_orders"
+    | "logistics_reorder_policy"
+    | "logistics_capacity"
+    | "logistics_vrp"
+    | "logistics_echelon"
+    | "logistics_dispatch"
+    | "federated_status"
   >,
 ): keyof ReturnType<typeof useDashboardLive>["history"] {
   switch (m) {

@@ -8,6 +8,7 @@
  */
 
 import type { GrangerMatrix as GrangerData } from "../streams/dashboard";
+import { Stat } from "./_shared";
 
 interface Props {
   data: GrangerData;
@@ -153,19 +154,6 @@ export function GrangerMatrix({ data, width = 560, height = 360 }: Props) {
       <div className="mt-2 grid grid-cols-2 gap-2 text-[10px]">
         <Stat label="lag" value={max_lag} digits={0} />
         <Stat label="n obs" value={n_obs} digits={0} />
-      </div>
-    </div>
-  );
-}
-
-function Stat({ label, value, digits }: { label: string; value: number; digits: number }) {
-  return (
-    <div className="border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-2 py-1">
-      <div className="text-[8px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
-        {label}
-      </div>
-      <div className="tabular-nums text-[color:var(--color-penumbra-text)]">
-        {value.toFixed(digits)}
       </div>
     </div>
   );

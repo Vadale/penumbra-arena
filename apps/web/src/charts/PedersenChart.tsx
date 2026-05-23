@@ -62,11 +62,20 @@ export function PedersenChart() {
         </button>
       </div>
 
-      <Block label={`C(${data.message_a}) — commitment a`} value={data.commitment_a_short ?? ""} prefix="0x" />
-      <Block label={`C(${data.message_b}) — commitment b`} value={data.commitment_b_short ?? ""} prefix="0x" />
+      <Block
+        label={`C(${data.message_a}) — commitment a`}
+        value={data.commitment_a_short ?? ""}
+        prefix="0x"
+      />
+      <Block
+        label={`C(${data.message_b}) — commitment b`}
+        value={data.commitment_b_short ?? ""}
+        prefix="0x"
+      />
       <Block
         label={`C(${data.message_a} + ${data.message_b}) = C(a) · C(b)`}
-        value={data.commitment_sum_short ?? ""} prefix="0x"
+        value={data.commitment_sum_short ?? ""}
+        prefix="0x"
         accent
       />
 

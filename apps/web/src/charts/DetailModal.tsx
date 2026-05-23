@@ -54,12 +54,21 @@ import { CorrelationHeatmap } from "./CorrelationHeatmap";
 import { DilithiumChart } from "./DilithiumChart";
 import { DpCompareChart } from "./DpCompareChart";
 import { EconomyChart } from "./EconomyChart";
+import { FederatedStatusChart } from "./FederatedStatusChart";
 import { GATAttentionChart } from "./GATAttentionChart";
 import { GarchChart } from "./GarchChart";
 import { GrangerMatrix } from "./GrangerMatrix";
 import { InflationChart } from "./InflationChart";
 import { KyberKEMChart } from "./KyberKEMChart";
 import { LineChart } from "./LineChart";
+import { LogisticsCapacityChart } from "./LogisticsCapacityChart";
+import { LogisticsDispatchChart } from "./LogisticsDispatchChart";
+import { LogisticsEchelonChart } from "./LogisticsEchelonChart";
+import { LogisticsFillRateChart } from "./LogisticsFillRateChart";
+import { LogisticsInventoryHealthChart } from "./LogisticsInventoryHealthChart";
+import { LogisticsOrdersChart } from "./LogisticsOrdersChart";
+import { LogisticsReorderPolicyChart } from "./LogisticsReorderPolicyChart";
+import { LogisticsVRPChart } from "./LogisticsVRPChart";
 import { LogitChart } from "./LogitChart";
 import { MempoolChart } from "./MempoolChart";
 import { MonteCarloFan } from "./MonteCarloFan";
@@ -146,7 +155,16 @@ export type MetricKind =
   | "beaver"
   | "schnorr"
   | "zk_multiplier"
-  | "snark_forge";
+  | "snark_forge"
+  | "logistics_fill_rate"
+  | "logistics_inventory_health"
+  | "logistics_orders"
+  | "logistics_reorder_policy"
+  | "logistics_capacity"
+  | "logistics_vrp"
+  | "logistics_echelon"
+  | "logistics_dispatch"
+  | "federated_status";
 
 interface Props {
   open: boolean;
@@ -461,6 +479,51 @@ const META: Record<MetricKind, { label: string; description: string; yUnit?: str
     description:
       "Attempt to fool the Groth16 verifier WITHOUT a witness. Two attacks: (1) flip A's low bit — the proof point goes off-curve, pairing equation fails. (2) Replay an honest proof with TAMPERED public inputs — Groth16 binds proofs to public inputs via the linear-combination IC, so verifier rejects. The honest control still accepts.",
   },
+  logistics_fill_rate: {
+    label: "Logistics — end-customer fill rate",
+    description:
+      "Demand on the cities is satisfied or backlogged. served / requested is the fill rate; backlog accumulates whenever inventory runs out. The per-product strip exposes which goods underserve relative to others.",
+  },
+  logistics_inventory_health: {
+    label: "Logistics — inventory health",
+    description:
+      "Per-(city, product) stock vs cap, with stockout count + holding/stockout cost totals. Stockouts are red; lowest-stock cells lead the list.",
+  },
+  logistics_orders: {
+    label: "Logistics — order book",
+    description:
+      "Pending + fulfilled orders in the LogisticsMempool. Lead-time stats (median / p95) measure how long an (s,S)-triggered order sits before its carrier closes it out.",
+  },
+  logistics_reorder_policy: {
+    label: "Logistics — (s, S) reorder policy",
+    description:
+      "When inventory + outstanding < s, place an order up to S. Tweak the fractions to see the order book and stockout count respond. Lead time is fixed in Tier 1.",
+  },
+  logistics_capacity: {
+    label: "Logistics — cargo utilisation",
+    description:
+      "Per-agent carried-units / cap. The BUY path is capped by remaining capacity, so a saturated fleet starts refusing inventory until it sells.",
+  },
+  logistics_vrp: {
+    label: "Logistics — VRP optimisation baseline",
+    description:
+      "Snapshot capacitated VRP solver (greedy → 2-opt, optional OR-Tools) over the live mempool. The cost gap vs the naive fulfilment baseline shows how much an omniscient central planner could save over the live decentralised policy.",
+  },
+  logistics_echelon: {
+    label: "Logistics — multi-echelon supply chain (Tier 3)",
+    description:
+      "Suppliers produce raw goods → distributors hold buffer stock → cities face end-customer demand. Each tier reorders from its upstream neighbour with a deterministic lead time. The bullwhip ratio (variance of orders / variance of demand) measures Forrester's classic upstream amplification effect.",
+  },
+  logistics_dispatch: {
+    label: "Logistics — carrier dispatch",
+    description:
+      "Greedy nearest-agent assignment + agent-driven fulfilment. Each order is bound to one carrier; the order settles when that agent reaches the destination city carrying the requested product (city inventory ++, agent inventory --, agent.coins += reward). Stale assignments are released after 3x lead time; orders waiting more than 5x lead time fall back to a phantom carrier (id = -1) so the simulation never deadlocks.",
+  },
+  federated_status: {
+    label: "Federated learning — status & controls",
+    description:
+      "FedAvg (Tier 1) and CKKS-encrypted aggregation (Tier 2) over per-agent local SGD deltas. Optional DP-SGD clip + Gaussian noise (Tier 3). Krum / TrimmedMean Byzantine-robust aggregators are also shipped as functions.",
+  },
 };
 
 export function DetailModal({
@@ -661,6 +724,33 @@ export function DetailModal({
     }
     if (metric === "snark_forge") {
       return <SnarkForgeChart />;
+    }
+    if (metric === "logistics_fill_rate") {
+      return <LogisticsFillRateChart />;
+    }
+    if (metric === "logistics_inventory_health") {
+      return <LogisticsInventoryHealthChart />;
+    }
+    if (metric === "logistics_orders") {
+      return <LogisticsOrdersChart />;
+    }
+    if (metric === "logistics_reorder_policy") {
+      return <LogisticsReorderPolicyChart />;
+    }
+    if (metric === "logistics_capacity") {
+      return <LogisticsCapacityChart />;
+    }
+    if (metric === "logistics_vrp") {
+      return <LogisticsVRPChart />;
+    }
+    if (metric === "logistics_echelon") {
+      return <LogisticsEchelonChart />;
+    }
+    if (metric === "logistics_dispatch") {
+      return <LogisticsDispatchChart />;
+    }
+    if (metric === "federated_status") {
+      return <FederatedStatusChart />;
     }
     return <LineChart values={values ?? []} label={meta.label} yUnit={meta.yUnit} />;
   })();

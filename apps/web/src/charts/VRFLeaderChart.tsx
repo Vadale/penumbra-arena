@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { Stat } from "./_shared";
 
 interface Validator {
   index: number;
@@ -161,21 +162,6 @@ export function VRFLeaderChart() {
       <div className="text-[10px] text-[color:var(--color-penumbra-dim)]">
         next election seed ={" "}
         <span className="text-[color:var(--color-penumbra-muted)]">{data.next_seed}…</span>
-      </div>
-    </div>
-  );
-}
-
-function Stat({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
-  return (
-    <div className="border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-2 py-1">
-      <div className="text-[8px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
-        {label}
-      </div>
-      <div
-        className={`tabular-nums ${accent ? "text-[color:var(--color-penumbra-cyan)]" : "text-[color:var(--color-penumbra-text)]"}`}
-      >
-        {value}
       </div>
     </div>
   );

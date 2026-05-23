@@ -8,6 +8,7 @@
  */
 
 import type { PCAResult } from "../streams/dashboard";
+import { Stat } from "./_shared";
 
 interface Props {
   pca: PCAResult;
@@ -174,34 +175,6 @@ export function PCAScree({ pca, width = 560, height = 320 }: Props) {
           digits={1}
           suffix="%"
         />
-      </div>
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  digits,
-  accent,
-  suffix,
-}: {
-  label: string;
-  value: number;
-  digits: number;
-  accent?: boolean;
-  suffix?: string;
-}) {
-  const display = (digits === 0 ? value.toFixed(0) : value.toFixed(digits)) + (suffix ?? "");
-  return (
-    <div className="border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-2 py-1">
-      <div className="text-[8px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
-        {label}
-      </div>
-      <div
-        className={`tabular-nums ${accent ? "text-[color:var(--color-penumbra-cyan)]" : "text-[color:var(--color-penumbra-text)]"}`}
-      >
-        {display}
       </div>
     </div>
   );

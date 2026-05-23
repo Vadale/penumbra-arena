@@ -11,6 +11,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { Stat } from "./_shared";
 
 interface CKKSPayload {
   available: boolean;
@@ -160,21 +161,6 @@ export function CKKSCompareChart() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <div className="border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-2 py-1">
-      <div className="text-[8px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
-        {label}
-      </div>
-      <div
-        className={`tabular-nums ${accent ? "text-[color:var(--color-penumbra-cyan)]" : "text-[color:var(--color-penumbra-text)]"}`}
-      >
-        {value}
-      </div>
     </div>
   );
 }

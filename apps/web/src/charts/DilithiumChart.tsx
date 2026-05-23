@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { Block, Stat, Verdict } from "./_shared";
 
 interface Payload {
   available: boolean;
@@ -91,70 +92,6 @@ export function DilithiumChart() {
         ML-DSA-65 (NIST FIPS 204 / formerly Dilithium-3). Post-quantum signature based on Module-LWE
         + Module-SIS. Penumbra signs every agent move with this — clicking another agent shows their
         unique public key.
-      </div>
-    </div>
-  );
-}
-
-function Block({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <div>
-      <div className="mb-1 text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
-        {label}
-      </div>
-      <div
-        className={`border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] p-2 text-[11px] break-all ${accent ? "text-[color:var(--color-penumbra-cyan)]" : "text-[color:var(--color-penumbra-text)]"}`}
-      >
-        {value}…
-      </div>
-    </div>
-  );
-}
-
-function Verdict({
-  label,
-  ok,
-  caption,
-  inverted,
-}: {
-  label: string;
-  ok: boolean;
-  caption: string;
-  inverted?: boolean;
-}) {
-  const passing = inverted ? !ok : ok;
-  return (
-    <div
-      className={
-        passing
-          ? "border border-[color:var(--color-penumbra-cyan)] bg-[color:var(--color-penumbra-cyan-bg)] p-2"
-          : "border border-[color:var(--color-penumbra-ember)] bg-[color:var(--color-penumbra-ember-bg)] p-2"
-      }
-    >
-      <div
-        className={
-          passing
-            ? "text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-cyan)]"
-            : "text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-ember)]"
-        }
-      >
-        {label}: {ok ? "ACCEPT" : "REJECT"}
-      </div>
-      <div className="text-[9px] text-[color:var(--color-penumbra-dim)]">{caption}</div>
-    </div>
-  );
-}
-
-function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <div className="border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-2 py-1">
-      <div className="text-[8px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
-        {label}
-      </div>
-      <div
-        className={`tabular-nums ${accent ? "text-[color:var(--color-penumbra-cyan)]" : "text-[color:var(--color-penumbra-text)]"}`}
-      >
-        {value}
       </div>
     </div>
   );

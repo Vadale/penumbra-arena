@@ -7,6 +7,7 @@
  */
 
 import type { VARImpulseResponse } from "../streams/dashboard";
+import { Stat } from "./_shared";
 
 interface Props {
   data: VARImpulseResponse;
@@ -127,31 +128,6 @@ export function VarIrfChart({ data, width = 560 }: Props) {
         <Stat label="series" value={K} digits={0} />
         <Stat label="lag order" value={lag_order} digits={0} accent />
         <Stat label="horizon" value={horizon} digits={0} />
-      </div>
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  digits,
-  accent,
-}: {
-  label: string;
-  value: number;
-  digits: number;
-  accent?: boolean;
-}) {
-  return (
-    <div className="border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-2 py-1">
-      <div className="text-[8px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
-        {label}
-      </div>
-      <div
-        className={`tabular-nums ${accent ? "text-[color:var(--color-penumbra-cyan)]" : "text-[color:var(--color-penumbra-text)]"}`}
-      >
-        {value.toFixed(digits)}
       </div>
     </div>
   );

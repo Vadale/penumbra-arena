@@ -3,6 +3,7 @@
  */
 
 import type { ActionHistogram } from "../streams/learning";
+import { Stat } from "./_shared";
 
 interface Props {
   data: ActionHistogram;
@@ -79,32 +80,6 @@ export function ActionHistogramChart({ data, width = 560 }: Props) {
           );
         })}
       </svg>
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  digits,
-  accent,
-}: {
-  label: string;
-  value: number | string;
-  digits?: number;
-  accent?: boolean;
-}) {
-  const display = typeof value === "number" ? value.toFixed(digits ?? 0) : value;
-  return (
-    <div className="border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-2 py-1">
-      <div className="text-[8px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
-        {label}
-      </div>
-      <div
-        className={`tabular-nums ${accent ? "text-[color:var(--color-penumbra-cyan)]" : "text-[color:var(--color-penumbra-text)]"}`}
-      >
-        {display}
-      </div>
     </div>
   );
 }

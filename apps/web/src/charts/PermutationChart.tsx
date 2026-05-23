@@ -3,6 +3,7 @@
  */
 
 import type { PermutationReport } from "../streams/dashboard";
+import { Stat } from "./_shared";
 
 interface Props {
   data: PermutationReport;
@@ -110,34 +111,6 @@ export function PermutationChart({ data, width = 560, height = 320 }: Props) {
         <Stat label="observed ATE" value={observed_ate} digits={3} />
         <Stat label="permutations" value={n_permutations} digits={0} />
       </div>
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  digits,
-  accent,
-  ember,
-}: {
-  label: string;
-  value: number;
-  digits: number;
-  accent?: boolean;
-  ember?: boolean;
-}) {
-  const cls = ember
-    ? "text-[color:var(--color-penumbra-ember)]"
-    : accent
-      ? "text-[color:var(--color-penumbra-cyan)]"
-      : "text-[color:var(--color-penumbra-text)]";
-  return (
-    <div className="border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-2 py-1">
-      <div className="text-[8px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
-        {label}
-      </div>
-      <div className={`tabular-nums ${cls}`}>{value.toFixed(digits)}</div>
     </div>
   );
 }

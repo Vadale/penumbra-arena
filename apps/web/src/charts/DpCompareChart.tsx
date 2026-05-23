@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { Stat } from "./_shared";
 
 interface DPComparison {
   ready: boolean;
@@ -128,32 +129,6 @@ export function DpCompareChart({ width = 560 }: Props) {
         L1 noise = {residual.reduce((s, v) => s + Math.abs(v), 0).toFixed(2)} · L2 ={" "}
         {Math.sqrt(residual.reduce((s, v) => s + v * v, 0)).toFixed(2)}
       </div>
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  accent,
-  ember,
-}: {
-  label: string;
-  value: string;
-  accent?: boolean;
-  ember?: boolean;
-}) {
-  const cls = ember
-    ? "text-[color:var(--color-penumbra-ember)]"
-    : accent
-      ? "text-[color:var(--color-penumbra-cyan)]"
-      : "text-[color:var(--color-penumbra-text)]";
-  return (
-    <div className="border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-2 py-1">
-      <div className="text-[8px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
-        {label}
-      </div>
-      <div className={`tabular-nums ${cls}`}>{value}</div>
     </div>
   );
 }

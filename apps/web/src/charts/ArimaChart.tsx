@@ -7,6 +7,7 @@
  */
 
 import type { ArimaForecast } from "../streams/dashboard";
+import { Stat } from "./_shared";
 
 interface Props {
   data: ArimaForecast;
@@ -134,36 +135,6 @@ export function ArimaChart({ data, width = 560, height = 320 }: Props) {
         <Stat label="σ" value={next_std} digits={3} />
         <Stat label="95% PI" value={1.96 * next_std} digits={3} caption="± half-width" />
       </div>
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  digits,
-  accent,
-  caption,
-}: {
-  label: string;
-  value: number;
-  digits: number;
-  accent?: boolean;
-  caption?: string;
-}) {
-  return (
-    <div className="border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-2 py-1">
-      <div className="text-[8px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
-        {label}
-      </div>
-      <div
-        className={`tabular-nums ${accent ? "text-[color:var(--color-penumbra-cyan)]" : "text-[color:var(--color-penumbra-text)]"}`}
-      >
-        {value.toFixed(digits)}
-      </div>
-      {caption ? (
-        <div className="text-[8px] text-[color:var(--color-penumbra-dim)]">{caption}</div>
-      ) : null}
     </div>
   );
 }

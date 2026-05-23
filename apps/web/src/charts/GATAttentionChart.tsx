@@ -9,6 +9,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import { Stat } from "./_shared";
 
 interface AttentionPayload {
   available: boolean;
@@ -160,21 +161,6 @@ export function GATAttentionChart() {
       <div className="text-[9px] text-[color:var(--color-penumbra-dim)]">
         GATv2: e_ij = a · LeakyReLU(W₁ h_i + W₂ h_j) + α · cost_ij; α_ij = softmax over neighbours.
         Weights are RANDOM (untrained) — the panel shows the architecture, not learned policy.
-      </div>
-    </div>
-  );
-}
-
-function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <div className="border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-2 py-1">
-      <div className="text-[8px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
-        {label}
-      </div>
-      <div
-        className={`tabular-nums ${accent ? "text-[color:var(--color-penumbra-cyan)]" : "text-[color:var(--color-penumbra-text)]"}`}
-      >
-        {value}
       </div>
     </div>
   );

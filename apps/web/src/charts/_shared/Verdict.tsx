@@ -1,14 +1,18 @@
 /**
  * Verdict pill — shared chart primitive.
  *
- * Extracted from 7 chart components (BLS, Beaver, Dilithium, Kyber,
- * Pedersen, Schnorr, Shamir) that each re-declared this same
+ * Extracted from chart components (BLS, Beaver, Dilithium, Kyber,
+ * Pedersen, Schnorr, Shamir, …) that each re-declared this same
  * pattern: a labelled accept/reject indicator with optional
  * "inverted" mode for "reject is the GOOD outcome" cases.
  *
  * `inverted=true` means the EXPECTED outcome is `ok=false`. Used
  * by tamper-test rows: tampering SHOULD cause REJECT, so an
  * inverted=true row with ok=false renders in cyan (passing).
+ *
+ * `okWord` / `rejectWord` allow callers to swap "ACCEPT/REJECT"
+ * for "MATCH/NO MATCH", "OK/FAIL", etc. without forking the
+ * component.
  */
 
 export interface VerdictProps {
@@ -16,11 +20,20 @@ export interface VerdictProps {
   ok: boolean;
   caption?: string;
   inverted?: boolean;
+  okWord?: string;
+  rejectWord?: string;
 }
 
-export function Verdict({ label, ok, caption, inverted }: VerdictProps) {
+export function Verdict({
+  label,
+  ok,
+  caption,
+  inverted,
+  okWord = "ACCEPT",
+  rejectWord = "REJECT",
+}: VerdictProps) {
   const passing = inverted ? !ok : ok;
-  const okWord = ok ? "ACCEPT" : "REJECT";
+  const verdictWord = ok ? okWord : rejectWord;
   return (
     <div
       className={
@@ -36,7 +49,7 @@ export function Verdict({ label, ok, caption, inverted }: VerdictProps) {
             : "text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-ember)]"
         }
       >
-        {label}: {okWord}
+        {label}: {verdictWord}
       </div>
       {caption ? (
         <div className="text-[9px] text-[color:var(--color-penumbra-dim)]">{caption}</div>

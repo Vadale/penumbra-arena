@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { Stat, Verdict } from "./_shared";
 
 interface Payload {
   available: boolean;
@@ -83,7 +84,12 @@ export function BeaverChart() {
       <ShareGrid label="y shares (additive)" shares={data.y_shares ?? []} />
       <ShareGrid label="z shares (output)" shares={data.z_shares ?? []} accent />
 
-      <Verdict label={`Σ z_i ≡ x · y (mod p)`} ok={data.matches_modulo_p ?? false} />
+      <Verdict
+        label={`Σ z_i ≡ x · y (mod p)`}
+        ok={data.matches_modulo_p ?? false}
+        okWord="MATCH"
+        rejectWord="NO MATCH"
+      />
 
       <div className="text-[9px] text-[color:var(--color-penumbra-dim)]">
         Beaver protocol: dealer shares (a, b, c=a·b). Each party computes d_i = x_i − a_i, e_i = y_i
@@ -117,43 +123,6 @@ function ShareGrid({
             P{i}: 0x{s}
           </span>
         ))}
-      </div>
-    </div>
-  );
-}
-
-function Verdict({ label, ok }: { label: string; ok: boolean }) {
-  return (
-    <div
-      className={
-        ok
-          ? "border border-[color:var(--color-penumbra-cyan)] bg-[color:var(--color-penumbra-cyan-bg)] p-2"
-          : "border border-[color:var(--color-penumbra-ember)] bg-[color:var(--color-penumbra-ember-bg)] p-2"
-      }
-    >
-      <div
-        className={
-          ok
-            ? "text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-cyan)]"
-            : "text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-ember)]"
-        }
-      >
-        {label}: {ok ? "MATCH" : "NO MATCH"}
-      </div>
-    </div>
-  );
-}
-
-function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <div className="border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-2 py-1">
-      <div className="text-[8px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
-        {label}
-      </div>
-      <div
-        className={`tabular-nums ${accent ? "text-[color:var(--color-penumbra-cyan)]" : "text-[color:var(--color-penumbra-text)]"}`}
-      >
-        {value}
       </div>
     </div>
   );

@@ -8,6 +8,7 @@
  */
 
 import { useMemo, useState } from "react";
+import { Stat } from "./_shared";
 
 interface Props {
   values: number[];
@@ -198,23 +199,11 @@ export function LineChart({ values, label, yUnit, width = 560, height = 280 }: P
 
       {/* summary stats */}
       <div className="mt-2 grid grid-cols-4 gap-2 text-[10px]">
-        <Stat label="min" value={stats.min} />
-        <Stat label="max" value={stats.max} />
-        <Stat label="mean" value={stats.mean} />
-        <Stat label="std" value={stats.std} />
+        <Stat label="min" value={stats.min} digits="adaptive" />
+        <Stat label="max" value={stats.max} digits="adaptive" />
+        <Stat label="mean" value={stats.mean} digits="adaptive" />
+        <Stat label="std" value={stats.std} digits="adaptive" />
       </div>
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: number }) {
-  const display = Math.abs(value) >= 1000 ? value.toFixed(0) : value.toFixed(3);
-  return (
-    <div className="border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-2 py-1">
-      <div className="text-[8px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
-        {label}
-      </div>
-      <div className="tabular-nums text-[color:var(--color-penumbra-text)]">{display}</div>
     </div>
   );
 }
