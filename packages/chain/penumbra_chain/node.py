@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from penumbra_chain.block import GENESIS_PREV_HASH, Block, MatchOutcome
@@ -57,6 +58,11 @@ class Node:
     active_indices: set[int] = field(default_factory=set)
     pending_slashings: list[SlashingTx] = field(default_factory=list)
     slashed_pubkeys: set[bytes] = field(default_factory=set)
+    # Phase 6a Tier 5 — optional cross-pillar signal hook.
+    # Wired by the orchestrator to forward block finalisation / slashing
+    # into the EventBus. Kept as a plain Callable so the chain package
+    # has no import dependency on transport.
+    on_signal: Callable[[str, dict[str, object]], None] | None = None
 
     @classmethod
     def boot(cls, *, n_validators: int = 4) -> Node:
@@ -134,6 +140,17 @@ class Node:
         self.slashed_pubkeys.add(evidence.offender_pubkey)
         tx = SlashingTx(evidence=evidence, height_observed=self.height)
         self.pending_slashings.append(tx)
+        if self.on_signal is not None:
+            try:
+                self.on_signal(
+                    "chain.validator.slashed",
+                    {
+                        "validator_id": int(offender_idx),
+                        "evidence_height": int(evidence.height),
+                    },
+                )
+            except Exception:
+                logger.exception("on_signal hook raised for chain.validator.slashed")
         return tx
 
     def produce_block(self, *, max_payload: int = 64) -> Block | None:
@@ -188,6 +205,24 @@ class Node:
         # Slashings are now durable in the block's payload AND in our
         # in-memory active_indices / slashed_pubkeys; safe to clear.
         self.pending_slashings.clear()
+
+        if self.on_signal is not None:
+            winners = [
+                int(outcome.winner_agent_id)
+                for outcome in finalised.payload
+                if outcome.winner_agent_id is not None
+            ]
+            try:
+                self.on_signal(
+                    "chain.block.finalised",
+                    {
+                        "height": int(finalised.header.height),
+                        "n_outcomes": len(finalised.payload),
+                        "winners": winners,
+                    },
+                )
+            except Exception:
+                logger.exception("on_signal hook raised for chain.block.finalised")
 
         return finalised
 
