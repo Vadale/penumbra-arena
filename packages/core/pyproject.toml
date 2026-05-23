@@ -8,6 +8,7 @@ dependencies = [
   "numpy>=2.0",
   "networkx>=3.4",
   "msgpack>=1.1",
+  "ortools>=9.10",
 ]
 
 [build-system]

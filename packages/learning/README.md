@@ -31,6 +31,39 @@ Apple Metal (MPS).
   the live actor. The user toggles start/stop from the dashboard and
   watches actor/critic/entropy/reward curves update every ~1.5s.
 
+### Phase 2.5 additions (federated + logistics-coupling)
+
+- **`federated.py`** — `FederatedTrainer` w/ real local SGD on per-
+  agent (obs, label) buffers. Aggregators: `fedavg`, `ckks_sum` (real
+  CKKS encrypt-sum-decrypt via the project's CKKS backend, with slot
+  batching for actors larger than `slot_count`), `krum` (Blanchard
+  et al. 2017 Byzantine-robust selection), `trimmed_mean` (per-
+  coordinate). FedProx proximal term, per-client personalisation
+  heads, top-k sparsification + 8-bit quantisation. `Concept taught:`
+  the SGD math is the same locally and federally — what changes is
+  who sees which gradient at which step.
+- **`federated_dp.py`** — `RDPAccountant` for Sampled Gaussian
+  Mechanism (Mironov-Talwar-Zhang 2019), closed-form Rényi DP
+  composition, conversion to (ε, δ)-DP via Canonne-Kamath-Steinke
+  2020 bound. `Concept taught:` Rényi DP is the right composition
+  framework for SGD-style mechanisms; the toy `clip/sigma` accountant
+  is unsound — this module replaces it.
+- **`logistics_shaper.py`** — `LogisticsRewardShaper` that adds
+  dispatch-bonus / dispatch-penalty / fill-rate-bonus terms to the
+  per-agent reward, reading from the orchestrator's
+  `LogisticsMempool` + `DemandModel`. `Concept taught:` reward
+  shaping for sparse-reward multi-agent RL: aligning incentives so
+  policies learn to be good carriers, not just goal-seekers.
+- **`supply_gnn.py`** — `SupplyGraphEncoder` using PyG GATv2Conv.
+  Hidden dim clamped to [8, 64] to stay within the M4 budget.
+  `Concept taught:` GNN encoders for spatial-relational state on
+  supply graphs — agents that "see" the graph structure can route
+  better than agents seeing only local neighbours.
+- **`benchmark.py`** — Penumbra-Bench 5-task suite (PA1/AR1/MC1/PB1/
+  LR1), `BenchSubmission` dataclass, composite weights, `run_benchmark`
+  entry-point used by `scripts/run_benchmark.py` and
+  `scripts/generate_baselines.py`.
+
 ## Micro-experiments
 
 1. Train a small policy and watch losses converge:

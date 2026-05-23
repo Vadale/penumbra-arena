@@ -208,6 +208,7 @@ class Market:
     wallets: dict[int, Wallet]
     markets: dict[int, MarketState]
     _previous_node: dict[int, int] = field(default_factory=dict)
+    cargo: object | None = None  # CargoConstraints; opt-in cap on BUY qty
 
     @classmethod
     def build(
@@ -345,6 +346,12 @@ class Market:
                 desired = 1 + int(rng.geometric(p=1.0 / max(_AVG_BUY_QUANTITY, 1.01)))
                 affordable = int(wallet.coins / ask) if ask > 0 else 0
                 qty = max(0, min(desired, avail, affordable))
+                if self.cargo is not None:
+                    remaining_cap = self.cargo.available(  # type: ignore[attr-defined]
+                        agent_id=int(agent_id),
+                        current_inventory=wallet.inventory,
+                    )
+                    qty = min(qty, remaining_cap)
                 if qty == 0:
                     continue
                 cost = ask * qty

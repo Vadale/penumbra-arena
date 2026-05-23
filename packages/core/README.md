@@ -40,4 +40,37 @@ from penumbra_core.economy import (
     Market, Wallet, MarketState, Trade,
     PRODUCT_CATALOG, PRODUCT_CATEGORIES,
 )
+from penumbra_core.logistics import (
+    CargoConstraints, DemandModel, LogisticsMempool,
+    Order, ReorderPolicy,
+    FillRateReport, InventoryHealthReport, OrderBookReport,
+    CargoUtilizationReport, DispatchReport,
+    compute_fill_rate, compute_inventory_health, compute_order_book,
+    compute_cargo_utilization, compute_dispatch_report,
+    assign_carriers,
+)
+from penumbra_core.logistics_or import (
+    VRPInstance, VRPOrder, VRPSolution,
+    solve_greedy_nearest_neighbor, solve_two_opt, solve_or_tools,
+    build_arena_distance_matrix,
+)
+from penumbra_core.logistics_echelon import (
+    SupplyNode, EchelonNetwork,
+    EchelonReport, compute_echelon_report,
+    step as echelon_step,
+    bullwhip_ratio,
+)
 ```
+
+## Phase 2.5 additions (logistics layer)
+
+- **logistics.py** — `Concept taught:` how OR-style supply-chain
+  operations (cargo capacity, demand curves, (s,S) reorder, carrier
+  dispatch) emerge from primitive nodes + KPIs.
+- **logistics_or.py** — `Concept taught:` Vehicle Routing Problem
+  solvers (greedy nearest-neighbour, 2-opt local search, OR-Tools
+  CP-SAT). Used as an optimisation reference against MAPPO + heuristic
+  policies.
+- **logistics_echelon.py** — `Concept taught:` multi-echelon
+  inventory propagation (supplier → distributor → city), lead-time
+  delays, the bullwhip effect (variance amplification upstream).

@@ -42,12 +42,21 @@ class RewardWeights:
     The user can mutate these at runtime via /learning/reward-weights;
     the live trainer picks the new values up at the next iteration
     because the env reads them through a shared singleton.
+
+    Logistics fields (Tier 4 wiring — defaults 0.0 leave training neutral):
+    - logistics_dispatch_bonus: per-fulfilment reward to the carrier
+    - logistics_dispatch_penalty: per-tick cost while holding a stale
+      assignment without fulfilling it
+    - fill_rate_bonus: scaled by overall fill rate at episode end
     """
 
     goal_reward: float = 1.0
     step_penalty: float = -0.01
     illegal_move_penalty: float = -0.1
     crowding_penalty: float = 0.0  # per agent on the same node, applied to all of them
+    logistics_dispatch_bonus: float = 0.0
+    logistics_dispatch_penalty: float = 0.0
+    fill_rate_bonus: float = 0.0
 
 
 # Module-level singleton — the simplest way to share live-mutable weights
@@ -68,12 +77,16 @@ class PenumbraEnv(ParallelEnv):  # type: ignore[misc]
         arena_nodes: int = 25,
         max_match_ticks: int = 200,
         seed: int = 42,
+        enable_logistics_rewards: bool = False,
+        logistics_shaper: object | None = None,
     ) -> None:
         super().__init__()
         self._n_agents = n_agents
         self._arena_nodes = arena_nodes
         self._max_match_ticks = max_match_ticks
         self._seed = seed
+        self._enable_logistics_rewards = enable_logistics_rewards
+        self._logistics_shaper = logistics_shaper
 
         self.agents: list[str] = []
         self.possible_agents: list[str] = [f"agent_{i}" for i in range(n_agents)]
@@ -93,6 +106,10 @@ class PenumbraEnv(ParallelEnv):  # type: ignore[misc]
         self._sim: Simulation | None = None
         self._seeded: Seeded | None = None
         self._neighbour_index: dict[int, list[int]] = {}
+        if enable_logistics_rewards and logistics_shaper is None:
+            from penumbra_learning.logistics_shaper import LogisticsRewardShaper
+
+            self._logistics_shaper = LogisticsRewardShaper()
 
     def reset(
         self, seed: int | None = None, options: dict[str, Any] | None = None
@@ -108,6 +125,8 @@ class PenumbraEnv(ParallelEnv):  # type: ignore[misc]
             self._seeded,
         )
         self.agents = list(self.possible_agents)
+        if self._logistics_shaper is not None and hasattr(self._logistics_shaper, "reset"):
+            self._logistics_shaper.reset()  # type: ignore[attr-defined]
         observations = {agent: self._observe(i) for i, agent in enumerate(self.possible_agents)}
         infos: dict[str, dict[str, Any]] = {agent: {} for agent in self.possible_agents}
         return observations, infos
@@ -162,6 +181,30 @@ class PenumbraEnv(ParallelEnv):  # type: ignore[misc]
 
         terminated = dict.fromkeys(self.agents, sim.current_match.is_over)
         truncated = dict.fromkeys(self.agents, False)
+
+        # Logistics shaping: optional per-agent reward contributions
+        # derived from the orchestrator's mempool + demand model. The
+        # shaper is read-only on the simulation state, so existing
+        # MAPPO training paths are unaffected when defaults are zero.
+        if self._logistics_shaper is not None:
+            try:
+                shaper_rewards = self._logistics_shaper.step(  # type: ignore[attr-defined]
+                    sim=sim,
+                    possible_agents=self.possible_agents,
+                    is_terminal=all(terminated.values()) if terminated else False,
+                    weights=REWARD_WEIGHTS,
+                )
+                for agent_str, bonus in shaper_rewards.items():
+                    if agent_str in rewards:
+                        rewards[agent_str] += float(bonus)
+            except Exception:
+                # Never let the shaper break training; log and continue.
+                import logging
+
+                logging.getLogger(__name__).exception(
+                    "LogisticsRewardShaper.step raised; ignoring this tick"
+                )
+
         if all(terminated.values()):
             self.agents = []
         observations = {agent: self._observe(i) for i, agent in enumerate(self.possible_agents)}
