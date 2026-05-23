@@ -110,7 +110,7 @@ reportUnknownLambdaType = false
 # pytest
 # ───────────────────────────────────────────────────────────────────────────
 [tool.pytest.ini_options]
-testpaths = ["packages"]
+testpaths = ["packages", "tests"]
 asyncio_mode = "auto"
 addopts = "-q --strict-markers --tb=short --import-mode=importlib"
 markers = [

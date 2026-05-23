@@ -27,14 +27,10 @@ def main() -> int:
         default=None,
         help="path to a MAPPO checkpoint; omit for random-walk baseline",
     )
-    parser.add_argument(
-        "--tier", choices=["tiny", "small", "medium", "large"], default="tiny"
-    )
+    parser.add_argument("--tier", choices=["tiny", "small", "medium", "large"], default="tiny")
     parser.add_argument("--submitter", default="anonymous")
     parser.add_argument("--method", default="untitled")
-    parser.add_argument(
-        "--output", type=Path, default=Path("state/bench/submission.json")
-    )
+    parser.add_argument("--output", type=Path, default=Path("state/bench/submission.json"))
     args = parser.parse_args()
 
     submission = run_benchmark(

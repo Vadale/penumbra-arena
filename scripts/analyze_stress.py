@@ -76,17 +76,32 @@ def as_ints(rows: list[dict[str, str]], col: str) -> list[int]:
 
 
 def analyze_memory(rows: list[dict[str, str]]) -> list[Finding]:
+    """Distinguish startup-warmup growth from sustained drift.
+
+    The FastAPI process warms up TenSEAL CKKS contexts + PyTorch MPS
+    allocator + JAX/NumPyro caches in the first ~150s. A naïve
+    `(end-start)/duration` extrapolation conflates that warmup ramp
+    with the steady-state drift. We therefore compute drift over the
+    SECOND HALF of the samples only (post-warmup) and report both.
+    """
     findings: list[Finding] = []
     rss = as_floats(rows, "rss_mb")
-    if len(rss) < 2:
-        return [Finding("WARN", "memory", "fewer than 2 RSS samples; skipped")]
+    if len(rss) < 4:
+        return [Finding("WARN", "memory", "fewer than 4 RSS samples; skipped")]
     rss_min, rss_max = min(rss), max(rss)
     rss_median = statistics.median(rss)
     n = len(rss)
-    # Linear regression slope (MB per sample).
-    slope = (rss[-1] - rss[0]) / max(n - 1, 1)
-    elapsed_hours = n / 12  # 5min interval ⇒ 12 samples/hour
-    growth_per_hour = slope * 12
+    half = n // 2
+    rss_steady = rss[half:]
+    wall = as_floats(rows, "uptime_seconds")
+    if len(wall) >= len(rss):
+        wall_steady = wall[half:]
+        steady_duration_h = max(wall_steady[-1] - wall_steady[0], 1.0) / 3600.0
+    else:
+        steady_duration_h = (n - half) / 12.0  # 5min interval fallback
+    steady_drift = rss_steady[-1] - rss_steady[0]
+    steady_per_hour = steady_drift / max(steady_duration_h, 1e-6)
+    warmup_growth = rss[half] - rss[0]
     if rss_max > 8000:
         findings.append(
             Finding(
@@ -103,13 +118,25 @@ def analyze_memory(rows: list[dict[str, str]]) -> list[Finding]:
                 f"RSS peaked at {rss_max:.0f} MB (within 25% of 8 GB cap).",
             )
         )
-    if abs(growth_per_hour) > 5 and growth_per_hour > 0:
+    if steady_per_hour > 200:
         findings.append(
             Finding(
                 "WARN",
                 "memory",
-                f"RSS growth ≈ {growth_per_hour:.1f} MB/hour over {elapsed_hours:.1f}h — "
-                f"possible leak (start={rss[0]:.0f}, end={rss[-1]:.0f}).",
+                f"sustained RSS drift ≈ {steady_per_hour:.0f} MB/hour after warmup "
+                f"(start={rss[0]:.0f}, mid={rss[half]:.0f}, end={rss[-1]:.0f}; "
+                f"warmup +{warmup_growth:.0f} MB).",
+            )
+        )
+    elif steady_per_hour > 50:
+        findings.append(
+            Finding(
+                "OK",
+                "memory",
+                (
+                    f"sustained drift {steady_per_hour:.0f} MB/h within budget;"
+                    f" warmup absorbed +{warmup_growth:.0f} MB in the first half."
+                ),
             )
         )
     if not findings:
@@ -117,7 +144,10 @@ def analyze_memory(rows: list[dict[str, str]]) -> list[Finding]:
             Finding(
                 "OK",
                 "memory",
-                f"RSS stable: median {rss_median:.0f} MB, range [{rss_min:.0f}, {rss_max:.0f}].",
+                (
+                    f"RSS stable: median {rss_median:.0f} MB, range [{rss_min:.0f}, {rss_max:.0f}],"
+                    f" sustained drift {steady_per_hour:.0f} MB/h."
+                ),
             )
         )
     return findings

@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Vadale/penumbra/state/bench/SCHEMA.json",
+  "title": "Penumbra-Bench Submission",
+  "description": "Schema for a BenchSubmission as defined in packages/learning/penumbra_learning/benchmark.py. Every JSON file under state/bench/submissions/ must conform to this schema and pass the additional semantic checks in scripts/validate_submission.py (composite recomputation, task completeness, score ranges).",
+  "type": "object",
+  "required": [
+    "submitter",
+    "method",
+    "tier",
+    "tasks",
+    "composite_score",
+    "submission_timestamp_ns",
+    "penumbra_commit",
+    "pytorch_version",
+    "hardware"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "submitter": {
+      "type": "string",
+      "minLength": 1,
+      "description": "GitHub handle or organisation submitting the result."
+    },
+    "method": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Short method name; appears on the leaderboard."
+    },
+    "tier": {
+      "type": "string",
+      "enum": ["tiny", "small", "medium", "large"]
+    },
+    "tasks": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "required": [
+          "task_id",
+          "score",
+          "metric_values",
+          "n_episodes",
+          "wall_seconds"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "enum": ["PA1", "AR1", "MC1", "PB1", "LR1"]
+          },
+          "score": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0
+          },
+          "metric_values": {
+            "type": "object",
+            "additionalProperties": {"type": "number"}
+          },
+          "n_episodes": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "wall_seconds": {
+            "type": "number",
+            "minimum": 0.0
+          }
+        }
+      }
+    },
+    "composite_score": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0
+    },
+    "submission_timestamp_ns": {
+      "type": "integer",
+      "minimum": 1577836800000000000,
+      "description": "Unix epoch nanoseconds; lower bound is 2020-01-01 to catch obvious misformats."
+    },
+    "penumbra_commit": {
+      "type": "string",
+      "minLength": 1
+    },
+    "pytorch_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "hardware": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

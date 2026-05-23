@@ -225,9 +225,7 @@ def detect_anomalies(samples: list[Sample], summary: dict[str, Any]) -> list[str
 
     rss_per_h = summary.get("rss_per_hour_mb")
     if isinstance(rss_per_h, int | float) and rss_per_h > 50.0:
-        out.append(
-            f"RSS drift {rss_per_h} MB/h is above 50 MB/h threshold " "(possible memory leak)"
-        )
+        out.append(f"RSS drift {rss_per_h} MB/h is above 50 MB/h threshold (possible memory leak)")
 
     chain_growth = summary.get("chain_blocks_in_run")
     expected_blocks = span_s / 10  # block produced every ~10 s by default
