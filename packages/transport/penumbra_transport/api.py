@@ -1777,19 +1777,19 @@ def build_app(
         """
         if _multiplier_cache:
             return dict(_multiplier_cache)
-        import json
-        from pathlib import Path
-
-        from penumbra_crypto.snark import load_proof, load_verifying_key, verify
-
-        artifacts = Path(__file__).resolve().parents[3] / "circuits" / "artifacts"
-        vk_path = artifacts / "vk.json"
-        proof_path = artifacts / "proof.json"
-        public_path = artifacts / "public.json"
-        if not all(p.is_file() for p in (vk_path, proof_path, public_path)):
-            return {"available": False, "reason": "multiplier artifacts missing"}
 
         def _run() -> dict[str, object]:
+            import json
+            from pathlib import Path
+
+            from penumbra_crypto.snark import load_proof, load_verifying_key, verify
+
+            artifacts = Path(__file__).resolve().parents[3] / "circuits" / "artifacts"
+            vk_path = artifacts / "vk.json"
+            proof_path = artifacts / "proof.json"
+            public_path = artifacts / "public.json"
+            if not all(p.is_file() for p in (vk_path, proof_path, public_path)):
+                return {"available": False, "reason": "multiplier artifacts missing"}
             vk = load_verifying_key(json.loads(vk_path.read_text()))
             proof = load_proof(json.loads(proof_path.read_text()))
             public = [int(s) for s in json.loads(public_path.read_text())]
@@ -1805,8 +1805,9 @@ def build_app(
             }
 
         result = await asyncio.to_thread(_run)
-        _multiplier_cache.update(result)
-        return dict(_multiplier_cache)
+        if result.get("available"):
+            _multiplier_cache.update(result)
+        return result
 
     @app.get("/crypto/snark-forge/demo")
     async def crypto_snark_forge_demo() -> dict[str, object]:
@@ -2753,8 +2754,13 @@ def build_app(
         }
 
     @app.get("/benchmark/submission/{filename}")
-    async def benchmark_submission(filename: str) -> dict[str, object]:
-        """Return the full submission JSON for one file under state/bench/."""
+    def benchmark_submission(filename: str) -> dict[str, object]:
+        """Return the full submission JSON for one file under state/bench/.
+
+        Declared `def` (not `async def`) so FastAPI runs the file I/O on
+        its threadpool — `pathlib` is blocking and would trigger
+        ASYNC240 inside an async handler.
+        """
         from pathlib import Path
 
         if "/" in filename or "\\" in filename or filename.startswith("."):
