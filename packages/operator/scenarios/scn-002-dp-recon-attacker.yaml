@@ -1,0 +1,35 @@
+id: scn-002-dp-recon-attacker
+title: "Reconstruct hidden coins via DP queries (Dinur–Nissim)"
+difficulty: medium
+description: |
+  Run the Dinur–Nissim reconstruction attack on a chosen target by
+  spending your DP budget on a sequence of overlapping queries. The
+  composite score rewards both reconstruction accuracy and budget
+  efficiency — burning the whole ε for no gain is a losing strategy.
+setup:
+  seed: 137
+  n_agents: 50
+  preconditions:
+    - "dp.budget.epsilon_total: 10.0"
+    - "target.agent_id: 7"
+opening_event:
+  kind: "operator.scenario.attack.dp_recon"
+  payload:
+    target_agent: 7
+    n_queries: 32
+victory:
+  - "custom.recovered_bits > 12"
+  - "operator.privacy_preserved >= 0.0"
+failure:
+  - "elapsed_ticks > 4000"
+  - "custom.recovered_bits < 1"
+allowed_actions:
+  - "query_dp"
+  - "sign"
+  - "verify"
+scoring:
+  weights:
+    attacks_survived: 0.4
+    privacy_preserved: 0.2
+    profit: 0.2
+    chain_contribution: 0.2

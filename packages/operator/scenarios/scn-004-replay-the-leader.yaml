@@ -1,0 +1,33 @@
+id: scn-004-replay-the-leader
+title: "Replay the round-leader's signature"
+difficulty: easy
+description: |
+  Capture a leader's Dilithium signature on the current block and
+  attempt a replay against next block's hash. The defending nodes
+  use freshness nonces — the attack should fail. Pedagogical drill:
+  see why nonce binding kills naïve replay.
+setup:
+  seed: 13
+  n_agents: 50
+  preconditions:
+    - "chain.leader_rotation: round_robin"
+opening_event:
+  kind: "operator.scenario.attack.replay"
+  payload:
+    target_validator: 0
+    n_attempts: 5
+victory:
+  - "custom.replay_attempts >= 5"
+  - "custom.replays_accepted == 0"
+failure:
+  - "custom.replays_accepted > 0"
+  - "elapsed_ticks > 2000"
+allowed_actions:
+  - "sign"
+  - "verify"
+scoring:
+  weights:
+    attacks_survived: 0.5
+    chain_contribution: 0.3
+    privacy_preserved: 0.1
+    profit: 0.1

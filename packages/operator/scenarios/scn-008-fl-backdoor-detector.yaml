@@ -1,0 +1,37 @@
+id: scn-008-fl-backdoor-detector
+title: "Detect + reject the backdoor with a robust aggregator"
+difficulty: hard
+description: |
+  Sister scenario to scn-007. As FL coordinator, switch on Krum or
+  Trimmed-Mean aggregation and use defense_gan to flag anomalous
+  clients. Win when the trigger ASR stays below 0.1 and global
+  accuracy stays above 0.6 over the round window.
+setup:
+  seed: 401
+  n_agents: 50
+  preconditions:
+    - "fl.aggregator: krum"
+    - "fl.n_participants: 10"
+opening_event:
+  kind: "operator.scenario.defense.fl_backdoor"
+  payload:
+    aggregator: "krum"
+    f: 2
+victory:
+  - "custom.trigger_asr < 0.1"
+  - "custom.global_acc >= 0.6"
+failure:
+  - "custom.trigger_asr > 0.4"
+  - "elapsed_ticks > 4000"
+allowed_actions:
+  - "defense_gan"
+  - "defense_padding"
+  - "query_dp"
+  - "sign"
+  - "verify"
+scoring:
+  weights:
+    chain_contribution: 0.4
+    privacy_preserved: 0.3
+    attacks_survived: 0.2
+    profit: 0.1

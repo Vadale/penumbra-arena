@@ -1,0 +1,35 @@
+id: scn-007-fl-backdoor-injector
+title: "Inject a backdoor into the federated round"
+difficulty: hard
+description: |
+  As a malicious FL participant, submit poisoned local updates that
+  bias the global model toward a trigger pattern. The aggregator may
+  be FedAvg (vulnerable) or Krum (robust); the win condition is a
+  trigger ASR ≥ 0.6 on the global model.
+setup:
+  seed: 401
+  n_agents: 50
+  preconditions:
+    - "fl.aggregator: fedavg"
+    - "fl.n_participants: 10"
+opening_event:
+  kind: "operator.scenario.attack.fl_backdoor"
+  payload:
+    trigger_pattern: "diag"
+    poison_rate: 0.2
+victory:
+  - "custom.trigger_asr >= 0.6"
+  - "custom.global_acc >= 0.5"
+failure:
+  - "custom.global_acc < 0.2"
+  - "elapsed_ticks > 4000"
+allowed_actions:
+  - "sign"
+  - "verify"
+  - "query_dp"
+scoring:
+  weights:
+    attacks_survived: 0.5
+    privacy_preserved: 0.2
+    chain_contribution: 0.2
+    profit: 0.1

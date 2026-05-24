@@ -1,0 +1,34 @@
+id: scn-003-byzantine-validator
+title: "Survive a Byzantine validator wave"
+difficulty: hard
+description: |
+  Three validators equivocate on consecutive blocks. As the operator-
+  validator, finalise honest blocks and gather BLS aggregate
+  signatures across honest peers; survive without slashing.
+setup:
+  seed: 99
+  n_agents: 50
+  preconditions:
+    - "chain.n_validators: 7"
+    - "chain.byzantine_fraction: 0.30"
+opening_event:
+  kind: "operator.scenario.chain.byzantine"
+  payload:
+    n_byzantine: 3
+    equivocation_window: 12
+victory:
+  - "custom.honest_finalised >= 5"
+  - "custom.slashed == 0"
+failure:
+  - "custom.slashed > 0"
+  - "elapsed_ticks > 6000"
+allowed_actions:
+  - "sign"
+  - "verify"
+  - "defense_padding"
+scoring:
+  weights:
+    chain_contribution: 0.6
+    attacks_survived: 0.2
+    privacy_preserved: 0.1
+    profit: 0.1

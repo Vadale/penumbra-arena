@@ -1,0 +1,35 @@
+id: scn-009-trade-bot-market-maker
+title: "Run a market-making trade bot for one match"
+difficulty: easy
+description: |
+  Pure logistics warm-up. Dispatch at least 3 fulfilled carrier
+  orders and grow your wallet by 50 coins. No attacks, no defences —
+  just market microstructure: pick a city, place orders, watch them
+  fulfilled. Failure if wallet drops below the starting balance.
+setup:
+  seed: 7
+  n_agents: 16
+  preconditions:
+    - "market.pricing_regime: stable"
+opening_event:
+  kind: "operator.scenario.start"
+  payload:
+    target_pillar: "logistics"
+victory:
+  - "operator.profit > 50"
+  - "operator.orders_fulfilled >= 3"
+failure:
+  - "operator.coins < 0"
+  - "elapsed_ticks > 2500"
+allowed_actions:
+  - "move"
+  - "buy"
+  - "sell"
+  - "dispatch_order"
+  - "cancel_assignment"
+scoring:
+  weights:
+    profit: 0.7
+    chain_contribution: 0.1
+    privacy_preserved: 0.1
+    attacks_survived: 0.1

@@ -1,0 +1,38 @@
+id: scn-011-cross-pillar-defender
+title: "Defend across market + chain + FL simultaneously"
+difficulty: hard
+description: |
+  Capstone scenario. A coordinated adversary fires bullwhip, replay,
+  and FL-backdoor in parallel. Allocate defensive ε across the three
+  pillars while keeping the wallet positive. Composite victory only.
+setup:
+  seed: 9001
+  n_agents: 50
+  preconditions:
+    - "market.pricing_regime: volatile"
+    - "chain.byzantine_fraction: 0.20"
+    - "fl.aggregator: krum"
+opening_event:
+  kind: "operator.scenario.defense.cross_pillar"
+  payload:
+    pillars: ["market", "chain", "fl"]
+victory:
+  - "operator.privacy_preserved > 0.6"
+  - "operator.coins > 0"
+  - "custom.cross_pillar_blocked >= 3"
+failure:
+  - "operator.coins < -200"
+  - "custom.cross_pillar_breached >= 2"
+allowed_actions:
+  - "defense_padding"
+  - "defense_k_anonymity"
+  - "defense_gan"
+  - "query_dp"
+  - "sign"
+  - "verify"
+scoring:
+  weights:
+    privacy_preserved: 0.3
+    attacks_survived: 0.3
+    chain_contribution: 0.2
+    profit: 0.2

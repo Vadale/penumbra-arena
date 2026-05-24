@@ -1,0 +1,34 @@
+id: scn-012-zero-day-improv
+title: "Zero-day improv sandbox (instructor-led)"
+difficulty: open
+description: |
+  Open-ended sandbox for instructor-led sessions. No fixed victory
+  or failure clauses are evaluated; the runner reports elapsed_ticks
+  and wallet trajectory, the instructor scores qualitatively. All
+  operator actions are allowed.
+setup:
+  seed: 0
+  n_agents: 50
+  preconditions:
+    - "sandbox: true"
+opening_event:
+  kind: "operator.scenario.sandbox.open"
+  payload:
+    note: "Instructor scores qualitatively at the end of the session"
+victory: []
+failure: []
+allowed_actions:
+  - "move"
+  - "buy"
+  - "sell"
+  - "dispatch_order"
+  - "cancel_assignment"
+  - "query_dp"
+  - "sign"
+  - "verify"
+scoring:
+  weights:
+    profit: 0.25
+    privacy_preserved: 0.25
+    attacks_survived: 0.25
+    chain_contribution: 0.25

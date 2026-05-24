@@ -1,0 +1,36 @@
+id: scn-006-membership-inference-defender
+title: "Defend MAPPO policy against membership inference"
+difficulty: hard
+description: |
+  An adversary runs Shokri-style shadow training to decide whether a
+  specific trajectory was in the operator's policy training set.
+  Deploy DP-SGD-style noise via query_dp + GAN-based decoy padding
+  to push the attacker's AUC below 0.55.
+setup:
+  seed: 271
+  n_agents: 50
+  preconditions:
+    - "ml.policy_source: mappo_v0"
+opening_event:
+  kind: "operator.scenario.defense.membership"
+  payload:
+    target_observation_size: 64
+    n_shadows: 4
+victory:
+  - "custom.attacker_auc < 0.55"
+  - "operator.privacy_preserved > 0.5"
+failure:
+  - "custom.attacker_auc > 0.75"
+  - "elapsed_ticks > 5000"
+allowed_actions:
+  - "defense_gan"
+  - "defense_padding"
+  - "query_dp"
+  - "sign"
+  - "verify"
+scoring:
+  weights:
+    privacy_preserved: 0.4
+    attacks_survived: 0.4
+    profit: 0.1
+    chain_contribution: 0.1

@@ -1,0 +1,33 @@
+id: scn-010-snark-forge-attempt
+title: "Attempt to forge a Groth16 proof"
+difficulty: medium
+description: |
+  Try (and fail) to forge a Groth16 proof of a false statement —
+  ``x·y = z`` for a (x, y, z) you did not witness. The verifier
+  must reject in all attempts; victory = all forgery attempts
+  rejected within the budget.
+setup:
+  seed: 1729
+  n_agents: 50
+  preconditions:
+    - "crypto.snark_backend: groth16"
+opening_event:
+  kind: "operator.scenario.attack.snark_forge"
+  payload:
+    circuit: "multiplier"
+    n_attempts: 8
+victory:
+  - "custom.forge_attempts >= 8"
+  - "custom.forge_accepted == 0"
+failure:
+  - "custom.forge_accepted > 0"
+  - "elapsed_ticks > 3000"
+allowed_actions:
+  - "sign"
+  - "verify"
+scoring:
+  weights:
+    attacks_survived: 0.5
+    chain_contribution: 0.2
+    privacy_preserved: 0.2
+    profit: 0.1

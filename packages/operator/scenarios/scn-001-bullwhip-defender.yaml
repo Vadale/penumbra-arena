@@ -1,0 +1,37 @@
+id: scn-001-bullwhip-defender
+title: "Defend agent_12 from a bullwhip-leak chain"
+difficulty: medium
+description: |
+  A simulated adversary exploits the bullwhip effect to de-anonymise
+  agent_12 through downstream order amplification. Deploy DP queries
+  + padding defences and keep privacy_preserved high while resisting
+  the wallet drain caused by the attacker's noisy queries.
+setup:
+  seed: 42
+  n_agents: 50
+  preconditions:
+    - "market.pricing_regime: volatile"
+    - "logistics.echelon.bullwhip_ratio: >1.5"
+opening_event:
+  kind: "operator.scenario.start"
+  payload:
+    target_agent: 12
+    attacker_strategy: "bullwhip"
+victory:
+  - "operator.privacy_preserved > 0.7"
+  - "operator.coins > 0"
+failure:
+  - "operator.coins < -100"
+  - "operator.privacy_preserved < 0.3"
+allowed_actions:
+  - "defense_padding"
+  - "defense_k_anonymity"
+  - "query_dp"
+  - "sign"
+  - "verify"
+scoring:
+  weights:
+    privacy_preserved: 0.5
+    attacks_survived: 0.3
+    profit: 0.2
+    chain_contribution: 0.0

@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PenumbraOperatorScenario",
+  "description": "Schema for Phase 6b Tier 5 scenario YAML files. Validated on load by penumbra_operator.scenarios._validate_against_schema (a small subset validator — covers type/required/properties/items/enum).",
+  "type": "object",
+  "required": [
+    "id",
+    "title",
+    "difficulty",
+    "description",
+    "setup",
+    "opening_event",
+    "victory",
+    "failure",
+    "allowed_actions",
+    "scoring"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "title": { "type": "string" },
+    "difficulty": {
+      "type": "string",
+      "enum": ["easy", "medium", "hard", "open"]
+    },
+    "description": { "type": "string" },
+    "setup": {
+      "type": "object",
+      "required": ["seed", "n_agents"],
+      "properties": {
+        "seed": { "type": "integer" },
+        "n_agents": { "type": "integer" },
+        "preconditions": { "type": "array" }
+      }
+    },
+    "opening_event": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": { "type": "string" },
+        "payload": { "type": "object" }
+      }
+    },
+    "victory": { "type": "array", "items": { "type": "string" } },
+    "failure": { "type": "array", "items": { "type": "string" } },
+    "allowed_actions": { "type": "array", "items": { "type": "string" } },
+    "scoring": {
+      "type": "object",
+      "required": ["weights"],
+      "properties": {
+        "weights": { "type": "object" }
+      }
+    }
+  }
+}
