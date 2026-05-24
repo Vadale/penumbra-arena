@@ -2975,10 +2975,8 @@ def build_app(
             results.append(result)
             # Phase 6b Tier 6 — record into the open session log.
             if session_logger is not None and session_id is not None:
-                try:
+                with contextlib.suppress(Exception):
                     session_logger.record(session_id, due_action, result)
-                except Exception:
-                    pass
         if len(orch.operator_recent_results) > 200:  # type: ignore[attr-defined]
             del orch.operator_recent_results[: len(orch.operator_recent_results) - 200]  # type: ignore[attr-defined]
         # Return the result that matches our action kind, falling back
@@ -3346,9 +3344,12 @@ def build_app(
         from penumbra_operator.actions import OperatorContext
         from penumbra_operator.replay import (
             SessionLogError,
-            replay as _do_replay,
             scorecard_diff,
         )
+        from penumbra_operator.replay import (
+            replay as _do_replay,
+        )
+
         from penumbra_transport.agent_signing import AgentKeystore
 
         slog = _get_session_logger()

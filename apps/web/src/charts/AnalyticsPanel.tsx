@@ -1019,6 +1019,8 @@ function mapMetricToHistoryKey(
     | "custom_policy"
     | "ctf"
     | "world_branches"
+    | "story_mode"
+    | "operator_leaderboard"
   >,
 ): keyof ReturnType<typeof useDashboardLive>["history"] {
   switch (m) {
