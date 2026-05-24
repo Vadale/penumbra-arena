@@ -734,3 +734,84 @@ Every endpoint above has a tile registered through
 `apps/web/src/charts/DetailModal.tsx`. The 5-step tile pattern from
 the main CLAUDE.md applies; the `/bench` page is a separate route in
 `apps/web/src/pages/Bench.tsx`.
+
+---
+
+## Phase 6a + 5 + 6b endpoints (post-Phase-2.5 additions)
+
+### Phase 6a — EventBus + cross-pillar reactions
+- `GET /events/recent?limit=N` — last N events from the bus.
+- `GET /events/stats` — per-kind emit counts + p99 handler latency.
+- `GET /security/blocked-agents` — live security-blocked agents.
+
+### Phase 5 — Crypto primitives (Tier 1, 8 modules)
+- `GET /crypto/frost/demo` — FROST t-of-n threshold Schnorr round.
+- `GET /crypto/sphincs/demo` — SPHINCS+ vs Dilithium sig comparison.
+- `GET /crypto/verkle/demo` — KZG opening + proof-size economics.
+- `GET /crypto/bbs_plus/demo` — selective-disclosure round.
+- `GET /crypto/threshold_ecdsa/demo` — GG18 2-of-3 round.
+- `GET /crypto/yao/demo` — Yao millionaires problem.
+- `GET /crypto/psi/demo` — Private set intersection from OPRF.
+- `GET /crypto/mix_net/demo` — Loopix onion-routing round.
+- `GET /crypto/stark/demo` — STARK verifier (FRI-based).
+
+### Phase 5 — Attacks (Tier 2, 6 modules)
+- `GET /attacks/{kind}/demo` — one endpoint per attack:
+  `agent_fingerprint`, `trajectory_fingerprint`, `membership_inference`,
+  `model_inversion`, `reward_poisoning`, `cache_sidechannel`.
+
+### Phase 5 — Defenses (Tier 3, 6 modules)
+- `GET /defenses/{kind}/demo` — one endpoint per defense:
+  `data_poisoning`, `padding`, `k_anonymity`, `l_diversity`, `gan`,
+  `request_obfuscation`.
+
+### Phase 5 — Interactive surfaces (Tier 4)
+- `POST /attacker/policy` — register custom Python policy.
+- `GET /attacker/policies` — list registered policies.
+- `DELETE /attacker/policy/{name}` — unregister.
+- `GET /ctf/challenges` — list CTF challenges.
+- `POST /ctf/submit/{id}` — submit a flag.
+- `GET /ctf/leaderboard/{id}` — per-challenge leaderboard.
+- `POST /world/branch` — clone simulation into N branches.
+- `GET /world/branches` — list branches.
+- `POST /world/branch/{id}/advance` — advance a branch.
+- `POST /world/branches/compare` — side-by-side diff.
+
+### Phase 5 — Stories (Tier 5)
+- `GET /coach/stories` — list 8 cross-pillar story tutorials.
+
+### Phase 6b — Operator Mode (cyber range)
+- `POST /operator/enable` / `POST /operator/disable` — lifecycle.
+- `GET /operator/status` — live state mirror + score card.
+- `GET /operator/defense_status` — active defenses.
+- `POST /operator/{kind}` — 20 action kinds: 8 core (move, buy,
+  sell, dispatch_order, cancel_assignment, query_dp, sign, verify)
+  + 6 attack (attack_replay, attack_byzantine, attack_dp_recon,
+  attack_linkability, attack_membership, attack_snark_forge)
+  + 6 defense (defense_k_anonymity, defense_padding,
+  defense_gan_poison, defense_pause_dp, defense_resume_dp,
+  defense_rotate_keys, defense_enable_krum).
+- `GET /operator/scenarios` — list 12 starter scenarios.
+- `POST /operator/scenarios/{id}/start|abandon` — scenario lifecycle.
+- `GET /operator/scenarios/{id}/status` — live progress vs clauses.
+- `GET /operator/sessions` — list session metadata.
+- `GET /operator/sessions/{id}/replay` — replay diff.
+
+### How to drive them from the dashboard
+
+Tiles in `apps/web/src/charts/`:
+- `EventBusChart`, `EventGraphChart` — Phase 6a observability.
+- `BlockedAgentsChart` — Tier 2 security blocked agents.
+- Crypto primitive tiles: `FROSTChart`, `SPHINCSChart`, `VerkleChart`,
+  `BBSPlusChart`, `ThresholdECDSAChart`, `YaoChart`, `PSIChart`,
+  `MixNetChart`, `STARKChart`.
+- Attack tiles: `AttackAgentFingerprintChart`, …, `AttackCacheSidechannelChart`.
+- Defense tiles: `DefenseDataPoisoningChart`, …, `DefenseRequestObfuscationChart`.
+- Interactive: `CustomPolicyChart`, `CTFChart`, `WorldBranchChart`,
+  `StoryModeChart`.
+- Operator: `OperatorScenarioChart`, `OperatorLeaderboardChart`,
+  plus full route at `/operator` (`apps/web/src/pages/Operator.tsx`).
+
+`pno` CLI mirrors the Operator HTTP surface.
+`pna` CLI exposes attacker + sandbox.
+`psh` CLI exposes shell coach lessons including the 8 story tutorials.

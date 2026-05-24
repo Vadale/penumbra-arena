@@ -6,7 +6,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Added
+### Added — Phase 6a + 5 + 6b (2026-05-24)
+
+#### Phase 6a — Cross-pillar EventBus + 5 handler tiers
+- `packages/transport/penumbra_transport/events.py` — synchronous
+  in-process EventBus with subscribe/emit/recent/stats. Per-kind
+  p99 handler latency tracked.
+- Tier 1 — Stats↔Logistics/Market: GARCH spike → ReorderPolicy
+  retune + Market.pricing_regime transition.
+- Tier 2 — Security↔Market/Logistics/FL: `agent.blocked` event
+  routes blocked agents through Market.skip + assign_carriers.skip +
+  FL trainer.zero_delta. New `/security/blocked-agents` endpoint.
+- Tier 3 — DP-budget-aware analytics cadence: ε warning halves
+  GARCH/NumPyro/BERTopic; ε exhaustion enters un-noised fallback
+  + blocks DP-SGD rounds.
+- Tier 4 — ML/RL↔Logistics reward loop: LiveTrainer env reads live
+  orchestrator mempool; `ml.policy.updated` event after each PPO iter.
+- Tier 5 — Chain-as-event-source: block.finalised → Market wallet
+  credits for winners; slashing → FL block_agent. EventGraphChart tile.
+
+#### Phase 5 — Crypto + Surveillance Attack/Defense Lab
+- Tier 1 — 8 new crypto primitives: FROST, SPHINCS+, Verkle,
+  BBS+, threshold ECDSA (GG18), Yao garbled circuits, PSI, Loopix
+  mix-net, STARK verifier (FRI-based).
+- Tier 2 — 6 attack modules in `packages/attacker/penumbra_attacker/attacks/`:
+  agent_fingerprint, trajectory_fingerprint, membership_inference,
+  model_inversion, reward_poisoning, cache_sidechannel.
+- Tier 3 — 6 defenses in new `packages/crypto/penumbra_crypto/defenses/`
+  sub-package: data_poisoning, padding, k_anonymity, l_diversity,
+  GAN (real CycleGAN-style), request_obfuscation.
+- Tier 4 — 4 interactive surfaces:
+  - Custom policy injection (AST-walk sandboxed Python).
+  - CTF mode (`packages/ctf/`, 5 starter challenges + leaderboard).
+  - Jupyter `%penumbra` magics (`packages/notebook/`).
+  - World branching for replay/compare (`world.WorldBranchRegistry`).
+- Tier 5 — 8 cross-pillar story tutorials in `shell_coach/lessons/`:
+  bullwhip-leak, honest-validator, replay-chain, dp-starvation,
+  fl-backdoor, carrier-extortion, mix-net-defense, ctf-speedrun.
+
+#### Phase 6b — Operator Mode / Cyber Range
+- New top-level `packages/operator/` package mirroring `attacker/`.
+- 20 operator actions (8 core + 6 attack + 6 defense) callable via
+  `/operator/{kind}` REST or `pno` CLI.
+- 12 starter YAML scenarios + ScenarioRunner + per-scenario
+  leaderboard (`packages/operator/scenarios/`).
+- Session replay parquet (SessionLogger) with determinism guarantee.
+- React `/operator` route with Console: Status / Action Builder /
+  Log / Score Card.
+- `pno` CLI mirroring the HTTP surface.
+
+#### Security audit follow-up (6 LOW findings closed)
+- Groth16 G2 subgroup membership check.
+- Chain finality threshold can be stake-weighted.
+- Atomic `tmp+rename` writes for secrets/budget files.
+- RDP order grid densified (12 → 60+ orders).
+- Key zeroization helper + applied where secret keys leave scope.
+- VRF + timing-sidechannel: `==` → `hmac.compare_digest`.
+
+### Added — earlier this release
 
 #### Logistics layer (Tier 1 + 2)
 - `packages/core/penumbra_core/logistics.py`: `CargoConstraints`,

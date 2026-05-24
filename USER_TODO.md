@@ -5,8 +5,11 @@
 > Tutte le altre cose tecniche/codice sono già completate al
 > 100% nel repository.
 
-Data: 2026-05-23
-Stato repo: post-Phase-2.5, codice OSS-launch-ready.
+Data: 2026-05-24
+Stato repo: post-Phase-6b (cyber range), v3.0-ready in code.
+~786 backend test + ~30 vitest tutti green; 11 packages; 3 React routes
+(`/`, `/bench`, `/operator`); 3 CLI (`pna`, `psh`, `pno`).
+Tutte le fasi di codice (Phase 5 + 6a + 6b) shipped 2026-05-24.
 
 ---
 
@@ -283,25 +286,22 @@ Continuous (P3):
 - [x] ~~Crypto-auditor retro sign-off~~ (done 2026-05-23, see
       `SECURITY_AUDIT.md`)
 - [ ] arXiv ID propagato nei file
-- [ ] G2 subgroup membership check in Groth16 (`packages/crypto/snark.py:136`)
-- [ ] Stake-weighted finality threshold (`packages/chain/penumbra_chain/consensus.py:148-160`)
-- [ ] Atomic `tmp+rename` writes for secrets/budget files
-- [ ] Denser RDP order grid (Opacus has ~60, we have 12)
-- [ ] Key zeroization where feasible
-- [ ] VRF/timing tighter `compare_digest` comparisons
+- [x] ~~G2 subgroup membership check in Groth16~~ (closed 2026-05-24)
+- [x] ~~Stake-weighted finality threshold~~ (closed 2026-05-24)
+- [x] ~~Atomic `tmp+rename` writes for secrets/budget files~~ (closed 2026-05-24)
+- [x] ~~Denser RDP order grid~~ (closed 2026-05-24, 12 → 60+ orders)
+- [x] ~~Key zeroization where feasible~~ (closed 2026-05-24)
+- [x] ~~VRF/timing tighter `compare_digest` comparisons~~ (closed 2026-05-24)
 - [ ] Wesolowski VDF Miller-Rabin with random witnesses
 
 Post-launch v2.0 / v3.0 planning (gates: 500+ stars OR 10+ bench
 submissions; vedi i 3 doc):
-- [ ] Phase 5 — CRYPTO_ATTACK_DEFENSE_PLAN.md (interactive crypto
-      lab + STARK/Verkle/FROST/SPHINCS+/BBS+/Yao/PSI/Loopix +
-      attack & defense modules + CTF surface + Jupyter bridge)
-- [ ] Phase 6a — INTER_SILO_INTEGRATION_PLAN.md (event bus +
-      bidirectional channels so i pilastri si parlino davvero;
-      ~50h; prereq di 6b)
-- [ ] Phase 6b — OPERATOR_MODE_PLAN.md (cyber range; operator
-      agent + Console UI + `pno` CLI + 12 starter scenarios;
-      ~60h; depends su 6a + Phase 5)
+- [x] ~~Phase 5 — CRYPTO_ATTACK_DEFENSE_PLAN.md~~ (shipped 2026-05-24)
+- [x] ~~Phase 6a — INTER_SILO_INTEGRATION_PLAN.md~~ (shipped 2026-05-24)
+- [x] ~~Phase 6b — OPERATOR_MODE_PLAN.md~~ (shipped 2026-05-24)
+- [ ] 24h definitive stress test (we have only a 10-min smoke; the
+      multi-hour run is required for the "no leak under sustained load"
+      claim in the launch post)
 
 ---
 

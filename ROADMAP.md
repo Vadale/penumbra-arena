@@ -253,17 +253,22 @@ description + live interaction.
 - Sinkhorn divide-by-zero + ripser cols>rows warning suppressed at
   call site (cosmetic but log-spamming).
 
-## Test + tag counts (current — post-Phase-2.5/3/4)
+## Test + tag counts (current — post-Phase-6b)
 
 - **40+ tags** on GitHub, every one a runnable repo state.
-- **60+ commits**.
-- **444+ backend tests** + **24 vitest** = **468+ total**, all green.
+- **75+ commits**.
+- **~786 backend tests** + **~30 vitest** = **800+ total**, all green.
 - **CI**: green (Python + Web workflows in `.github/workflows/ci.yml`).
-- **~75 dashboard chart tiles** (52 pre-Phase-2.5 + 7 logistics + 1 FL +
-  Bench leaderboard page).
+- **~98 dashboard chart tiles** (was ~57 pre-Phase-2.5).
+- **3 React routes**: `/` (dashboard), `/bench` (leaderboard), `/operator`
+  (cyber range Console).
+- **11 packages**: core, crypto, chain, learning, analytics, attacker,
+  shell_coach, transport (base 8) + operator, ctf, notebook (Phase 5+6b).
 - **9 Penumbra-Bench baselines** at tier=tiny (greedy 0.8166 →
   stay-put 0.3025).
 - **4 dataset tiers** generated (mini/standard/large/mega).
+- **12 cyber-range scenarios** + **5 CTF challenges** + **19 shell-coach
+  lessons** (11 base + 8 cross-pillar story tutorials).
 
 ## Phase 2.5 — Logistics + Federated Learning + Benchmark Tier 2-3 (shipped 2026-05-23)
 
@@ -394,43 +399,54 @@ artefact: teaching platform + benchmark + dataset.
   carrier dispatch, bullwhip metric. Originally planned for
   month 4-6 as v1.2; landed pre-launch.
 
-## Phase 5 — Crypto + Surveillance Attack/Defense Lab (planned)
+## Phase 5 — Crypto + Surveillance Attack/Defense Lab (SHIPPED 2026-05-24)
 
-See `CRYPTO_ATTACK_DEFENSE_PLAN.md`. Post-OSS-launch (gate: 500+
-stars OR 10+ bench submissions). ~50-60h across 5 tiers.
+Spec: `CRYPTO_ATTACK_DEFENSE_PLAN.md`. 5 tier across 50+h of agent
+work, shipped in 4 waves.
 
-Adds the cutting-edge-2026 crypto shelf (STARK / Plonky3 / Verkle
-/ FROST / SPHINCS+ / BBS+ / Yao / PSI / Loopix mix-net), plus
-attack modules (membership inference, model inversion, reward
-poisoning, FL backdoor, agent fingerprinting) and defense modules
-(k-anonymity, l-diversity, GAN data poisoning, request padding).
-Interactive surfaces: custom policy injection, capture-the-flag
-mode, Jupyter `%penumbra` magic, replay+branching. Target: v2.0.
+- **Tier 1** — 8 foundation primitives: FROST (threshold Schnorr),
+  SPHINCS+ (hash-based PQ), Verkle (BLS12-381 KZG), BBS+ (anonymous
+  credentials), threshold ECDSA (GG18), Yao garbled circuits, PSI
+  (OPRF-based), Loopix mix-net, STARK verifier (FRI-based).
+- **Tier 2** — 6 attack modules: agent_fingerprint, trajectory_fingerprint,
+  membership_inference (Shokri 2017 shadow-models), model_inversion,
+  reward_poisoning, cache_sidechannel. Each ships with defense docstring.
+- **Tier 3** — 6 defense modules in `packages/crypto/penumbra_crypto/defenses/`:
+  data_poisoning, padding, k_anonymity, l_diversity, GAN, request_obfuscation.
+- **Tier 4** — 4 interactive surfaces: custom Python policy injection
+  (sandbox), CTF mode (5 starter challenges), Jupyter `%penumbra`
+  magics, world branching for replay/compare.
+- **Tier 5** — 8 cross-pillar story tutorials (bullwhip-leak, honest-
+  validator, replay-chain, dp-starvation, fl-backdoor, carrier-extortion,
+  mix-net-defense, ctf-speedrun).
 
 ## Phase 6 — Cyber Range (Operator Mode + Inter-Silo Integration)
 
-Two paired plans, both post-OSS-launch:
+### Phase 6a — Inter-silo deep integration (SHIPPED 2026-05-23)
 
-- **Phase 6a — Inter-silo deep integration**
-  (`INTER_SILO_INTEGRATION_PLAN.md`). ~50h. In-process event bus
-  + bidirectional channels so a market shock propagates through
-  stats → reorder policy → carrier dispatch → MAPPO reward → next
-  tick's actions as ONE causal chain. The 8 packages stop being
-  independent observers and become a connected system. Prereq
-  for 6b; can land standalone.
+Spec: `INTER_SILO_INTEGRATION_PLAN.md`. ~50h, 5 tier.
+In-process EventBus in `transport/events.py` + 5 cross-pillar handler
+tiers: Stats↔Logistics/Market (garch.spike → reorder retune), Security↔
+Market/Logistics/FL (agent.blocked event), DP-budget-aware analytics
+cadence, ML/RL↔Logistics reward loop, Chain↔Market wallet credits.
+End-to-end story: GARCH spike → reorder → dispatch → MAPPO action
+shift propagates through 5 pillars in one tick.
 
-- **Phase 6b — Operator Mode** (`OPERATOR_MODE_PLAN.md`). ~60h.
-  Human-controlled external operator agent (#N+1) with a console
-  UI + `pno` CLI exposing every pillar's primitives as actions.
-  12 starter scenarios in YAML for replayable cyber-range
-  exercises (the "tabletop drill" angle for banks / MPC
-  custodians / privacy ops teams). The asymmetric "1 human vs N
-  AI" design is intentional — this is a lab exercise, not a
-  multiplayer game.
+### Phase 6b — Operator Mode / Cyber Range (SHIPPED 2026-05-24)
 
-Phase 6 turns Penumbra from "OSS teaching + bench + dataset" into
-the OSS counterpart of commercial cyber ranges (Cyberbit /
-Immersive Labs / RangeForce). Target: v3.0; commercialisation
+Spec: `OPERATOR_MODE_PLAN.md`. ~60h, 6 tier.
+- New top-level `packages/operator/` mirror of `attacker/`.
+- Operator agent (id N+1) controllable via `/operator/*` endpoints +
+  `pno` CLI: 20 actions (8 core + 6 attack + 6 defense).
+- 12 starter YAML scenarios spanning 4 difficulty tiers; victory/
+  failure clauses + per-scenario leaderboard.
+- Session replay parquet (state/operator/sessions/) with determinism
+  guarantee + `pno replay <id>` CLI.
+- Operator Console at `/operator` (Status / Action Builder / Log / Score).
+
+Phase 6 turned Penumbra from "OSS teaching + bench + dataset" into
+the OSS counterpart of commercial cyber ranges (Cyberbit / Immersive
+Labs / RangeForce / TryHackMe). Target was v3.0; commercialisation
 window per `OSS_LAUNCH_ROADMAP.md` Phase L4.
 
 Each extension is a fresh news angle that maintains the OSS

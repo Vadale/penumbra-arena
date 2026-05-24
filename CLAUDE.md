@@ -29,27 +29,59 @@ packages/
                  + logistics_or (VRP solvers: greedy / 2-opt / OR-Tools)
                  + logistics_echelon (multi-echelon supplier → distributor → city
                                        w/ bullwhip)
-  crypto/        CKKS, TFHE, DP, PQ (Kyber/Dilithium), BLS, VRF, VDF, Groth16
-  crypto/educational/   from-scratch SMPC + ZK primitives (offline-only)
-  chain/         block, Merkle, PoS-VRF consensus, BLS aggregation, explorer API
+  crypto/        CKKS / TFHE / DP / PQ (Kyber + Dilithium + SPHINCS+) / BLS / VRF
+                 / VDF / Groth16 verifier / STARK verifier (FRI-based)
+                 + FROST (threshold Schnorr) + threshold_ecdsa (GG18)
+                 + Verkle (KZG-based, BLS12-381) + BBS+ (anonymous credentials)
+                 + PSI (private set intersection via OPRF)
+                 + mix_net (Loopix-style onion routing)
+                 + defenses/ sub-package (data_poisoning, padding, k_anonymity,
+                                          l_diversity, gan, request_obfuscation)
+  crypto/educational/   from-scratch SMPC primitives (Shamir / Beaver / Pedersen
+                 / Schnorr / TFHE-LWE / Yao garbled circuits) — offline-only
+  chain/         block, Merkle (level-tagged + zero-leaf pad, CVE-2012-2459 closed),
+                 PoS-VRF consensus, BLS aggregate, slashing, event hooks
   learning/      MAPPO (CleanRL-style) + GATv2 pathfinder
-                 + federated (Tier 1-5: real local SGD + CKKS / Krum / TrimmedMean
-                              aggregation + FedProx + per-client heads + top-k + 8-bit
-                              quantize)
-                 + federated_dp (Rényi DP accountant, Sampled Gaussian Mechanism)
+                 + federated (Tier 1-5: real local per-example DP-SGD with Poisson
+                              subsampling + real CKKS encrypt-sum-decrypt aggregation
+                              + Krum / TrimmedMean + FedProx + per-client heads
+                              + top-k + 8-bit quantize)
+                 + federated_dp (Rényi DP accountant, Sampled Gaussian Mechanism,
+                                 dense 60+ order grid)
                  + logistics_shaper (reward weights: dispatch bonus/penalty,
                                      fill-rate bonus)
                  + supply_gnn (PyG GATv2Conv encoder over supply graph)
   analytics/     descriptive/inferential/econometrics/MC/causal/survival/Bayes/
                  clustering/linalg/topology/transport/topics + dashboard_pipeline
-  attacker/      console + attacks + pna CLI
-  shell_coach/   lessons (YAML) + suggester + explain + error_helper + psh CLI
+                 + DP-budget-aware cadence (Phase 6a Tier 3)
+  attacker/      12 attacks (replay / byzantine / dp_reconstruction / linkability
+                 / timing_sidechannel / snark_forgery + agent_fingerprint
+                 / trajectory_fingerprint / membership_inference / model_inversion
+                 / reward_poisoning / cache_sidechannel) + policy_sandbox
+                 + pna CLI
+  shell_coach/   19 lessons (11 base + 8 cross-pillar story tutorials)
+                 + suggester + explain + error_helper + psh CLI
   transport/     FastAPI + WS + PTY bridge + REPL bridge + orchestrator
                  (drives logistics + multi-echelon + FL ingest + carrier dispatch
-                  every analytics tick)
+                  every analytics tick; owns EventBus for cross-pillar reactions)
+                 + events.py (EventBus + 5 cross-pillar handler tiers wired:
+                              Stats ↔ Logistics/Market; Security ↔ Market/FL;
+                              DP-budget ↔ analytics cadence;
+                              ML/RL ↔ Logistics reward loop;
+                              Chain ↔ Market wallet credits)
+                 + world.py (snapshot / load / branch + advance / compare —
+                             session-replay foundation)
+  operator/      cyber range package: operator agent (id N+1) + 20 actions
+                 (8 core + 6 attack + 6 defense) + scenario engine + 12 starter
+                 YAML scenarios + replay log (parquet) + pno CLI
+  ctf/           Capture-the-flag mode: Challenge registry + 5 starter YAML
+                 challenges + flag templating + per-challenge leaderboard
+  notebook/      `%penumbra` IPython magics (connect / snapshot / %%attack)
+                 for live attach to the running orchestrator from Jupyter
 apps/web/        React + Vite + TS strict + r3f
-                 + Bench page (/bench leaderboard route)
-                 + ~75 dashboard tiles (was ~57 pre-Phase 2.5)
+                 + ~98 dashboard tiles (was ~57 pre-Phase 2.5)
+                 + 3 routes: / (dashboard), /bench (leaderboard), /operator
+                   (Console: Status / Action Builder / Log / Score)
 infra/           docker compose + Dockerfiles
 ```
 
