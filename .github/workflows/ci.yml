@@ -19,8 +19,11 @@ jobs:
           curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
+      # Pin Python 3.13: tenseal 0.3.x only ships cp312/cp313 wheels,
+      # and the runner's homebrew default is now 3.14. uv will download
+      # the matching python-build-standalone if it isn't already.
       - name: Sync workspace
-        run: uv sync --all-packages
+        run: uv sync --all-packages --python 3.13
 
       - name: Ruff check
         run: uv run ruff check packages
