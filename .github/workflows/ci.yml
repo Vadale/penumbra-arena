@@ -15,29 +15,23 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install uv
-        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Sync workspace
-        run: |
-          source $HOME/.local/bin/env
-          uv sync --all-packages
+        run: uv sync --all-packages
 
       - name: Ruff check
-        run: |
-          source $HOME/.local/bin/env
-          uv run ruff check packages
+        run: uv run ruff check packages
 
       - name: Pyright (strict)
-        run: |
-          source $HOME/.local/bin/env
-          uv run pyright packages
+        run: uv run pyright packages
 
       - name: Pytest
         env:
           PENUMBRA_SEED: "42"
-        run: |
-          source $HOME/.local/bin/env
-          uv run pytest packages -k "not slow" -q
+        run: uv run pytest packages -k "not slow" -q
 
   frontend:
     name: TS — typecheck + biome + vitest + build
