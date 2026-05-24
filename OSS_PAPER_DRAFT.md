@@ -70,13 +70,17 @@ Contributions:
 1. A complete, type-strict open-source implementation of an N=50
    privacy-preserving multi-agent system on Apple Silicon (MPS),
    running ~10 Hz tick rate with all pillars active in <8 GB RAM.
-2. A novel "concept tile" dashboard idiom (~57 tiles, each with a
-   live data view + an educational description + an interactive
-   modal) that makes integrated systems probe-able by non-specialists.
-3. Six executable adversarial demos (replay, byzantine equivocation,
-   Dinur-Nissim DP reconstruction, linkability, timing side-channel,
-   SNARK forgery) demonstrating that the underlying primitives'
-   soundness arguments are not just theoretical.
+2. A novel "concept tile" dashboard idiom (99 tiles across 12
+   sections, each with a live data view + an educational
+   description + an interactive modal) that makes integrated
+   systems probe-able by non-specialists.
+3. Twelve executable adversarial demos across 2 tiers — replay,
+   byzantine equivocation, Dinur-Nissim DP reconstruction,
+   linkability, timing side-channel, SNARK forgery, plus
+   agent_fingerprint, trajectory_fingerprint, membership_inference,
+   model_inversion, reward_poisoning, cache_sidechannel — each
+   showing that the underlying primitives' soundness arguments are
+   not just theoretical.
 4. A live PPO training facility that mutates the inference policy of
    the same arena the user is observing, with reward-shaping sliders
    exposed to the human — to our knowledge the first published
@@ -138,7 +142,7 @@ Contributions:
 
 ## 4. The Dashboard as Pedagogical Surface
 
-(57 tiles. Group by pillar. Table 1: every tile + concept it teaches +
+(99 tiles. Group by pillar. Table 1: every tile + concept it teaches +
 endpoint it polls.)
 
 (Subsection 4.1: the click-to-modal idiom. Each modal renders an

@@ -7,8 +7,8 @@
 
 Data: 2026-05-24
 Stato repo: post-Phase-6b (cyber range), v3.0-ready in code.
-832 backend test + ~30 vitest tutti green; 11 packages; 91 tile / 96 chart; 3 React routes
-(`/`, `/bench`, `/operator`); 3 CLI (`pna`, `psh`, `pno`).
+856 backend test + 105 vitest tutti green; 11 packages; 99 tile / 82 chart; 4 React routes
+(`/`, `/bench`, `/operator`, `/config`); 3 CLI (`pna`, `psh`, `pno`).
 Tutte le fasi di codice (Phase 5 + 6a + 6b) shipped 2026-05-24.
 
 ---

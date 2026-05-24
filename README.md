@@ -11,16 +11,17 @@
 > concept tiles), a **benchmark suite** (Penumbra-Bench), and a
 > **synthetic dataset** on Hugging Face Hub (Penumbra-Data).
 
-**Status**: post-Phase-6b + interactive lab. **965+ tests** green
-(~860 backend + 105 frontend), strict typing across the stack,
-~85k LOC across 11 packages. See [`USAGE.md`](USAGE.md) for the
+**Status**: post-Phase-6b + interactive lab. **961 tests** green
+(856 backend + 105 frontend), strict typing across the stack,
+~72k LOC across 11 packages (44k Python + 28k TypeScript). See
+[`USAGE.md`](USAGE.md) for the
 hands-on quickstart, [`ROADMAP.md`](ROADMAP.md) for the build
 history, [`CHANGELOG.md`](CHANGELOG.md) for recent additions,
 [`SECURITY_AUDIT.md`](SECURITY_AUDIT.md) for the crypto/chain/
 attacker audit, and [`USER_TODO.md`](USER_TODO.md) for the
 maintainer checklist before the public launch.
 
-**4 React routes**: `/` (dashboard with 97 clickable tiles / 102
+**4 React routes**: `/` (dashboard with 99 clickable tiles / 82
 chart components — Lab + Achievements + AgentDetail + BranchCompare
 + TimeScrubber + Notifications), `/bench` (Penumbra-Bench
 leaderboard), `/operator` (cyber-range Console with Save & Resume),
@@ -53,14 +54,17 @@ DP-noised aggregates. Every pillar fires on every tick:
   distribution
 - **Blockchain** — local PoS-VRF chain with BLS-aggregated finality,
   mempool, slashing-by-equivocation
-- **Adversarial console** — 6 attacks (`pna` CLI + dashboard chips):
-  replay, byzantine, DP reconstruction, linkability, timing
-  side-channel, SNARK forgery
-- **Shell coach** — 11 curated macOS/Unix lessons (YAML), command
-  explainer, error helper (`psh` CLI + sidebar)
+- **Adversarial console** — 12 attacks across 2 tiers (`pna` CLI +
+  dashboard chips): replay, byzantine, DP reconstruction, linkability,
+  timing side-channel, SNARK forgery + agent_fingerprint,
+  trajectory_fingerprint, membership_inference, model_inversion,
+  reward_poisoning, cache_sidechannel
+- **Shell coach** — 19 lessons (11 base + 8 cross-pillar story
+  tutorials) in YAML, command explainer, error helper (`psh` CLI +
+  sidebar)
 
 Every concept above has a **clickable dashboard tile** that opens an
-educational modal — ~57 tiles in total.
+educational modal — 99 tiles in total.
 
 ## Run
 
@@ -99,7 +103,7 @@ packages/
   learning/     MAPPO (CleanRL-style) + GATv2 + LiveTrainer + RewardWeights
   analytics/    13 streaming consumers + dashboard pipeline orchestrator
   attacker/     6 attacks + pna CLI
-  shell_coach/  11 YAML lessons + suggester + explain + psh CLI
+  shell_coach/  19 YAML lessons (11 base + 8 story) + suggester + explain + psh CLI
   transport/    FastAPI + WebSocket + PTY bridge + REPL bridge + orchestrator
 apps/web/       React 19 + Vite + TS strict + r3f + tailwind v4 + biome
 infra/          docker compose + Dockerfiles
@@ -111,13 +115,13 @@ scripts/        training, memory profile, stress test, post-stress analysis
 
 ```sh
 uv sync                                  # install Python workspace
-uv run pytest -q                         # 302 backend tests
+uv run pytest -q                         # 856 backend tests
 uv run pyright                           # strict
 uv run ruff check . && uv run ruff format --check .
 
 pnpm install                             # install frontend
 pnpm --filter web typecheck              # tsc --noEmit
-pnpm --filter web test                   # 24 vitest
+pnpm --filter web test                   # 105 vitest
 pnpm --filter web build                  # production bundle
 pnpm --filter web exec biome check src   # lint
 ```

@@ -118,11 +118,11 @@ present and good.
 - README hero screenshot present + works on dark mode
 - `LICENSE`, `CONTRIBUTING`, `SECURITY`, `CODE_OF_CONDUCT` all present
 - arXiv preprint live with a stable URL
-- 326 / 326 backend tests + 24 / 24 vitest still passing
+- 856 / 856 backend tests + 105 / 105 vitest still passing
 - All findings from stress test addressed (CRIT closed, WARN logged)
 - `docker compose up` from a fresh clone works end-to-end on a M-series
   Mac
-- Tour overlay reflects current 57-tile reality
+- Tour overlay reflects current 99-tile reality
 
 If any gate fails, the launch slips one week — never compress on
 readiness.

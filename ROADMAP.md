@@ -25,7 +25,7 @@ self-contained entry point for a guided conversation with `@learner`
 | Pillar | Primary packages | Status |
 |---|---|---|
 | Neural networks | `learning/` (MAPPO, GATv2) | done |
-| Cryptography | `crypto/`, `chain/` | done (TFHE deferred) |
+| Cryptography | `crypto/`, `chain/` | done (TFHE-educational shipped Phase 11, full concrete-python deferred) |
 | Statistics & econometrics | `analytics/` | 12 of 13 modules done (topics deferred) |
 | Linear algebra & topology | `analytics/linalg.py`, `analytics/topology.py`, `analytics/transport.py` | done |
 | Adversarial intuition | `attacker/` | done |
@@ -257,9 +257,9 @@ description + live interaction.
 
 - **40+ tags** on GitHub, every one a runnable repo state.
 - **80+ commits**.
-- **~860 backend tests** + **105 vitest** = **965+ total**, all green.
+- **856 backend tests** + **105 vitest** = **961 total**, all green.
 - **CI**: green (Python + Web workflows in `.github/workflows/ci.yml`).
-- **97 clickable dashboard tiles / 102 chart components** (was ~57
+- **99 clickable dashboard tiles / 82 chart components** (was ~57
   pre-Phase-2.5; Lab + Achievements + Notifications + BranchCompare +
   AgentDetail added post-Phase-6b).
 - **4 React routes**: `/` (dashboard), `/bench` (leaderboard),
@@ -267,7 +267,7 @@ description + live interaction.
   editor).
 - **11 packages**: core, crypto, chain, learning, analytics, attacker,
   shell_coach, transport (base 8) + operator, ctf, notebook (Phase 5+6b).
-- **9 Penumbra-Bench baselines** at tier=tiny (greedy 0.8166 →
+- **5 Penumbra-Bench baselines** at tier=tiny (greedy 0.8166 →
   stay-put 0.3025).
 - **4 dataset tiers** generated (mini/standard/large/mega).
 - **12 cyber-range scenarios** + **5 CTF challenges** + **19 shell-coach

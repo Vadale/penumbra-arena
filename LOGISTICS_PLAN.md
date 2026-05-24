@@ -32,7 +32,7 @@ Adding these turns Penumbra into a unique pedagogical artefact: a
 simulation lab where the same 50 agents teach **crypto** AND **supply
 chain** without changing the runtime.
 
-The strategic value (see `MEMORY.md`/`project_penumbra_business_direction.md`):
+The strategic value:
 - Doubles the addressable audience (SCM managers, OR researchers,
   industrial engineers, treasury teams) for both Edu B2B and OSS routes.
 - Almost no hands-on supply chain simulations exist in OSS (SimPy too

@@ -137,10 +137,11 @@ packages/
   notebook/      `%penumbra` IPython magics (connect / snapshot / %%attack)
                  for live attach to the running orchestrator from Jupyter
 apps/web/        React + Vite + TS strict + r3f
-                 + 91 clickable tiles / 96 chart components
+                 + 99 clickable tiles / 82 chart components
                    (was ~57 pre-Phase 2.5)
-                 + 3 routes: / (dashboard), /bench (leaderboard), /operator
-                   (Console: Status / Action Builder / Log / Score)
+                 + 4 routes: / (dashboard), /bench (leaderboard), /operator
+                   (Console: Status / Action Builder / Log / Score), /config
+                   (live runtime configuration)
 infra/           docker compose + Dockerfiles
 ```
 

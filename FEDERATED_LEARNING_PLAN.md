@@ -8,9 +8,14 @@ learning needs to be demonstrated end-to-end — multi-agent identity
 with budget accounting, and Byzantine-fault-tolerant aggregation
 (BLS / slashing primitives we already ship).
 
-**Status**: planning, deferred to post-OSS-launch (per
-[`OSS_LAUNCH_ROADMAP.md`](OSS_LAUNCH_ROADMAP.md) Phase L4 — month
-4-6 release as v1.2 news angle).
+**Status**: **SHIPPED 2026-05-24** (Tier 1-5 — real local SGD with
+per-example DP-SGD clipping, real CKKS encrypted aggregation,
+Krum / TrimmedMean Byzantine-robust aggregators, FedProx, per-client
+heads, top-k + 8-bit quantization). See [`CHANGELOG.md`](CHANGELOG.md)
+"Federated learning (Tier 1 + 2 + 4)" section and `packages/learning/
+penumbra_learning/federated*.py` for the implementation. This
+document is the original specification; final implementation may
+differ in detail from what's described below.
 
 Sister documents:
 - [`LOGISTICS_PLAN.md`](LOGISTICS_PLAN.md) — companion extension
