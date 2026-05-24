@@ -32,21 +32,22 @@ from typing import Final
 
 import numpy as np
 
-# Standard RDP order grid used by TF-Privacy / Opacus. Covers the
-# region where the sampled-Gaussian RDP curve is smallest.
+# Standard RDP order grid used by TF-Privacy / Opacus.
+#
+# Crypto-audit closure: the original 12-order grid produced a slightly
+# loose (conservative) ε bound because the RDP→DP minimisation only
+# saw a sparse sampling of α candidates. The new grid matches Opacus's
+# reference (`DEFAULT_ALPHAS`):
+#   - fractional fine grain α ∈ {1.2, 1.3, …, 6.9}      (58 orders)
+#   - integer mid-range α ∈ {7, 8, …, 63}               (57 orders)
+#   - large-α tail anchors α ∈ {64, 128, 256}            (3 orders)
+# Letting the RDP→DP minimisation see the full range guarantees the
+# optimum α lives inside the grid for typical DP-SGD regimes (σ ~ 1,
+# q ~ 10⁻², T ~ 10³, δ = 10⁻⁵), where the analytic optimum is α ≈ 8.
 _DEFAULT_ORDERS: Final[tuple[float, ...]] = (
-    1.5,
-    1.75,
-    2.0,
-    2.5,
-    3.0,
-    4.0,
-    5.0,
-    6.0,
-    8.0,
-    16.0,
-    32.0,
-    64.0,
+    tuple(1 + i * 0.1 for i in range(2, 60))
+    + tuple(float(i) for i in range(7, 64))
+    + (64.0, 128.0, 256.0)
 )
 
 

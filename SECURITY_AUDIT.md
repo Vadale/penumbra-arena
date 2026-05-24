@@ -78,8 +78,14 @@ ones.
   blocks production-grade use.
   - Fix: thresh against stake-weighted original validator set OR
     slow-moving committee.
-  - Status: documented in `USER_TODO.md` (P3); not a blocker for
-    educational OSS launch.
+  - Status: **FIXED 2026-05-24** [x] — `finalise()` now accepts an
+    optional `validator_stakes: dict[bytes, int]` (+ `total_stake`)
+    parameter. When supplied, the quorum is `ceil(2/3 · ORIGINAL
+    total_stake)` measured against the sum of stakes of validators
+    whose sigs verified, so slashing honest nodes can't lower the
+    bar. Legacy count-mode is preserved when `validator_stakes is
+    None`. Regression-pinned by
+    `test_finality_stake_weighted_unchanged_by_slashing_an_honest_validator`.
 
 ### LOW-MED
 
@@ -90,13 +96,21 @@ ones.
   Practically the pairing equation still constrains the forger,
   but the security reduction is weakened.
   - Fix: add Wu et al. 2022 cofactor multiplication subgroup check.
-  - Status: documented; not in fix-in-flight.
+  - Status: **FIXED 2026-05-24** [x] — `_is_valid_g2` now verifies
+    `multiply(P, CURVE_ORDER) is None` after the twist-equation
+    check, rejecting any point outside the prime-order subgroup.
+    Regression-pinned by `test_verify_rejects_non_subgroup_g2_point`
+    (uses a deterministic non-subgroup point at x=FQ2([1,0])).
 
 ### LOW
 
 - **VRF verify uses `==`** instead of `hmac.compare_digest`
   (`packages/crypto/vrf.py:125`). β is public in Penumbra so the
   side-channel matters only if the VRF is repurposed.
+  - Status: **FIXED 2026-05-24** [x] — `vrf.verify` now compares β
+    via `hmac.compare_digest`, eliminating the first-mismatching-
+    byte timing oracle for any downstream repurposing of the VRF
+    where β is treated as secret.
 - **Wesolowski VDF Miller-Rabin uses deterministic small-prime
   witnesses** — adversarial inputs could construct strong-
   pseudoprimes against the fixed witnesses. The prime is public
@@ -107,14 +121,35 @@ ones.
   constant-time and observed t ≈ 0.12, but the loose threshold
   would silently pass a real leak.
   - Fix: tighten to |t| < 5.
+  - Status: **FIXED 2026-05-24** [x] — module doctest tightened to
+    `|t| < 5`; `tests/test_attacker.py::test_timing_sidechannel_constant_time`
+    threshold tightened from `< 100` to `< 5` so a real leak
+    presenting as |t| ≫ 2 will no longer slip past CI.
 - **CKKS context recreated per round in FL trainer** — minor perf
   cost, no security implication. Cache on the trainer instance.
 - **No key zeroization anywhere.** Python `bytes` are immutable;
   partial mitigation only via `bytearray`. Acceptable for
   educational scope.
+  - Status: **FIXED 2026-05-24** [x] — `bls.wipe(key)` helper added
+    (zeroes a `bytearray` in place, no-ops + logs on immutable
+    `bytes`). `bls.keygen`/`bls.sign`/`bls.prove_possession` and
+    `pq.kem_decapsulate`/`pq.sign` now route secret-key material
+    through transient bytearrays wiped in `finally:` clauses, so
+    the secret does not linger in Python's heap beyond the
+    underlying primitive's call. Regression-pinned by
+    `test_wipe_zeroes_bytearray` + `test_wipe_on_bytes_is_noop_and_does_not_raise`.
 - **Persistence writes have no atomic `tmp+rename`** — crash
   mid-write leaves half-written secrets file. `crypto_persistence.py:48`,
   `persistence.py:131`.
+  - Status: **FIXED 2026-05-24** [x] — both
+    `crypto_persistence._atomic_owner_only_write` and
+    `chain.persistence._atomic_owner_only_write` now write to
+    `path.tmp` with mode 0o600, `fsync`, then `os.replace` onto the
+    destination — POSIX guarantees the rename is atomic, so a crash
+    leaves the OLD blob intact rather than a truncated one.
+    `save_dp_budget` switched to the same primitive via
+    `_atomic_write_text`. Regression-pinned by
+    `test_atomic_write_preserves_original_on_mid_write_crash`.
 - **DP-SGD uses with-replacement sampling** [x] FIXED — was
   `torch.randint(0, n, ...)`. RDP-SGM analysis assumes Poisson
   subsampling (Bernoulli inclusion per example). Replaced with
@@ -122,6 +157,12 @@ ones.
   empty batches are skipped by `_train_local_actor`.
 - **RDP order grid sparse** — uses 12 orders; Opacus uses ~60.
   Result is slightly looser (conservative) ε bound.
+  - Status: **FIXED 2026-05-24** [x] — `_DEFAULT_ORDERS` now
+    spans 58 dense orders (α = 1.2, 1.3, …, 6.9) plus three large-α
+    anchors (64, 128, 256), matching Opacus's reference grid. The
+    canonical scenario (σ=1.1, q=0.01, T=1000, δ=1e-5) now yields a
+    strictly smaller ε than the legacy 12-order grid; pinned by
+    `test_default_grid_is_denser_than_sparse_baseline`.
 
 ## Cross-cutting OK
 
@@ -151,11 +192,13 @@ CVE-2012-2459.
 ## Production blockers (must fix before claiming "SAFE-FOR-PRODUCTION")
 
 1. Per-example DP-SGD clipping (MED-HIGH) [x] FIXED
-2. Merkle leaf-duplication malleability (MED)
-3. CSPRNG for DP noise (MED)
-4. G2 subgroup membership check (LOW-MED)
-5. Stake-weighted finality threshold (MED)
-6. Atomic `tmp+rename` writes (LOW)
+2. Merkle leaf-duplication malleability (MED) [x] FIXED
+3. CSPRNG for DP noise (MED) [x] FIXED
+4. G2 subgroup membership check (LOW-MED) [x] FIXED 2026-05-24
+5. Stake-weighted finality threshold (MED) [x] FIXED 2026-05-24
+6. Atomic `tmp+rename` writes (LOW) [x] FIXED 2026-05-24
 7. Poisson subsampling for DP-SGD (LOW) [x] FIXED
-8. Denser RDP order grid (LOW)
-9. Key zeroization where feasible (LOW)
+8. Denser RDP order grid (LOW) [x] FIXED 2026-05-24
+9. Key zeroization where feasible (LOW) [x] FIXED 2026-05-24
+10. VRF constant-time `compare_digest` (LOW) [x] FIXED 2026-05-24
+11. Timing side-channel attack threshold (LOW) [x] FIXED 2026-05-24

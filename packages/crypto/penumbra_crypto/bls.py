@@ -30,6 +30,7 @@ References
 
 from __future__ import annotations
 
+import logging
 import secrets
 from dataclasses import dataclass
 from typing import Final, cast
@@ -39,6 +40,33 @@ from py_ecc.bls.ciphersuites import G2ProofOfPossession as _bls  # noqa: N813
 
 PUBLIC_KEY_BYTES: Final[int] = 48
 SIGNATURE_BYTES: Final[int] = 96
+
+_logger = logging.getLogger(__name__)
+
+
+def wipe(key: bytes | bytearray) -> None:
+    """Best-effort zeroization of a secret-key buffer.
+
+    Crypto-audit closure: Python's ``bytes`` is immutable, so once an
+    object is created its memory cannot be overwritten in place — the
+    most an interpreter-level helper can do is overwrite a ``bytearray``
+    backing buffer and log a no-op warning for the immutable case. This
+    helper exists so callers ALWAYS reach for the same wipe primitive
+    instead of inlining whichever subset they remember.
+
+    Behaviour
+    ---------
+    - ``bytearray``: every byte set to 0 via slice-assignment.
+    - ``bytes``: a no-op + a debug log; documented limitation. A real
+      deployment would store secrets in a ``mlocked`` buffer wrapped in
+      a ``ctypes``-backed bytearray or, better, never let secret bytes
+      land in a Python object at all (Rust/Go workers, HSM).
+    """
+    if isinstance(key, bytearray):
+        for i in range(len(key)):
+            key[i] = 0
+        return
+    _logger.debug("wipe(bytes) is a no-op: Python's immutable bytes cannot be zeroized in place")
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,19 +82,35 @@ class BLSKeypair:
 
 
 def keygen() -> BLSKeypair:
-    """Generate a fresh BLS keypair from 32 bytes of CSPRNG entropy."""
-    # IETF BLS KeyGen expects "input key material" of at least 32 bytes.
-    ikm = secrets.token_bytes(32)
-    sk_int = _bls.KeyGen(ikm)
-    sk_bytes = sk_int.to_bytes(32, "big")
-    pk = _bls.SkToPk(sk_int)
-    return BLSKeypair(secret_key=sk_bytes, public_key=pk)
+    """Generate a fresh BLS keypair from 32 bytes of CSPRNG entropy.
+
+    Crypto-audit closure: the IKM bytearray that seeds the IETF KeyGen
+    is wiped before the function returns; only the final ``sk_bytes``
+    (which must escape into the returned dataclass) survives.
+    """
+    ikm = bytearray(secrets.token_bytes(32))
+    try:
+        sk_int = _bls.KeyGen(bytes(ikm))
+        sk_bytes = sk_int.to_bytes(32, "big")
+        pk = _bls.SkToPk(sk_int)
+        return BLSKeypair(secret_key=sk_bytes, public_key=pk)
+    finally:
+        wipe(ikm)
 
 
 def sign(secret_key: bytes, message: bytes) -> bytes:
-    """Produce a 96-byte BLS signature on `message`."""
-    sk_int = int.from_bytes(secret_key, "big")
-    return _bls.Sign(sk_int, message)
+    """Produce a 96-byte BLS signature on `message`.
+
+    Crypto-audit closure: any local bytearray copy of the secret key is
+    wiped before this function returns so the secret does not linger in
+    Python's heap longer than the underlying signing primitive needs.
+    """
+    sk_buffer = bytearray(secret_key)
+    try:
+        sk_int = int.from_bytes(sk_buffer, "big")
+        return _bls.Sign(sk_int, message)
+    finally:
+        wipe(sk_buffer)
 
 
 def verify(public_key: bytes, message: bytes, signature: bytes) -> bool:
@@ -125,8 +169,12 @@ def prove_possession(secret_key: bytes) -> bytes:
     pubkey — so a rogue-key adversary cannot just borrow other parties'
     PoPs to register a synthetic pubkey.
     """
-    sk_int = int.from_bytes(secret_key, "big")
-    return _bls.PopProve(sk_int)
+    sk_buffer = bytearray(secret_key)
+    try:
+        sk_int = int.from_bytes(sk_buffer, "big")
+        return _bls.PopProve(sk_int)
+    finally:
+        wipe(sk_buffer)
 
 
 def verify_possession(public_key: bytes, pop: bytes) -> bool:

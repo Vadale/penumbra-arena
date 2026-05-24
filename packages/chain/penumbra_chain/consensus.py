@@ -144,36 +144,81 @@ def finalise(
     quorum_numerator: int = 2,
     quorum_denominator: int = 3,
     total_validators: int | None = None,
+    validator_stakes: dict[bytes, int] | None = None,
+    total_stake: int | None = None,
 ) -> tuple[tuple[bytes, ...], bytes] | None:
-    """Aggregate ≥ ⌈2/3 N⌉ valid signatures into one. Returns (pks, agg) or None.
+    """Aggregate ≥ ⌈2/3 quorum⌉ valid signatures into one. Returns (pks, agg) or None.
 
     Every validator signs the canonical payload (domain-tag || height ||
     block_hash); we use BLS FastAggregateVerify against the aggregate
     public-key set. The returned list of pubkeys becomes part of the
     block's finality bundle.
+
+    Two quorum modes:
+
+    - **Count-weighted (legacy).** When ``validator_stakes`` is None we
+      threshold against ``ceil(2/3 · n)`` where ``n`` is
+      ``total_validators`` (or the count of submitted sigs). Backwards
+      compatible with existing callers.
+    - **Stake-weighted (crypto-audit closure).** When
+      ``validator_stakes`` is provided (a ``{pubkey: stake}`` mapping
+      over the ORIGINAL — pre-slash — validator set), the threshold is
+      ``ceil(2/3 · total_stake)`` computed against the ORIGINAL total
+      stake, and the achieved weight is the sum of stakes of validators
+      whose signatures verified. ``total_stake`` defaults to
+      ``sum(validator_stakes.values())``. This closes the attack where a
+      proposer slashes honest nodes to artificially lower the
+      post-slash count-based threshold.
     """
+    message = canonical_block_sign_payload(block_hash, height)
+
+    if validator_stakes is not None:
+        if total_stake is None:
+            total_stake = sum(validator_stakes.values())
+        if total_stake <= 0:
+            return None
+        threshold_stake = -(-quorum_numerator * total_stake // quorum_denominator)
+        valid: list[tuple[bytes, bytes]] = []
+        achieved = 0
+        for pubkey, sig in validator_signatures:
+            if bls.verify(pubkey, message, sig):
+                valid.append((pubkey, sig))
+                achieved += validator_stakes.get(pubkey, 0)
+        if achieved < threshold_stake:
+            logger.warning(
+                "stake-weighted finality failed: stake=%d vs threshold=%d (total_original_stake=%d)",
+                achieved,
+                threshold_stake,
+                total_stake,
+            )
+            return None
+        pks = tuple(pk for pk, _ in valid)
+        aggregate = bls.aggregate_signatures([s for _, s in valid])
+        if not bls.fast_aggregate_verify(list(pks), message, aggregate):
+            return None
+        return pks, aggregate
+
     n = total_validators if total_validators is not None else len(validator_signatures)
     if n <= 0:
         # No validators ⇒ no quorum possible. Refuse rather than divide
         # by zero or admit an "everyone-signed" block from nobody.
         return None
     threshold = -(-quorum_numerator * n // quorum_denominator)  # ceil(n*2/3)
-    message = canonical_block_sign_payload(block_hash, height)
 
-    valid: list[tuple[bytes, bytes]] = []
+    valid_count: list[tuple[bytes, bytes]] = []
     for pubkey, sig in validator_signatures:
         if bls.verify(pubkey, message, sig):
-            valid.append((pubkey, sig))
-    if len(valid) < threshold:
+            valid_count.append((pubkey, sig))
+    if len(valid_count) < threshold:
         logger.warning(
             "aggregate finality failed: %d valid sigs vs %d threshold (n=%d)",
-            len(valid),
+            len(valid_count),
             threshold,
             n,
         )
         return None
-    pks = tuple(pk for pk, _ in valid)
-    aggregate = bls.aggregate_signatures([s for _, s in valid])
+    pks = tuple(pk for pk, _ in valid_count)
+    aggregate = bls.aggregate_signatures([s for _, s in valid_count])
     if not bls.fast_aggregate_verify(list(pks), message, aggregate):
         return None
     return pks, aggregate

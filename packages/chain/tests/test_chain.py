@@ -149,6 +149,43 @@ def test_finality_requires_two_thirds() -> None:
     assert result is not None
 
 
+def test_finality_stake_weighted_unchanged_by_slashing_an_honest_validator() -> None:
+    """Crypto-audit closure: stake-weighted threshold pegs to ORIGINAL stake.
+
+    Scenario: 4 validators with equal stake (=1 each); attacker slashes
+    one honest validator. Under the old count-weighted scheme the
+    post-slash threshold drops from ceil(2/3·4)=3 to ceil(2/3·3)=2,
+    letting the attacker dominate quorum. Under stake-weighted finality
+    the threshold stays pinned to ceil(2/3·4)=3 of the ORIGINAL stake
+    so the attacker can't shrink the bar by removing honest nodes.
+    """
+    validators = []
+    secrets = []
+    for _ in range(4):
+        ident, secret = keygen()
+        validators.append(ident)
+        secrets.append(secret)
+    block_hash = hashlib.sha256(b"slashing-attack-block").digest()
+    height = 12
+    stakes = {v.bls_pubkey: 1 for v in validators}
+
+    # Honest case: all 4 sign — passes both thresholds.
+    sigs_all = [
+        (v.bls_pubkey, sign_block_hash(s, block_hash, height))
+        for v, s in zip(validators, secrets, strict=True)
+    ]
+    assert finalise(block_hash, height, sigs_all, validator_stakes=stakes) is not None
+
+    # Attacker slashes one honest validator → only 3 remain in the
+    # post-slash active set; among those, only 2 sign.
+    # In count-mode that's ceil(2/3·3) = 2 → admits the block. The
+    # stake-weighted threshold is still ceil(2/3·4) = 3 of original
+    # stake — so 2 signers (weight=2) is BELOW threshold.
+    sigs_two = sigs_all[:2]
+    assert finalise(block_hash, height, sigs_two, total_validators=3) is not None
+    assert finalise(block_hash, height, sigs_two, validator_stakes=stakes) is None
+
+
 def test_finality_rejects_invalid_signature() -> None:
     validators = []
     secrets = []

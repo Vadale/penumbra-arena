@@ -74,3 +74,39 @@ def test_save_ckks_context_rejects_non_tenseal_backend() -> None:
 def test_load_dp_budget_missing_raises() -> None:
     with tempfile.TemporaryDirectory() as tmpdir, pytest.raises(FileNotFoundError):
         load_dp_budget(Path(tmpdir) / "missing.json")
+
+
+def test_atomic_write_preserves_original_on_mid_write_crash(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Crypto-audit closure: a crash between tmp-write and rename must
+    leave the destination file untouched.
+
+    We simulate the crash by monkeypatching ``os.replace`` (the last step
+    of the atomic write) to raise. A successful first write seeds the
+    file; the second write fails mid-flight; the file must still hold
+    the FIRST payload, never a truncation."""
+    import os
+
+    from penumbra_crypto.crypto_persistence import _atomic_write_text
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "dp_budget.json"
+
+        first = '{"epsilon": 1.0, "delta": 1e-5, "epsilon_spent": 0.0, "delta_spent": 0.0}'
+        _atomic_write_text(path, first)
+        assert path.read_text() == first
+
+        real_replace = os.replace
+
+        def crashing_replace(*_args: object, **_kwargs: object) -> None:
+            raise OSError("simulated crash between write and rename")
+
+        monkeypatch.setattr(os, "replace", crashing_replace)
+        with pytest.raises(OSError, match="simulated crash"):
+            _atomic_write_text(path, '{"corrupted": "payload"}')
+
+        # The destination still holds the original payload — the .tmp
+        # may exist, but `path` itself is untouched.
+        monkeypatch.setattr(os, "replace", real_replace)
+        assert path.read_text() == first

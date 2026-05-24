@@ -114,3 +114,31 @@ def test_verify_rejects_wrong_public_input_count() -> None:
     vk, proof, _public = _build_synthetic_vk_and_proof()
     # vk has 1 IC entry → expects 0 public inputs.
     assert not verify(vk, proof, [1])
+
+
+def test_verify_rejects_non_subgroup_g2_point() -> None:
+    """Wu et al. 2022 cofactor multiplication subgroup check.
+
+    Crypto-audit closure: a G2 point that lies on the twist curve but
+    *outside* the prime-order subgroup must be rejected by `_is_valid_g2`.
+    The point below was found by brute-forcing the smallest x ∈ FQ2 for
+    which (x, y) satisfies the twist equation; the corresponding point
+    has order > curve_order, so `multiply(P, curve_order) is not None`.
+    """
+    from py_ecc.bn128 import multiply as _multiply
+    from py_ecc.bn128.bn128_curve import FQ2, b2, curve_order, is_on_curve
+
+    bad_x = FQ2([1, 0])
+    bad_y = FQ2(
+        [
+            18278151005453108793778860132295291098363647455926340152056652516292830556603,
+            5912654199736721486680175016176231956195085055698687135131307249486702594212,
+        ]
+    )
+    bad_point = (bad_x, bad_y)
+    assert is_on_curve(bad_point, b2), "fixture must be on the twist"
+    assert _multiply(bad_point, curve_order) is not None, "fixture must be outside subgroup"
+
+    vk, proof, public = _build_synthetic_vk_and_proof()
+    forged = Proof(a=proof.a, b=bad_point, c=proof.c)
+    assert not verify(vk, forged, public)

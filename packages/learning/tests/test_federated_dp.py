@@ -98,6 +98,31 @@ def test_accountant_rejects_bad_delta() -> None:
         acc.epsilon(target_delta=1.0)
 
 
+def test_default_grid_is_denser_than_sparse_baseline() -> None:
+    """Crypto-audit closure: denser α grid yields a tighter ε bound.
+
+    Canonical DP-SGD scenario: σ=1.1, q=0.01, T=1000, δ=1e-5. The
+    Opacus-style ~60-order grid finds an α closer to the analytic
+    optimum than the legacy 12-order grid, so ε(δ) shrinks.
+    """
+    sparse_orders = [1.5, 1.75, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0, 16.0, 32.0, 64.0]
+    sigma, q, target_delta, steps = 1.1, 0.01, 1e-5, 1000
+
+    acc_sparse = RDPAccountant(orders=list(sparse_orders))
+    acc_dense = RDPAccountant()  # default = new dense grid
+    for _ in range(steps):
+        acc_sparse.step(noise_multiplier=sigma, sample_rate=q)
+        acc_dense.step(noise_multiplier=sigma, sample_rate=q)
+
+    eps_sparse = acc_sparse.epsilon(target_delta=target_delta)
+    eps_dense = acc_dense.epsilon(target_delta=target_delta)
+    assert (
+        eps_dense < eps_sparse
+    ), f"dense grid should be tighter: dense={eps_dense:.4f} sparse={eps_sparse:.4f}"
+    # Dense grid is at least ~60 orders.
+    assert len(acc_dense.orders) >= 60
+
+
 def test_accountant_report_returns_curve() -> None:
     acc = RDPAccountant()
     for _ in range(5):

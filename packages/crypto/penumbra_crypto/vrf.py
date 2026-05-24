@@ -30,6 +30,7 @@ References
 from __future__ import annotations
 
 import hashlib
+import hmac
 import secrets
 from dataclasses import dataclass
 
@@ -122,7 +123,11 @@ def verify(public_key: int, alpha: bytes, output: VRFOutput) -> bool:
         return False
 
     expected_beta = hashlib.sha256(b"penumbra-vrf-out:" + gamma.to_bytes(256, "big")).digest()
-    return expected_beta == output.beta
+    # Crypto-audit closure: constant-time compare. β is public in
+    # Penumbra's leader-election path, but the VRF module is general-
+    # purpose — anyone who repurposes it for a secret β would otherwise
+    # leak a timing oracle on the first mismatching byte.
+    return hmac.compare_digest(expected_beta, output.beta)
 
 
 def _challenge(alpha: bytes, h_alpha: int, gamma: int, u: int, v: int) -> int:

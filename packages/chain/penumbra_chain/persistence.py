@@ -129,13 +129,24 @@ def _write_secrets(snapshot: NodeSnapshot, path: Path) -> None:
 
 
 def _atomic_owner_only_write(path: Path, data: bytes) -> None:
-    """Open with O_CREAT|O_TRUNC|O_WRONLY and mode 0o600, then write."""
+    """Crash-safe owner-only write: tmp + fsync + rename onto ``path``.
+
+    Crypto-audit closure (LOW: persistence torn-write): write to
+    ``path.tmp`` with mode 0o600, ``fsync`` to flush the descriptor to
+    stable storage, then ``os.replace`` onto the final path — the rename
+    is atomic on the same filesystem, so a crash mid-write leaves the
+    OLD secrets blob intact rather than a half-written truncation that
+    could decode to an empty validator-secret list.
+    """
+    tmp = path.with_suffix(path.suffix + ".tmp")
     flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
-    fd = os.open(str(path), flags, 0o600)
+    fd = os.open(str(tmp), flags, 0o600)
     try:
         os.write(fd, data)
+        os.fsync(fd)
     finally:
         os.close(fd)
+    os.replace(str(tmp), str(path))
 
 
 def _read_secrets(path: Path) -> tuple[ValidatorSecret, ...]:

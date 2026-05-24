@@ -134,8 +134,19 @@ def _is_valid_g1(point: G1Point) -> bool:
 
 
 def _is_valid_g2(point: G2Point) -> bool:
+    """Validate a G2 point: twist-curve equation AND prime-order subgroup.
+
+    Crypto-audit closure: previously this only verified the twist curve
+    equation. The BN128 G2 cofactor is ~10^76, so a small-subgroup
+    attacker could craft a point that lies on the twist but outside the
+    prime-order subgroup, weakening the Groth16 security reduction.
+    The fix follows Wu et al. 2022 — multiply by the curve order; the
+    result must be the identity at infinity for genuine subgroup points.
+    """
     try:
-        return is_on_curve(point, b2)
+        if not is_on_curve(point, b2):
+            return False
+        return multiply(point, CURVE_ORDER) is None
     except Exception:
         return False
 

@@ -27,7 +27,11 @@ Try it
 >>> from penumbra_attacker.attacks import timing_sidechannel
 >>> result = timing_sidechannel.demo(n_samples=20)
 >>> # On a constant-time implementation, the t-statistic should be small.
->>> abs(result.welch_t_statistic) < 50
+>>> # Crypto-audit closure: threshold tightened from |t| < 50 to |t| < 5
+>>> # so a real leak (Welch's t at standard α=0.05 ≈ 2) won't slip past
+>>> # the doctest. Penumbra's TenSEAL backend is constant-time and
+>>> # observed t ≈ 0.12 on M4 hardware, well below the new ceiling.
+>>> abs(result.welch_t_statistic) < 5
 True
 """
 

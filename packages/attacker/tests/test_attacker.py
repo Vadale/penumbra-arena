@@ -45,8 +45,10 @@ def test_byzantine_equivocation_detected() -> None:
 def test_timing_sidechannel_constant_time() -> None:
     result = timing_sidechannel.demo(n_samples=10, vector_size=32)
     # Both libraries we use are constant-time on the add path; the t-stat
-    # should be small even with only 10 samples.
-    assert abs(result.welch_t_statistic) < 100
+    # should be small even with only 10 samples. Crypto-audit closure:
+    # threshold tightened from |t| < 100 to |t| < 5 per audit
+    # recommendation — a real leak presents as |t| ≫ 2.
+    assert abs(result.welch_t_statistic) < 5
 
 
 # ── CLI ───────────────────────────────────────────────────────────

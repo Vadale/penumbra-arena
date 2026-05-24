@@ -78,6 +78,20 @@ def test_bls_key_sizes_match_spec() -> None:
     assert len(sig) == bls.SIGNATURE_BYTES
 
 
+def test_wipe_zeroes_bytearray() -> None:
+    """Crypto-audit closure: a mutable bytearray is fully zeroed in place."""
+    secret = bytearray(b"\x01\x02\x03\x04\x05\x06\x07\x08")
+    bls.wipe(secret)
+    assert bytes(secret) == b"\x00" * 8
+
+
+def test_wipe_on_bytes_is_noop_and_does_not_raise() -> None:
+    """``wipe(bytes)`` documents the limitation but must not error."""
+    immutable = b"\xde\xad\xbe\xef"
+    bls.wipe(immutable)
+    assert immutable == b"\xde\xad\xbe\xef"
+
+
 # ── VRF ───────────────────────────────────────────────────────────
 
 

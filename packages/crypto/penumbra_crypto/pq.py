@@ -53,6 +53,8 @@ from pqcrypto.sign.ml_dsa_65 import (
     verify as _sig_verify,
 )
 
+from penumbra_crypto.bls import wipe
+
 
 @dataclass(frozen=True, slots=True)
 class KEMKeypair:
@@ -106,8 +108,19 @@ def kem_decapsulate(secret_key: bytes, ciphertext: bytes) -> bytes:
     32-byte string rather than raising. Callers must therefore include
     an authenticated transcript or compare-and-MAC the shared secret
     before treating decapsulation as success.
+
+    Crypto-audit closure: a transient bytearray copy of the secret key
+    is wiped before this function returns. The caller's original
+    ``secret_key`` bytes object is immutable and unaffected; deeper
+    zeroization would require the underlying ``pqcrypto`` C buffer to
+    be locked + scrubbed, which is out of scope for the educational
+    stack.
     """
-    return _kem_decapsulate(secret_key, ciphertext)
+    sk_buffer = bytearray(secret_key)
+    try:
+        return _kem_decapsulate(bytes(sk_buffer), ciphertext)
+    finally:
+        wipe(sk_buffer)
 
 
 # ── ML-DSA-65 (Dilithium-3) ───────────────────────────────────────
@@ -124,8 +137,15 @@ def sign(secret_key: bytes, message: bytes) -> bytes:
 
     `pqcrypto`'s underlying API returns the signature attached to the
     message; we keep only the signature bytes for the wire format.
+
+    Crypto-audit closure: a transient bytearray copy of the secret key
+    is wiped before this function returns.
     """
-    return _sig_sign(secret_key, message)
+    sk_buffer = bytearray(secret_key)
+    try:
+        return _sig_sign(bytes(sk_buffer), message)
+    finally:
+        wipe(sk_buffer)
 
 
 def verify(public_key: bytes, message: bytes, signature: bytes) -> bool:
