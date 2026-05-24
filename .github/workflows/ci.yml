@@ -6,22 +6,32 @@ on:
   pull_request:
     branches: [main]
 
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend:
     name: Python — pytest + pyright + ruff
-    runs-on: macos-14
-    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
 
       - name: Install uv
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.11.16"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
-      # Pin Python 3.13: tenseal 0.3.x only ships cp312/cp313 wheels,
-      # and the runner's homebrew default is now 3.14. uv will download
-      # the matching python-build-standalone if it isn't already.
+      # Pin Python 3.13: tenseal 0.3.x only ships cp312/cp313 wheels.
+      # `.python-version` is project-gitignored to keep local dev autonomy,
+      # so the pin lives here.
+      - name: Install Python 3.13
+        run: uv python install 3.13
+
       - name: Sync workspace
         run: uv sync --all-packages --python 3.13
 
@@ -31,7 +41,7 @@ jobs:
       - name: Pyright (strict)
         run: uv run pyright packages
 
-      - name: Pytest
+      - name: Pytest (excludes -k "slow")
         env:
           PENUMBRA_SEED: "42"
         run: uv run pytest packages -k "not slow" -q
