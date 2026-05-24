@@ -130,6 +130,8 @@ The full per-package contracts + endpoint table live in
 |---|---|
 | [`README.md`](README.md) | This file — orientation. |
 | [`USAGE.md`](USAGE.md) | **Hands-on quickstart** — boot, dashboard interactions, all three CLIs (`pna` / `psh` / `pno`), REST endpoints, common workflows, troubleshooting. |
+| [`BUILDING_GUIDE.md`](BUILDING_GUIDE.md) | **Pedagogical re-build guide** — 10 phases, ~15-20h to read, ~80-120h to re-implement. Read this to LEARN how Penumbra works by rebuilding it. |
+| [`EVALUATION_PROMPT.md`](EVALUATION_PROMPT.md) | Anti-leading brief to seek an independent second-opinion verdict from another frontier model. |
 | [`ROADMAP.md`](ROADMAP.md) | Build phases, what shipped where, tag-by-tag. |
 | [`PROMPTING_GUIDE.md`](PROMPTING_GUIDE.md) | Step-by-step recipes for adding features. |
 | [`CLAUDE.md`](CLAUDE.md) | Claude Code instructions: conventions, agent guide, M4 budget. |
