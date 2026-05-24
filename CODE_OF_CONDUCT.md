@@ -52,7 +52,7 @@ in public spaces.
 ## Enforcement
 
 Instances of unacceptable behavior may be reported to the community
-leader at vadale93@gmail.com. All complaints will be reviewed and
+leader at lemostream@proton.me. All complaints will be reviewed and
 investigated promptly and fairly.
 
 ## Attribution

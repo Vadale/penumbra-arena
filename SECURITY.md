@@ -18,7 +18,7 @@ Penumbra is pre-1.0. Only the latest `main` is supported.
 
 Email the maintainer with details and a clear reproduction:
 
-- vadale93@gmail.com  (temporary; a dedicated address will be set
+- lemostream@proton.me  (temporary; a dedicated address will be set
   closer to a stable release)
 
 Please use plain text or a self-contained PoC. Do not open a public

@@ -1,5 +1,7 @@
 # Penumbra
 
+![Penumbra dashboard — 50 MAPPO agents on encrypted state, live econometrics, EventBus reactions](docs/hero.png)
+
 > A privacy-preserving perpetual multi-agent arena built to teach
 > statistics, linear algebra, modern neural networks, and cutting-edge
 > cryptography in one integrated runtime — with a hands-on adversarial

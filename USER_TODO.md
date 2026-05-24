@@ -24,7 +24,7 @@ mappo, ckks, post-quantum, zk-snark, research).
 
 **Bloccanti hard per il flip a public** (vedi anche P0 §1-3 sotto):
 
-1. **Email `vadale93@gmail.com` esposta in 3 file** (`SECURITY.md`,
+1. **Email `lemostream@proton.me` esposta in 3 file** (`SECURITY.md`,
    `CODE_OF_CONDUCT.md`, `USER_TODO.md` stesso). Una volta pubblico:
    - Google indicizza in 24-48h
    - Scanner spam la trovano in giorni
@@ -72,7 +72,7 @@ ri-privatizzi gli artefatti rimangono. Misura due volte, taglia una.
 
 ### 1. Email di security disclosure
 **File**: `SECURITY.md`
-**Cosa**: cambia `vadale93@gmail.com` con una mail dedicata
+**Cosa**: cambia `lemostream@proton.me` con una mail dedicata
 (es. `security@penumbra-arena.org`) e aggiungi un blocco PGP key.
 
 **Perché**: ricevere disclosure crypto via mail personale è OK pre-lancio,
