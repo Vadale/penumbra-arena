@@ -40,7 +40,14 @@ export default defineConfig({
       "/events": API_HTTP,
       "/security": API_HTTP,
       "/attacks": API_HTTP,
-      "/operator": API_HTTP,
+      "/operator": {
+        target: API_HTTP,
+        changeOrigin: true,
+        bypass: (req) => {
+          if (req.url === "/operator" || req.url === "/operator/") return req.url;
+          return undefined;
+        },
+      },
       "/ctf": API_HTTP,
       "/attacker": API_HTTP,
       "/ws": { target: API_WS, ws: true },

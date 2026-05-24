@@ -49,7 +49,8 @@ export function Terminal() {
 
   useEffect(() => {
     if (enabled !== true) return;
-    if (!containerRef.current) return;
+    const container = containerRef.current;
+    if (!container) return;
 
     const term = new XTerm({
       fontFamily: '"SF Mono", Menlo, Consolas, monospace',
@@ -57,12 +58,26 @@ export function Terminal() {
       theme: { background: "#0f172a", foreground: "#e2e8f0" },
       cursorBlink: true,
       convertEol: true,
+      // Keep ~1000 lines in xterm's internal scrollback so the user can
+      // scroll up inside the panel instead of the panel itself growing.
+      scrollback: 1000,
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.loadAddon(new WebLinksAddon());
-    term.open(containerRef.current);
-    fit.fit();
+    term.open(container);
+    // First fit must run AFTER open + after the container has a non-zero
+    // size. requestAnimationFrame gives the browser one paint to settle
+    // the flex layout, which prevents the "0x0 viewport" crash xterm.js
+    // logs as a "Cannot read property 'rows' of undefined".
+    const initialFit = () => {
+      try {
+        fit.fit();
+      } catch {
+        // ignore: the container may briefly be detached during route changes
+      }
+    };
+    requestAnimationFrame(initialFit);
 
     const ws = new WebSocket(PTY_WS_URL);
     ws.binaryType = "arraybuffer";
@@ -80,9 +95,11 @@ export function Terminal() {
 
     ws.onopen = () => {
       sendResize();
-      term.writeln(
-        "\x1b[36m==> penumbra-shell\x1b[0m  type `psh lessons` to start tutorials, `pna --help` for attacks, `pno --help` for the operator console",
-      );
+      // Split the banner into three short lines so a narrow panel
+      // doesn't horizontally scroll the entire viewport.
+      term.writeln("\x1b[36m==> penumbra-shell\x1b[0m");
+      term.writeln("  psh lessons         start tutorials");
+      term.writeln("  pna --help          attacks · pno --help  operator");
     };
     ws.onmessage = (event) => {
       if (event.data instanceof ArrayBuffer) {
@@ -101,12 +118,24 @@ export function Terminal() {
     });
 
     const onResize = () => {
-      fit.fit();
+      try {
+        fit.fit();
+      } catch {
+        return;
+      }
       sendResize();
     };
     window.addEventListener("resize", onResize);
 
+    // ResizeObserver catches container-size changes (panel resize, tab
+    // switch, devtools open) that window.resize never fires for. Without
+    // this, xterm clips at its initial fit dimensions and rows fall off
+    // the bottom of the panel.
+    const observer = new ResizeObserver(onResize);
+    observer.observe(container);
+
     return () => {
+      observer.disconnect();
       onData.dispose();
       window.removeEventListener("resize", onResize);
       ws.close();

@@ -56,6 +56,31 @@ def test_time_warp_validation() -> None:
         assert client.post("/control/time-warp/101").status_code == 400
 
 
+def test_get_tick_hz_exposes_live_value_and_ladder() -> None:
+    with TestClient(_build_test_app()) as client:
+        body = client.get("/control/tick_hz").json()
+        assert "tick_hz" in body
+        assert body["tick_hz"] == pytest.approx(200.0)  # test app uses 200 Hz
+        assert body["allowed"] == [0.5, 1.0, 2.0, 5.0, 10.0]
+
+
+def test_post_tick_hz_updates_loop_period() -> None:
+    with TestClient(_build_test_app()) as client:
+        ok = client.post("/control/tick_hz", json={"tick_hz": 5.0})
+        assert ok.status_code == 200
+        assert ok.json()["tick_hz"] == pytest.approx(5.0)
+        # GET should now reflect the new value.
+        assert client.get("/control/tick_hz").json()["tick_hz"] == pytest.approx(5.0)
+
+
+def test_post_tick_hz_rejects_disallowed_values() -> None:
+    with TestClient(_build_test_app()) as client:
+        bad = client.post("/control/tick_hz", json={"tick_hz": 17.0})
+        assert bad.status_code == 400
+        missing = client.post("/control/tick_hz", json={})
+        assert missing.status_code == 400
+
+
 def test_websocket_streams_frames() -> None:
     """Connect, receive a frame, decode it."""
     with TestClient(_build_test_app()) as client, client.websocket_connect("/ws") as ws:

@@ -38,6 +38,7 @@ class TickLoop:
     ) -> None:
         self._simulation = simulation
         self._consumer = consumer
+        self._tick_hz = float(tick_hz)
         self._period = 1.0 / tick_hz
         self._task: asyncio.Task[None] | None = None
         self._started_at: float | None = None
@@ -49,6 +50,23 @@ class TickLoop:
     @property
     def is_running(self) -> bool:
         return self._task is not None and not self._task.done()
+
+    @property
+    def tick_hz(self) -> float:
+        """Current tick rate in hertz."""
+        return self._tick_hz
+
+    def set_tick_hz(self, hz: float) -> None:
+        """Update the tick rate live.
+
+        Thread-safe by virtue of CPython's GIL: assigning a float is atomic
+        and the next ``await asyncio.sleep(self._period)`` in ``_run`` picks
+        the new value up on its next iteration.
+        """
+        if not hz > 0:
+            raise ValueError(f"tick_hz must be positive, got {hz}")
+        self._tick_hz = float(hz)
+        self._period = 1.0 / float(hz)
 
     def uptime_seconds(self) -> float:
         if self._started_at is None:

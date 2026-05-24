@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -70,7 +71,7 @@ class AppState:
 def build_app(
     simulation: Simulation | None = None,
     *,
-    tick_hz: float = 10.0,
+    tick_hz: float | None = None,
     cors_origins: list[str] | None = None,
 ) -> FastAPI:
     """Construct a fresh FastAPI app.
@@ -92,7 +93,10 @@ def build_app(
         async def push(frame: TickFrame) -> None:
             await hub.broadcast(encode_frame(frame))
 
-        loop = TickLoop(sim, push, tick_hz=tick_hz)
+        effective_hz = (
+            tick_hz if tick_hz is not None else float(os.environ.get("PENUMBRA_TICK_HZ", "2.0"))
+        )
+        loop = TickLoop(sim, push, tick_hz=effective_hz)
         await loop.start()
         # Warm-start the encrypted heatmap synchronously so the first
         # /encrypted-heatmap and /dashboard polls don't return
@@ -289,6 +293,47 @@ def build_app(
         sim: Simulation = app.state.penumbra.simulation
         sim.config.time_warp = multiplier
         return {"time_warp": multiplier}
+
+    # Allowed tick rates surfaced to the dashboard speed widget.
+    # Picking the live value at boot from PENUMBRA_TICK_HZ lets a power
+    # user run at, say, 0.1 Hz from the env without the UI rejecting it,
+    # but the UI buttons stick to the curated ladder.
+    _allowed_tick_hz: tuple[float, ...] = (0.5, 1.0, 2.0, 5.0, 10.0)
+
+    @app.get("/control/tick_hz")
+    async def get_tick_hz() -> dict[str, object]:
+        """Current tick rate + the curated ladder the UI exposes as buttons."""
+        loop_ref: TickLoop = app.state.penumbra.loop
+        return {
+            "tick_hz": float(loop_ref.tick_hz),
+            "allowed": list(_allowed_tick_hz),
+        }
+
+    @app.post("/control/tick_hz")
+    async def post_tick_hz(payload: dict[str, float]) -> dict[str, object]:
+        """Live-update the simulation tick rate.
+
+        Body: ``{"tick_hz": <float>}``. The value must be one of the
+        curated rates exposed by ``GET /control/tick_hz`` to avoid
+        pathological values (e.g., 1000 Hz, which would saturate the
+        thread pool) sneaking in from the browser.
+        """
+        raw = payload.get("tick_hz")
+        if raw is None:
+            raise HTTPException(status_code=400, detail="missing 'tick_hz' field")
+        try:
+            hz = float(raw)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=f"invalid tick_hz: {raw!r}") from exc
+        # Allow a tiny tolerance so 2 vs 2.0000001 doesn't 400.
+        if not any(abs(hz - allowed) < 1e-6 for allowed in _allowed_tick_hz):
+            raise HTTPException(
+                status_code=400,
+                detail=f"tick_hz must be one of {list(_allowed_tick_hz)}",
+            )
+        loop_ref: TickLoop = app.state.penumbra.loop
+        loop_ref.set_tick_hz(hz)
+        return {"tick_hz": float(loop_ref.tick_hz), "allowed": list(_allowed_tick_hz)}
 
     @app.post("/chain/slash")
     async def chain_slash(payload: dict[str, object], request: Request) -> dict[str, object]:

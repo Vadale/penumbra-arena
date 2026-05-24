@@ -87,10 +87,17 @@ function Cell({
   );
 }
 
-function SectionHeader({ children }: { children: string }) {
+function SectionHeader({ children, subtitle }: { children: string; subtitle?: string }) {
   return (
-    <div className="mt-3 mb-1 border-b border-[color:var(--color-penumbra-border)] pb-0.5 text-[10px] uppercase tracking-[0.18em] text-[color:var(--color-penumbra-muted)] first:mt-0">
-      {children}
+    <div className="mt-3 mb-1 border-b border-[color:var(--color-penumbra-border)] pb-0.5 first:mt-0">
+      <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--color-penumbra-muted)]">
+        {children}
+      </div>
+      {subtitle && (
+        <div className="mt-0.5 text-[9px] leading-snug text-[color:var(--color-penumbra-dim)] normal-case tracking-normal">
+          {subtitle}
+        </div>
+      )}
     </div>
   );
 }
@@ -114,7 +121,9 @@ export function AnalyticsPanel() {
 
   return (
     <div className="space-y-2">
-      <SectionHeader>statistics</SectionHeader>
+      <SectionHeader subtitle="Live descriptive + inferential tests on agent trajectories.">
+        statistics
+      </SectionHeader>
       <div className="grid grid-cols-1 gap-1">
         <Cell
           label="traj.mean"
@@ -210,7 +219,9 @@ export function AnalyticsPanel() {
         />
       </div>
 
-      <SectionHeader>econometrics · time series · risk</SectionHeader>
+      <SectionHeader subtitle="ARIMA / VAR / GARCH / Granger / survival / causal inference on the live stream.">
+        econometrics · time series · risk
+      </SectionHeader>
       <div className="grid grid-cols-1 gap-1">
         <Cell
           label="arima.next"
@@ -290,7 +301,9 @@ export function AnalyticsPanel() {
         />
       </div>
 
-      <SectionHeader>linear algebra · topology · transport</SectionHeader>
+      <SectionHeader subtitle="PCA, spectral graph theory, persistent homology and optimal transport.">
+        linear algebra · topology · transport
+      </SectionHeader>
       <div className="grid grid-cols-1 gap-1">
         <Cell
           label="pca λ₁"
@@ -348,7 +361,9 @@ export function AnalyticsPanel() {
         />
       </div>
 
-      <SectionHeader>economy · markets · wealth</SectionHeader>
+      <SectionHeader subtitle="Agent purchases, candle markets, CPI/inflation and the Gini coefficient.">
+        economy · markets · wealth
+      </SectionHeader>
       <div className="grid grid-cols-1 gap-1">
         <Cell
           label="buys"
@@ -408,7 +423,9 @@ export function AnalyticsPanel() {
         />
       </div>
 
-      <SectionHeader>logistics</SectionHeader>
+      <SectionHeader subtitle="Fill rate, inventory, (s, S) reorder policy and multi-echelon bullwhip.">
+        logistics
+      </SectionHeader>
       <div className="grid grid-cols-2 gap-1">
         <Cell
           label="logistics — fill rate"
@@ -464,7 +481,9 @@ export function AnalyticsPanel() {
         />
       </div>
 
-      <SectionHeader>RL · learning · federated</SectionHeader>
+      <SectionHeader subtitle="Inspect the MAPPO policy, value head, attention and federated aggregation.">
+        RL · learning · federated
+      </SectionHeader>
       <div className="grid grid-cols-1 gap-1">
         <Cell
           label="MAPPO π"
@@ -531,7 +550,9 @@ export function AnalyticsPanel() {
         />
       </div>
 
-      <SectionHeader>chain · consensus</SectionHeader>
+      <SectionHeader subtitle="VRF leader rotation, BLS aggregate signatures, ZK match proofs and slashing.">
+        chain · consensus
+      </SectionHeader>
       <div className="grid grid-cols-1 gap-1">
         <Cell
           label="VRF leader"
@@ -570,7 +591,9 @@ export function AnalyticsPanel() {
         />
       </div>
 
-      <SectionHeader>privacy · signing · DP</SectionHeader>
+      <SectionHeader subtitle="Differential-privacy budget, Dilithium signing stats and noised-vs-clean views.">
+        privacy · signing · DP
+      </SectionHeader>
       <div className="grid grid-cols-1 gap-1">
         <Cell
           label="dp.ε spent"
@@ -607,7 +630,9 @@ export function AnalyticsPanel() {
         />
       </div>
 
-      <SectionHeader>crypto — HE · PQ · primitives</SectionHeader>
+      <SectionHeader subtitle="CKKS / TFHE homomorphic encryption, post-quantum KEM + signatures, VDF.">
+        crypto — HE · PQ · primitives
+      </SectionHeader>
       <div className="grid grid-cols-1 gap-1">
         <Cell
           label="CKKS"
@@ -653,7 +678,9 @@ export function AnalyticsPanel() {
         />
       </div>
 
-      <SectionHeader>crypto — SMPC · ZK · advanced</SectionHeader>
+      <SectionHeader subtitle="Zero-knowledge proofs, secret sharing and threshold sigs over the encrypted state.">
+        crypto — SMPC · ZK · advanced
+      </SectionHeader>
       <div className="grid grid-cols-1 gap-1">
         <Cell
           label="Shamir"
@@ -755,7 +782,9 @@ export function AnalyticsPanel() {
         />
       </div>
 
-      <SectionHeader>defenses · attacks</SectionHeader>
+      <SectionHeader subtitle="Run a defense or an attack; watch the measured success rate move in real time.">
+        defenses · attacks
+      </SectionHeader>
       <div className="grid grid-cols-2 gap-1">
         <Cell
           label="security — blocked"
@@ -850,7 +879,9 @@ export function AnalyticsPanel() {
         />
       </div>
 
-      <SectionHeader>interactive · sandboxes · world</SectionHeader>
+      <SectionHeader subtitle="Cross-pillar events, world snapshots, CTF and story-mode tutorials.">
+        interactive · sandboxes · world
+      </SectionHeader>
       <div className="grid grid-cols-2 gap-1">
         <Cell
           label="event bus"

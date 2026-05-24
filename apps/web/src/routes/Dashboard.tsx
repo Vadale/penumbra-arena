@@ -2,8 +2,10 @@ import { useCallback, useMemo, useState } from "react";
 import { ChainExplorer } from "../chain/Explorer";
 import { NarrowViewportBanner } from "../charts/_shared";
 import { AnalyticsPanel } from "../charts/AnalyticsPanel";
+import { WelcomeOverlay } from "../charts/WelcomeOverlay";
 import { CoachConsole } from "../coach/Console";
 import { HelpOverlay } from "../shell/HelpOverlay";
+import { SpeedControl } from "../shell/SpeedControl";
 import { StatusBar } from "../shell/StatusBar";
 import { useKeyboardShortcuts } from "../shell/useKeyboardShortcuts";
 import { usePenumbraStore } from "../streams/store";
@@ -29,6 +31,9 @@ export function Dashboard() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [paused, setPaused] = useState(false);
   const [timeWarp, setTimeWarp] = useState(1);
+  // Mirrored from /control/tick_hz so the arena caption can show the
+  // live rate without polling a second endpoint.
+  const [tickHz, setTickHz] = useState<number | null>(null);
 
   const onPauseToggle = useCallback(async () => {
     const next = !paused;
@@ -83,6 +88,7 @@ export function Dashboard() {
           </div>
         </div>
         <div className="flex items-center gap-3 text-xs">
+          <SpeedControl paused={paused} onPauseToggle={onPauseToggle} onRateChange={setTickHz} />
           <a
             href="/bench"
             className="rounded-sm border border-[color:var(--color-penumbra-border)] px-2 py-0.5 text-xs uppercase tracking-wider text-[color:var(--color-penumbra-muted)] hover:text-[color:var(--color-penumbra-cyan)]"
@@ -108,8 +114,9 @@ export function Dashboard() {
       </header>
 
       <main className="grid flex-1 grid-cols-[1fr_340px_300px] overflow-hidden">
-        <section className="flex flex-col bg-[color:var(--color-penumbra-bg)]">
-          <div className="relative flex-1 border-r border-[color:var(--color-penumbra-border)]">
+        <section className="flex min-h-0 flex-col bg-[color:var(--color-penumbra-bg)]">
+          <ArenaCaption tickHz={tickHz} />
+          <div className="relative min-h-0 flex-1 border-r border-[color:var(--color-penumbra-border)]">
             <div className="absolute right-3 top-3 z-10 flex gap-1 rounded-sm border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-panel)]/90 px-2 py-1 text-xs uppercase tracking-wider">
               <ArenaTab active={arenaMode === "map"} onClick={() => setArenaMode("map")}>
                 map
@@ -127,12 +134,13 @@ export function Dashboard() {
                 3d
               </ArenaTab>
             </div>
+            {!connected && lastFrame === null && <ArenaEmptyState />}
             {arenaMode === "map" && <TileMap />}
             {arenaMode === "world" && <WorldView />}
             {arenaMode === "graph" && <Arena2D />}
             {arenaMode === "3d" && <Arena />}
           </div>
-          <div className="flex max-h-[42%] flex-col border-t border-r border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-panel)]">
+          <div className="flex h-[42%] min-h-0 flex-col border-t border-r border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-panel)]">
             <div className="flex items-center gap-3 border-b border-[color:var(--color-penumbra-border)] px-3 py-1.5 text-xs uppercase tracking-[0.18em]">
               <PanelTab active={bottomTab === "coach"} onClick={() => setBottomTab("coach")}>
                 coach
@@ -144,7 +152,18 @@ export function Dashboard() {
                 repl
               </PanelTab>
             </div>
-            <div className="flex-1 overflow-y-auto p-3">
+            {/* min-h-0 on the flex child is what lets xterm.js's */}
+            {/* FitAddon read a real container height — without it the */}
+            {/* terminal rows fall off the bottom of the panel. The */}
+            {/* terminal owns its own scroll; the other tabs scroll */}
+            {/* normally via overflow-y-auto. */}
+            <div
+              className={
+                bottomTab === "terminal"
+                  ? "min-h-0 flex-1 overflow-hidden p-3"
+                  : "min-h-0 flex-1 overflow-y-auto p-3"
+              }
+            >
               {bottomTab === "coach" && <CoachConsole />}
               {bottomTab === "terminal" && <Terminal />}
               {bottomTab === "repl" && <ReplConsole />}
@@ -170,8 +189,29 @@ export function Dashboard() {
         timeWarp={timeWarp}
         onHelp={() => setHelpOpen(true)}
       />
+      <WelcomeOverlay />
       <TourOverlay />
       <HelpOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />
+    </div>
+  );
+}
+
+function ArenaCaption({ tickHz }: { tickHz: number | null }) {
+  return (
+    <div className="border-b border-r border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-panel)] px-3 py-1 text-[11px] leading-snug text-[color:var(--color-penumbra-muted)]">
+      50 agents (MAPPO-trained) on a dynamic graph &middot; positions encrypted (CKKS) &middot;
+      matches end every ~60s &middot;{" "}
+      <span className="text-[color:var(--color-penumbra-cyan)]">
+        speed: {tickHz !== null ? `${tickHz} Hz` : "..."}
+      </span>
+    </div>
+  );
+}
+
+function ArenaEmptyState() {
+  return (
+    <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center bg-[color:var(--color-penumbra-bg)] text-xs text-[color:var(--color-penumbra-muted)]">
+      Connecting to simulation... agents will appear once the first WS frame arrives.
     </div>
   );
 }
