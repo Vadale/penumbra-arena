@@ -2,6 +2,8 @@
 
 export type { BlockProps } from "./Block";
 export { Block } from "./Block";
+export type { FetchErrorProps } from "./FetchError";
+export { FetchError } from "./FetchError";
 export type { StatProps } from "./Stat";
 export { Stat } from "./Stat";
 export type { VerdictProps } from "./Verdict";

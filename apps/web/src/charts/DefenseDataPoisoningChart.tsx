@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Stat } from "./_shared";
+import { FetchError, Stat } from "./_shared";
 
 interface Point {
   rate: number;
@@ -28,13 +28,21 @@ interface Payload {
 export function DefenseDataPoisoningChart() {
   const [data, setData] = useState<Payload | null>(null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const run = async () => {
     setBusy(true);
+    setError(null);
     try {
       const res = await fetch("/defenses/data_poisoning/demo");
-      if (res.ok) setData((await res.json()) as Payload);
-    } catch {}
+      if (!res.ok) {
+        setError(`HTTP ${res.status} on /defenses/data_poisoning/demo`);
+      } else {
+        setData((await res.json()) as Payload);
+      }
+    } catch (exc) {
+      setError(`network error: ${exc instanceof Error ? exc.message : String(exc)}`);
+    }
     setBusy(false);
   };
 
@@ -43,6 +51,7 @@ export function DefenseDataPoisoningChart() {
   }, []);
 
   if (!data?.available || !data.curve) {
+    if (error) return <FetchError message={error} />;
     return (
       <div className="font-mono text-xs text-[color:var(--color-penumbra-muted)]">
         {busy ? "computing…" : "decoy injection unavailable"}
@@ -72,6 +81,7 @@ export function DefenseDataPoisoningChart() {
 
   return (
     <div className="font-mono space-y-3">
+      {error && <FetchError message={error} />}
       <div className="grid grid-cols-3 gap-2 text-[10px]">
         <Stat label="algorithm" value={data.algorithm ?? "decoy injection"} accent />
         <Stat label="n real" value={data.n_real ?? 0} digits={0} />

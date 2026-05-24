@@ -14,8 +14,8 @@
  * that was skipped because the originator was blocked at the time.
  */
 
-import { useEffect, useState } from "react";
-import { Stat } from "./_shared";
+import { useFetchJsonPoll } from "../hooks/useFetchJson";
+import { FetchError, Stat } from "./_shared";
 
 interface BlockedEntry {
   agent_id: number;
@@ -30,23 +30,9 @@ interface BlockedPayload {
 }
 
 export function BlockedAgentsChart() {
-  const [data, setData] = useState<BlockedPayload | null>(null);
-
-  useEffect(() => {
-    let cancel = false;
-    const fetchBlocked = async () => {
-      try {
-        const r = await fetch("/security/blocked-agents");
-        if (r.ok && !cancel) setData((await r.json()) as BlockedPayload);
-      } catch {}
-    };
-    void fetchBlocked();
-    const h = window.setInterval(fetchBlocked, 2000);
-    return () => {
-      cancel = true;
-      window.clearInterval(h);
-    };
-  }, []);
+  const state = useFetchJsonPoll<BlockedPayload>("/security/blocked-agents", 2000);
+  const data =
+    state.kind === "data" ? state.value : state.kind === "error" ? state.lastValue : undefined;
 
   const blocked = data?.blocked ?? [];
   const historyCount = data?.history_count ?? 0;
@@ -54,6 +40,7 @@ export function BlockedAgentsChart() {
 
   return (
     <div className="font-mono space-y-3">
+      {state.kind === "error" && <FetchError message={state.message} />}
       <div className="grid grid-cols-3 gap-2 text-[10px]">
         <Stat label="live blocks" value={blocked.length} ember={blocked.length > 0} />
         <Stat label="history count" value={historyCount} accent />

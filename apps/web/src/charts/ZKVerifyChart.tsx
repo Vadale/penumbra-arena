@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Stat } from "./_shared";
+import { FetchError, Stat } from "./_shared";
 
 interface ZKResult {
   available: boolean;
@@ -26,13 +26,21 @@ interface ZKResult {
 export function ZKVerifyChart() {
   const [data, setData] = useState<ZKResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const run = async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch("/crypto/zk/legal-path");
-      if (res.ok) setData((await res.json()) as ZKResult);
-    } catch {}
+      if (!res.ok) {
+        setError(`HTTP ${res.status} on /crypto/zk/legal-path`);
+      } else {
+        setData((await res.json()) as ZKResult);
+      }
+    } catch (exc) {
+      setError(`network error: ${exc instanceof Error ? exc.message : String(exc)}`);
+    }
     setLoading(false);
   };
 
@@ -46,6 +54,7 @@ export function ZKVerifyChart() {
   }, []);
 
   if (!data) {
+    if (error) return <FetchError message={error} />;
     return (
       <div className="font-mono text-xs text-[color:var(--color-penumbra-muted)]">
         loading verifier…
@@ -53,6 +62,7 @@ export function ZKVerifyChart() {
     );
   }
   if (!data.available) {
+    if (error) return <FetchError message={error} />;
     return (
       <div className="font-mono text-xs text-[color:var(--color-penumbra-muted)]">
         {data.reason ?? "circuit artifacts missing"}
@@ -62,6 +72,7 @@ export function ZKVerifyChart() {
 
   return (
     <div className="font-mono space-y-3">
+      {error && <FetchError message={error} />}
       <div className="grid grid-cols-3 gap-2 text-[10px]">
         <Stat label="circuit" value={data.circuit ?? "—"} />
         <Stat label="public inputs" value={String(data.n_public_inputs ?? 0)} accent />

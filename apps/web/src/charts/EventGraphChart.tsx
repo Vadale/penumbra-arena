@@ -13,8 +13,8 @@
  * IS the graph.
  */
 
-import { useEffect, useState } from "react";
-import { Stat } from "./_shared";
+import { useFetchJsonPoll } from "../hooks/useFetchJson";
+import { FetchError, Stat } from "./_shared";
 
 interface HandlerStat {
   n_calls: number;
@@ -30,25 +30,12 @@ interface StatsPayload {
 }
 
 export function EventGraphChart() {
-  const [stats, setStats] = useState<StatsPayload | null>(null);
-
-  useEffect(() => {
-    let cancel = false;
-    const fetchStats = async () => {
-      try {
-        const r = await fetch("/events/stats");
-        if (r.ok && !cancel) setStats((await r.json()) as StatsPayload);
-      } catch {}
-    };
-    void fetchStats();
-    const h = window.setInterval(fetchStats, 3000);
-    return () => {
-      cancel = true;
-      window.clearInterval(h);
-    };
-  }, []);
+  const state = useFetchJsonPoll<StatsPayload>("/events/stats", 3000);
+  const stats =
+    state.kind === "data" ? state.value : state.kind === "error" ? state.lastValue : undefined;
 
   if (!stats) {
+    if (state.kind === "error") return <FetchError message={state.message} />;
     return (
       <div className="font-mono text-[10px] text-[color:var(--color-penumbra-muted)]">
         event graph warming up…
@@ -65,6 +52,7 @@ export function EventGraphChart() {
 
   return (
     <div className="font-mono space-y-3">
+      {state.kind === "error" && <FetchError message={state.message} />}
       <div className="grid grid-cols-4 gap-2 text-[10px]">
         <Stat label="kinds" value={kinds.length} />
         <Stat label="emits" value={totalEmits} accent />

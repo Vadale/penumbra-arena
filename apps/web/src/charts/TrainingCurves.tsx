@@ -7,8 +7,9 @@
  * mutate in real time. Start/stop with the button.
  */
 
-import { useEffect, useState } from "react";
-import { Stat } from "./_shared";
+import { useState } from "react";
+import { useFetchJsonPoll } from "../hooks/useFetchJson";
+import { FetchError, Stat } from "./_shared";
 
 interface Sample {
   iteration: number;
@@ -27,26 +28,10 @@ interface CurvesPayload {
 }
 
 export function TrainingCurves() {
-  const [data, setData] = useState<CurvesPayload | null>(null);
+  const state = useFetchJsonPoll<CurvesPayload>("/learning/training/curves", 1500);
+  const data =
+    state.kind === "data" ? state.value : state.kind === "error" ? state.lastValue : undefined;
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    const tick = async () => {
-      try {
-        const res = await fetch("/learning/training/curves");
-        if (!res.ok) return;
-        const payload = (await res.json()) as CurvesPayload;
-        if (!cancelled) setData(payload);
-      } catch {}
-    };
-    void tick();
-    const t = window.setInterval(tick, 1500);
-    return () => {
-      cancelled = true;
-      window.clearInterval(t);
-    };
-  }, []);
 
   const start = async () => {
     setBusy(true);
@@ -60,6 +45,7 @@ export function TrainingCurves() {
   };
 
   if (!data?.available) {
+    if (state.kind === "error") return <FetchError message={state.message} />;
     return (
       <div className="font-mono text-xs text-[color:var(--color-penumbra-muted)]">
         live trainer unavailable (MAPPO checkpoint not loaded)
@@ -72,6 +58,7 @@ export function TrainingCurves() {
 
   return (
     <div className="font-mono space-y-3">
+      {state.kind === "error" && <FetchError message={state.message} />}
       <div className="grid grid-cols-4 gap-2 text-[10px]">
         <Stat label="iteration" value={String(iteration)} accent />
         <Stat label="samples" value={String(samples.length)} />

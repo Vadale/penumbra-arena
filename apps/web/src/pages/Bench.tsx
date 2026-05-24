@@ -179,6 +179,12 @@ export function Bench() {
         </div>
         <nav className="flex items-center gap-3 text-[11px]">
           <a
+            href="/operator"
+            className="rounded-sm border border-[color:var(--color-penumbra-border)] px-2 py-0.5 text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-muted)] hover:text-[color:var(--color-penumbra-cyan)]"
+          >
+            operator
+          </a>
+          <a
             href="/"
             className="rounded-sm border border-[color:var(--color-penumbra-border)] px-2 py-0.5 text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-muted)] hover:text-[color:var(--color-penumbra-cyan)]"
           >

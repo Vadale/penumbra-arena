@@ -8,8 +8,8 @@
  * never deadlock if every agent is idle.
  */
 
-import { useEffect, useState } from "react";
-import { Stat } from "./_shared";
+import { useFetchJsonPoll } from "../hooks/useFetchJson";
+import { FetchError, Stat } from "./_shared";
 
 interface Payload {
   available: boolean;
@@ -25,24 +25,12 @@ interface Payload {
 }
 
 export function LogisticsDispatchChart() {
-  const [data, setData] = useState<Payload | null>(null);
-  useEffect(() => {
-    let cancel = false;
-    const tick = async () => {
-      try {
-        const res = await fetch("/logistics/dispatch");
-        if (res.ok && !cancel) setData((await res.json()) as Payload);
-      } catch {}
-    };
-    void tick();
-    const h = window.setInterval(tick, 5000);
-    return () => {
-      cancel = true;
-      window.clearInterval(h);
-    };
-  }, []);
+  const state = useFetchJsonPoll<Payload>("/logistics/dispatch", 5000);
+  const data =
+    state.kind === "data" ? state.value : state.kind === "error" ? state.lastValue : undefined;
 
   if (!data?.available) {
+    if (state.kind === "error") return <FetchError message={state.message} />;
     return (
       <div className="font-mono text-xs text-[color:var(--color-penumbra-muted)]">
         no dispatch data yet
@@ -54,6 +42,7 @@ export function LogisticsDispatchChart() {
   const maxReward = top.length > 0 ? Math.max(...top.map(([, r]) => r), 1) : 1;
   return (
     <div className="font-mono space-y-3">
+      {state.kind === "error" && <FetchError message={state.message} />}
       <div className="grid grid-cols-3 gap-2 text-[10px]">
         <Stat label="pending" value={data.n_pending ?? 0} />
         <Stat label="assigned" value={data.n_assigned ?? 0} accent />

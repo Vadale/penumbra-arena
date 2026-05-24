@@ -4,10 +4,15 @@
  * Drives the `/operator/*` endpoint family (Tier 1) from the browser:
  *  - Polls `GET /operator/status` once a second.
  *  - Lets the user enable / disable the operator slot.
- *  - Submits any of the 8 known action kinds via a dropdown-driven
- *    form (move, buy, sell, dispatch_order, cancel_assignment,
- *    query_dp, sign, verify).
- *  - Renders a rolling action log (last 50) and the live scorecard.
+ *  - Submits any of the 20 known action kinds (8 core + 6 attack + 6
+ *    defense) via a dropdown-driven form. Each kind ships with a
+ *    human label, one-line description, ghost-text placeholders, and a
+ *    coarse cost hint sourced from `operator_actions.ts` — the UX fix
+ *    for audit finding #5 (no more empty-input HTTP 422s).
+ *  - Renders a rolling action log (last 50) with local-time timestamps
+ *    and ✓/✗ markers (colour-blind safe).
+ *  - Renders the live scorecard with each cell linking to `/bench` for
+ *    leaderboard context.
  *
  * No new dependencies: hand-rolled router-friendly page, polling via
  * setInterval, all state local.
@@ -15,18 +20,13 @@
 
 import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from "react";
 import { Stat } from "../charts/_shared";
-
-const ACTION_KINDS = [
-  "move",
-  "buy",
-  "sell",
-  "dispatch_order",
-  "cancel_assignment",
-  "query_dp",
-  "sign",
-  "verify",
-] as const;
-type ActionKind = (typeof ACTION_KINDS)[number];
+import {
+  ACTION_KINDS,
+  ACTION_META,
+  type ActionKind,
+  coercePayload,
+  emptyPayloadFor,
+} from "./operator_actions";
 
 interface ActionResult {
   kind: string;
@@ -67,7 +67,44 @@ interface LogEntry {
   success: boolean;
   applied_tick: number;
   summary: string;
+  /** Local wall-clock at the moment the response was logged (ms since epoch). */
+  logged_at: number;
 }
+
+const SCENARIO_HINT_KEY = "penumbra.operator.scenario_hint_seen";
+
+const SCORECARD_META: Record<
+  keyof OperatorScore,
+  { label: string; tooltip: string; digits: number; accent?: boolean }
+> = {
+  profit: {
+    label: "Profit",
+    tooltip: "Net coins gained since the slot was enabled (trades + order rewards − costs).",
+    digits: 2,
+    accent: true,
+  },
+  privacy_preserved: {
+    label: "Privacy Preserved",
+    tooltip: "Fraction of ε budget still available — 1.0 means nothing spent.",
+    digits: 3,
+  },
+  attacks_survived: {
+    label: "Attacks Survived",
+    tooltip: "Count of incoming attack actions the operator's defences rejected.",
+    digits: 0,
+  },
+  chain_contribution: {
+    label: "Chain Contribution",
+    tooltip: "Blocks proposed or signed by the operator since the slot was enabled.",
+    digits: 0,
+  },
+  composite: {
+    label: "Composite Score",
+    tooltip: "Weighted blend of profit, privacy, defences, and chain ops (0..1).",
+    digits: 3,
+    accent: true,
+  },
+};
 
 function summariseResult(r: ActionResult): string {
   if (r.error) return r.error;
@@ -79,48 +116,12 @@ function summariseResult(r: ActionResult): string {
   return bits.length > 0 ? bits.join(" ") : r.success ? "ok" : "fail";
 }
 
-function emptyPayloadFor(kind: ActionKind): Record<string, string> {
-  switch (kind) {
-    case "move":
-      return { target_node: "" };
-    case "buy":
-    case "sell":
-      return { product: "", qty: "" };
-    case "dispatch_order":
-      return { city: "", product: "", qty: "", reward: "" };
-    case "cancel_assignment":
-      return { order_id: "" };
-    case "query_dp":
-      return { statistic: "mean_coins", epsilon: "0.1" };
-    case "sign":
-      return { message: "" };
-    case "verify":
-      return { message: "", sig: "", public_key: "" };
-  }
-}
-
-function coercePayload(kind: ActionKind, raw: Record<string, string>): Record<string, unknown> {
-  const numericKeys: Record<ActionKind, ReadonlyArray<string>> = {
-    move: ["target_node"],
-    buy: ["product", "qty"],
-    sell: ["product", "qty"],
-    dispatch_order: ["city", "product", "qty", "reward"],
-    cancel_assignment: ["order_id"],
-    query_dp: ["epsilon"],
-    sign: [],
-    verify: [],
-  };
-  const out: Record<string, unknown> = {};
-  const numKeys = new Set(numericKeys[kind]);
-  for (const [k, v] of Object.entries(raw)) {
-    if (numKeys.has(k)) {
-      const n = Number(v);
-      out[k] = Number.isFinite(n) ? n : 0;
-    } else {
-      out[k] = v;
-    }
-  }
-  return out;
+function formatLocalTime(ms: number): string {
+  const d = new Date(ms);
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  return `${hh}:${mm}:${ss}`;
 }
 
 interface ResumableSession {
@@ -130,6 +131,22 @@ interface ResumableSession {
   scenario_label?: string;
   saved_at_tick?: number;
   saved_at_wall_iso?: string;
+}
+
+function readScenarioHintSeen(): boolean {
+  try {
+    return window.localStorage.getItem(SCENARIO_HINT_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeScenarioHintSeen(): void {
+  try {
+    window.localStorage.setItem(SCENARIO_HINT_KEY, "1");
+  } catch {
+    // localStorage may be disabled — the hint just won't persist.
+  }
 }
 
 export function Operator() {
@@ -143,6 +160,9 @@ export function Operator() {
   const [resumable, setResumable] = useState<ResumableSession | null>(null);
   const [resumeBusy, setResumeBusy] = useState(false);
   const [resumeError, setResumeError] = useState<string | null>(null);
+  const [scenarioHintDismissed, setScenarioHintDismissed] = useState<boolean>(() =>
+    readScenarioHintSeen(),
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -228,6 +248,7 @@ export function Operator() {
         success: result.success,
         applied_tick: result.applied_tick,
         summary: summariseResult(result),
+        logged_at: Date.now(),
       };
       const merged = [next, ...prev];
       return merged.slice(0, 50);
@@ -272,6 +293,11 @@ export function Operator() {
     await fetch("/operator/disable", { method: "POST" }).catch(() => null);
   };
 
+  const dismissScenarioHint = () => {
+    setScenarioHintDismissed(true);
+    writeScenarioHintSeen();
+  };
+
   const enabled = status?.enabled ?? false;
   const inventoryText = useMemo(() => {
     const inv = status?.inventory ?? {};
@@ -290,6 +316,9 @@ export function Operator() {
     }
     return { ok, bad };
   }, [log]);
+
+  const meta = ACTION_META[kind];
+  const scorecard = status?.scorecard;
 
   return (
     <div className="flex h-full flex-col bg-[color:var(--color-penumbra-bg)] text-[color:var(--color-penumbra-text)]">
@@ -372,6 +401,36 @@ export function Operator() {
         </div>
       )}
 
+      {!scenarioHintDismissed && (
+        <div
+          role="note"
+          aria-label="Scenario onboarding hint"
+          className="flex items-center justify-between gap-3 border-b border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-panel)] px-4 py-2 font-mono text-[11px] text-[color:var(--color-penumbra-muted)]"
+        >
+          <span>
+            New to the cyber range? Start with a guided scenario — open the dashboard and pick the{" "}
+            <strong className="text-[color:var(--color-penumbra-text)]">operator scenarios</strong>{" "}
+            tile.
+          </span>
+          <div className="flex items-center gap-2">
+            <a
+              href="/"
+              className="rounded-sm border border-[color:var(--color-penumbra-cyan)] px-2 py-0.5 text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-cyan)] hover:bg-[color:var(--color-penumbra-cyan-bg)]"
+            >
+              open scenario list
+            </a>
+            <button
+              type="button"
+              onClick={dismissScenarioHint}
+              aria-label="Dismiss scenario hint"
+              className="rounded-sm border border-[color:var(--color-penumbra-border)] px-2 py-0.5 text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-muted)] hover:text-[color:var(--color-penumbra-text)]"
+            >
+              dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
       <main className="grid flex-1 grid-cols-3 gap-3 overflow-hidden p-3 font-mono text-[11px]">
         <section
           aria-label="Operator Status"
@@ -433,11 +492,17 @@ export function Operator() {
               >
                 {ACTION_KINDS.map((k) => (
                   <option key={k} value={k}>
-                    {k}
+                    {`${k} — ${ACTION_META[k].label}`}
                   </option>
                 ))}
               </select>
             </label>
+            <div className="rounded-sm border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-2 py-1 text-[10px] text-[color:var(--color-penumbra-muted)]">
+              <div>{meta.description}</div>
+              <div className="mt-0.5 text-[9px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
+                cost: {meta.coins_cost}
+              </div>
+            </div>
             {Object.keys(payload).map((field) => (
               <label key={field} className="flex flex-col gap-1">
                 <span className="text-[9px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
@@ -448,10 +513,16 @@ export function Operator() {
                   type="text"
                   value={payload[field] ?? ""}
                   onChange={onField(field)}
+                  placeholder={meta.placeholders[field] ?? ""}
                   className="border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-2 py-1 text-[11px] text-[color:var(--color-penumbra-text)]"
                 />
               </label>
             ))}
+            {Object.keys(payload).length === 0 && (
+              <div className="text-[10px] text-[color:var(--color-penumbra-muted)]">
+                this action takes no parameters
+              </div>
+            )}
             <button
               type="submit"
               disabled={submitting || !enabled}
@@ -474,10 +545,13 @@ export function Operator() {
           <h2 className="text-[10px] uppercase tracking-[0.2em] text-[color:var(--color-penumbra-dim)]">
             action log (last 50)
           </h2>
+          {/* No search/filter: the log is capped at 50 rows so scrolling
+              is faster than typing a query. Revisit if we ever uncap it. */}
           <div className="flex-1 overflow-auto">
             <table className="min-w-full text-[11px]">
               <thead>
                 <tr className="border-b border-[color:var(--color-penumbra-border)] text-[9px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
+                  <th className="px-2 py-1 text-left font-normal">time</th>
                   <th className="px-2 py-1 text-left font-normal">tick</th>
                   <th className="px-2 py-1 text-left font-normal">kind</th>
                   <th className="px-2 py-1 text-left font-normal">status</th>
@@ -487,7 +561,7 @@ export function Operator() {
               <tbody>
                 {log.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="px-2 py-2 text-[color:var(--color-penumbra-muted)]">
+                    <td colSpan={5} className="px-2 py-2 text-[color:var(--color-penumbra-muted)]">
                       no actions submitted yet
                     </td>
                   </tr>
@@ -497,6 +571,9 @@ export function Operator() {
                     key={entry.id}
                     className="border-b border-[color:var(--color-penumbra-border)]"
                   >
+                    <td className="px-2 py-1 tabular-nums text-[color:var(--color-penumbra-muted)]">
+                      {formatLocalTime(entry.logged_at)}
+                    </td>
                     <td className="px-2 py-1 tabular-nums text-[color:var(--color-penumbra-cyan)]">
                       {entry.applied_tick}
                     </td>
@@ -508,6 +585,7 @@ export function Operator() {
                           : "px-2 py-1 text-[color:var(--color-penumbra-ember)]"
                       }
                     >
+                      <span aria-hidden="true">{entry.success ? "✓ " : "✗ "}</span>
                       {entry.success ? "OK" : "FAIL"}
                     </td>
                     <td className="px-2 py-1 text-[color:var(--color-penumbra-muted)]">
@@ -524,19 +602,39 @@ export function Operator() {
           aria-label="Score Card"
           className="col-span-3 flex flex-col gap-2 border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-panel)] p-3"
         >
-          <h2 className="text-[10px] uppercase tracking-[0.2em] text-[color:var(--color-penumbra-dim)]">
-            score card
-          </h2>
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-[10px] uppercase tracking-[0.2em] text-[color:var(--color-penumbra-dim)]">
+              score card
+            </h2>
+            <a
+              href="/bench"
+              className="text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-cyan)] hover:underline"
+            >
+              compare on /bench →
+            </a>
+          </div>
           <div className="grid grid-cols-5 gap-2">
-            <Stat label="profit" value={status?.scorecard?.profit ?? 0} digits={2} accent />
-            <Stat
-              label="privacy preserved"
-              value={status?.scorecard?.privacy_preserved ?? 0}
-              digits={3}
-            />
-            <Stat label="attacks survived" value={status?.scorecard?.attacks_survived ?? 0} />
-            <Stat label="chain contribution" value={status?.scorecard?.chain_contribution ?? 0} />
-            <Stat label="composite" value={status?.scorecard?.composite ?? 0} digits={3} accent />
+            {(Object.keys(SCORECARD_META) as Array<keyof OperatorScore>).map((field) => {
+              const cellMeta = SCORECARD_META[field];
+              const value = scorecard?.[field] ?? 0;
+              return (
+                <a
+                  key={field}
+                  href="/bench"
+                  title={`${cellMeta.tooltip} — click to compare on /bench`}
+                  aria-label={`${cellMeta.label} (open /bench)`}
+                  className="block transition-opacity hover:opacity-80"
+                >
+                  <Stat
+                    label={cellMeta.label}
+                    value={value}
+                    digits={cellMeta.digits}
+                    accent={cellMeta.accent}
+                    caption="see /bench →"
+                  />
+                </a>
+              );
+            })}
           </div>
         </section>
       </main>

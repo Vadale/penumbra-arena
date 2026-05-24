@@ -5,8 +5,8 @@
  * of the lowest-stock cells. Polled every 5s.
  */
 
-import { useEffect, useState } from "react";
-import { Stat } from "./_shared";
+import { useFetchJsonPoll } from "../hooks/useFetchJson";
+import { FetchError, Stat } from "./_shared";
 
 interface Payload {
   available: boolean;
@@ -18,24 +18,12 @@ interface Payload {
 }
 
 export function LogisticsInventoryHealthChart() {
-  const [data, setData] = useState<Payload | null>(null);
-  useEffect(() => {
-    let cancel = false;
-    const tick = async () => {
-      try {
-        const res = await fetch("/logistics/inventory-health");
-        if (res.ok && !cancel) setData((await res.json()) as Payload);
-      } catch {}
-    };
-    void tick();
-    const h = window.setInterval(tick, 5000);
-    return () => {
-      cancel = true;
-      window.clearInterval(h);
-    };
-  }, []);
+  const state = useFetchJsonPoll<Payload>("/logistics/inventory-health", 5000);
+  const data =
+    state.kind === "data" ? state.value : state.kind === "error" ? state.lastValue : undefined;
 
   if (!data?.available) {
+    if (state.kind === "error") return <FetchError message={state.message} />;
     return (
       <div className="font-mono text-xs text-[color:var(--color-penumbra-muted)]">
         no inventory data yet
@@ -48,6 +36,7 @@ export function LogisticsInventoryHealthChart() {
     .slice(0, 6);
   return (
     <div className="font-mono space-y-3">
+      {state.kind === "error" && <FetchError message={state.message} />}
       <div className="grid grid-cols-3 gap-2 text-[10px]">
         <Stat label="cells" value={data.n_cells_total ?? 0} />
         <Stat label="stockouts" value={data.n_stockouts ?? 0} ember={(data.n_stockouts ?? 0) > 0} />

@@ -7,8 +7,8 @@
  * for, draining its DP budget proportionally faster.
  */
 
-import { useEffect, useState } from "react";
-import { Stat } from "./_shared";
+import { useFetchJsonOnce } from "../hooks/useFetchJson";
+import { FetchError, Stat } from "./_shared";
 
 interface Point {
   n_dummies: number;
@@ -27,26 +27,14 @@ interface Payload {
 }
 
 export function DefenseRequestObfuscationChart() {
-  const [data, setData] = useState<Payload | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const run = async () => {
-    setBusy(true);
-    try {
-      const res = await fetch("/defenses/request_obfuscation/demo");
-      if (res.ok) setData((await res.json()) as Payload);
-    } catch {}
-    setBusy(false);
-  };
-
-  useEffect(() => {
-    void run();
-  }, []);
+  const state = useFetchJsonOnce<Payload>("/defenses/request_obfuscation/demo");
+  const data = state.kind === "data" ? state.value : undefined;
 
   if (!data?.available || !data.curve) {
+    if (state.kind === "error") return <FetchError message={state.message} />;
     return (
       <div className="font-mono text-xs text-[color:var(--color-penumbra-muted)]">
-        {busy ? "computing…" : "obfuscation unavailable"}
+        {state.kind === "loading" ? "computing…" : "obfuscation unavailable"}
       </div>
     );
   }

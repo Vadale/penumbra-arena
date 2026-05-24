@@ -8,8 +8,9 @@
  * so each row sums to 1.0.
  */
 
-import { useEffect, useMemo, useState } from "react";
-import { Stat } from "./_shared";
+import { useMemo, useState } from "react";
+import { useFetchJsonPoll } from "../hooks/useFetchJson";
+import { FetchError, Stat } from "./_shared";
 
 interface AttentionPayload {
   available: boolean;
@@ -22,27 +23,11 @@ interface AttentionPayload {
 }
 
 export function GATAttentionChart() {
-  const [data, setData] = useState<AttentionPayload | null>(null);
+  const state = useFetchJsonPoll<AttentionPayload>("/learning/gat-attention", 6000);
+  const data =
+    state.kind === "data" ? state.value : state.kind === "error" ? state.lastValue : undefined;
   const [selectedRow, setSelectedRow] = useState(0);
   const [layer, setLayer] = useState<"l1" | "l2">("l1");
-
-  useEffect(() => {
-    let cancelled = false;
-    const grab = async () => {
-      try {
-        const res = await fetch("/learning/gat-attention");
-        if (!res.ok) return;
-        const payload = (await res.json()) as AttentionPayload;
-        if (!cancelled) setData(payload);
-      } catch {}
-    };
-    void grab();
-    const t = window.setInterval(grab, 6000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(t);
-    };
-  }, []);
 
   const row = useMemo(() => {
     if (!data) return null;
@@ -51,6 +36,7 @@ export function GATAttentionChart() {
   }, [data, layer, selectedRow]);
 
   if (!data) {
+    if (state.kind === "error") return <FetchError message={state.message} />;
     return (
       <div className="font-mono text-xs text-[color:var(--color-penumbra-muted)]">
         loading GATv2 attention…
@@ -60,6 +46,7 @@ export function GATAttentionChart() {
 
   return (
     <div className="font-mono space-y-3">
+      {state.kind === "error" && <FetchError message={state.message} />}
       <div className="grid grid-cols-4 gap-2 text-[10px]">
         <Stat label="nodes" value={String(data.n_nodes)} accent />
         <Stat label="goals" value={String(data.goals.length)} accent />

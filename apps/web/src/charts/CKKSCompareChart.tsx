@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Stat } from "./_shared";
+import { FetchError, Stat } from "./_shared";
 
 interface CKKSPayload {
   available: boolean;
@@ -26,13 +26,21 @@ interface CKKSPayload {
 export function CKKSCompareChart() {
   const [data, setData] = useState<CKKSPayload | null>(null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const grab = async () => {
     setBusy(true);
+    setError(null);
     try {
       const res = await fetch("/crypto/ckks/compare");
-      if (res.ok) setData((await res.json()) as CKKSPayload);
-    } catch {}
+      if (!res.ok) {
+        setError(`HTTP ${res.status} on /crypto/ckks/compare`);
+      } else {
+        setData((await res.json()) as CKKSPayload);
+      }
+    } catch (exc) {
+      setError(`network error: ${exc instanceof Error ? exc.message : String(exc)}`);
+    }
     setBusy(false);
   };
 
@@ -42,6 +50,7 @@ export function CKKSCompareChart() {
   }, []);
 
   if (!data?.available) {
+    if (error) return <FetchError message={error} />;
     return (
       <div className="font-mono text-xs text-[color:var(--color-penumbra-muted)]">
         {busy ? "encrypting…" : "CKKS unavailable"}
@@ -56,6 +65,7 @@ export function CKKSCompareChart() {
 
   return (
     <div className="font-mono space-y-3">
+      {error && <FetchError message={error} />}
       <div className="grid grid-cols-4 gap-2 text-[10px]">
         <Stat label="backend" value={data.backend ?? "—"} accent />
         <Stat

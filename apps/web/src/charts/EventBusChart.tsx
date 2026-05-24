@@ -5,8 +5,8 @@
  * Polls /events/recent every 2s and /events/stats every 5s.
  */
 
-import { useEffect, useState } from "react";
-import { Stat } from "./_shared";
+import { useFetchJsonPoll } from "../hooks/useFetchJson";
+import { FetchError, Stat } from "./_shared";
 
 interface EventEntry {
   kind: string;
@@ -32,36 +32,29 @@ interface StatsPayload {
 }
 
 export function EventBusChart() {
-  const [recent, setRecent] = useState<EventEntry[]>([]);
-  const [stats, setStats] = useState<StatsPayload | null>(null);
+  const recentState = useFetchJsonPoll<RecentPayload>("/events/recent?limit=20", 2000);
+  const statsState = useFetchJsonPoll<StatsPayload>("/events/stats", 5000);
 
-  useEffect(() => {
-    let cancel = false;
-    const fetchRecent = async () => {
-      try {
-        const r = await fetch("/events/recent?limit=20");
-        if (r.ok && !cancel) {
-          const body = (await r.json()) as RecentPayload;
-          setRecent(body.events);
-        }
-      } catch {}
-    };
-    const fetchStats = async () => {
-      try {
-        const r = await fetch("/events/stats");
-        if (r.ok && !cancel) setStats((await r.json()) as StatsPayload);
-      } catch {}
-    };
-    void fetchRecent();
-    void fetchStats();
-    const h1 = window.setInterval(fetchRecent, 2000);
-    const h2 = window.setInterval(fetchStats, 5000);
-    return () => {
-      cancel = true;
-      window.clearInterval(h1);
-      window.clearInterval(h2);
-    };
-  }, []);
+  const recentPayload =
+    recentState.kind === "data"
+      ? recentState.value
+      : recentState.kind === "error"
+        ? recentState.lastValue
+        : undefined;
+  const stats =
+    statsState.kind === "data"
+      ? statsState.value
+      : statsState.kind === "error"
+        ? statsState.lastValue
+        : undefined;
+  const recent = recentPayload?.events ?? [];
+
+  const errorMessage =
+    recentState.kind === "error"
+      ? recentState.message
+      : statsState.kind === "error"
+        ? statsState.message
+        : null;
 
   const totalEmits = stats ? Object.values(stats.emit_counts).reduce((a, b) => a + b, 0) : 0;
   const totalErrors = stats
@@ -70,6 +63,7 @@ export function EventBusChart() {
 
   return (
     <div className="font-mono space-y-3">
+      {errorMessage && <FetchError message={errorMessage} />}
       <div className="grid grid-cols-4 gap-2 text-[10px]">
         <Stat label="kinds seen" value={stats ? Object.keys(stats.emit_counts).length : 0} />
         <Stat label="total emits" value={totalEmits} accent />

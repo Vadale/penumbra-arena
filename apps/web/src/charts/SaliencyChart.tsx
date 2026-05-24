@@ -7,7 +7,9 @@
  * policy the most.
  */
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useFetchJsonPoll } from "../hooks/useFetchJson";
+import { FetchError } from "./_shared";
 
 interface SaliencyPayload {
   available: boolean;
@@ -20,29 +22,14 @@ interface SaliencyPayload {
 
 export function SaliencyChart() {
   const [agentId, setAgentId] = useState(0);
-  const [data, setData] = useState<SaliencyPayload | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    const grab = async () => {
-      try {
-        const res = await fetch(`/learning/saliency/${agentId}`);
-        if (!res.ok) return;
-        const payload = (await res.json()) as SaliencyPayload;
-        if (!cancelled) setData(payload);
-      } catch {}
-    };
-    void grab();
-    // 6s — saliency is a torch.autograd backward pass, expensive enough
-    // that we don't want to poll it at 1Hz under heavy load.
-    const t = window.setInterval(grab, 6000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(t);
-    };
-  }, [agentId]);
+  // 6s cadence — saliency is a torch.autograd backward pass, expensive enough
+  // that we don't want to poll it at 1Hz under heavy load.
+  const state = useFetchJsonPoll<SaliencyPayload>(`/learning/saliency/${agentId}`, 6000);
+  const data =
+    state.kind === "data" ? state.value : state.kind === "error" ? state.lastValue : undefined;
 
   if (!data?.available) {
+    if (state.kind === "error") return <FetchError message={state.message} />;
     return (
       <div className="font-mono text-xs text-[color:var(--color-penumbra-muted)]">
         saliency unavailable (MAPPO not loaded)
@@ -56,6 +43,7 @@ export function SaliencyChart() {
 
   return (
     <div className="font-mono space-y-3">
+      {state.kind === "error" && <FetchError message={state.message} />}
       <div className="flex items-center gap-2 text-[10px]">
         <label className="uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
           agent

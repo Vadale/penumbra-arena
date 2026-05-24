@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Stat, Verdict } from "./_shared";
+import { FetchError, Stat, Verdict } from "./_shared";
 
 interface Payload {
   available: boolean;
@@ -26,13 +26,21 @@ export function BBSPlusChart() {
   const [n, setN] = useState(5);
   const [data, setData] = useState<Payload | null>(null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const run = async () => {
     setBusy(true);
+    setError(null);
     try {
       const res = await fetch(`/crypto/bbs-plus/demo?n_messages=${n}`);
-      if (res.ok) setData((await res.json()) as Payload);
-    } catch {}
+      if (!res.ok) {
+        setError(`HTTP ${res.status} on /crypto/bbs-plus/demo`);
+      } else {
+        setData((await res.json()) as Payload);
+      }
+    } catch (exc) {
+      setError(`network error: ${exc instanceof Error ? exc.message : String(exc)}`);
+    }
     setBusy(false);
   };
 
@@ -43,6 +51,7 @@ export function BBSPlusChart() {
 
   return (
     <div className="font-mono space-y-3">
+      {error && <FetchError message={error} />}
       <div className="flex items-center gap-2 text-[10px]">
         <label className="uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
           n attributes

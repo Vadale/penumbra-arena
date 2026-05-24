@@ -4,8 +4,9 @@
  * Pick an agent → sign a sample message → verify honest + tampered.
  */
 
-import { useEffect, useState } from "react";
-import { Block, Stat, Verdict } from "./_shared";
+import { useState } from "react";
+import { useFetchJsonOnce } from "../hooks/useFetchJson";
+import { Block, FetchError, Stat, Verdict } from "./_shared";
 
 interface Payload {
   available: boolean;
@@ -23,27 +24,14 @@ interface Payload {
 
 export function DilithiumChart() {
   const [agentId, setAgentId] = useState(0);
-  const [data, setData] = useState<Payload | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const run = async () => {
-    setBusy(true);
-    try {
-      const res = await fetch(`/crypto/dilithium/inspect/${agentId}`);
-      if (res.ok) setData((await res.json()) as Payload);
-    } catch {}
-    setBusy(false);
-  };
-
-  useEffect(() => {
-    void run();
-    // biome-ignore lint/correctness/useExhaustiveDependencies: re-run when agent changes
-  }, [agentId]);
+  const state = useFetchJsonOnce<Payload>(`/crypto/dilithium/inspect/${agentId}`);
+  const data = state.kind === "data" ? state.value : undefined;
 
   if (!data?.available) {
+    if (state.kind === "error") return <FetchError message={state.message} />;
     return (
       <div className="font-mono text-xs text-[color:var(--color-penumbra-muted)]">
-        {busy ? "signing…" : "Dilithium unavailable"}
+        {state.kind === "loading" ? "signing…" : "Dilithium unavailable"}
       </div>
     );
   }

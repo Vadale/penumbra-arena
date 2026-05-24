@@ -6,8 +6,8 @@
  * ONE 96-byte aggregate point — that's why BLS scales.
  */
 
-import { useEffect, useState } from "react";
-import { Stat, Verdict } from "./_shared";
+import { useFetchJsonOnce, useFetchJsonPoll } from "../hooks/useFetchJson";
+import { FetchError, Stat, Verdict } from "./_shared";
 
 interface BLSPayload {
   block_hash: string;
@@ -18,62 +18,44 @@ interface BLSPayload {
   verified: boolean;
 }
 
+interface LatestBlocks {
+  blocks?: { hash: string; height: number }[];
+}
+
 export function BLSChart() {
-  const [blockHash, setBlockHash] = useState<string | null>(null);
-  const [data, setData] = useState<BLSPayload | null>(null);
-  const [loading, setLoading] = useState(false);
+  const latestState = useFetchJsonPoll<LatestBlocks>("/chain/latest", 4000);
+  const latest =
+    latestState.kind === "data"
+      ? latestState.value
+      : latestState.kind === "error"
+        ? latestState.lastValue
+        : undefined;
+  const blocks = latest?.blocks ?? [];
+  const head = blocks.length > 0 ? blocks[blocks.length - 1] : undefined;
+  const blockHash = head?.hash;
+  const blsState = useFetchJsonOnce<BLSPayload>(blockHash ? `/chain/bls/${blockHash}` : "", {
+    enabled: Boolean(blockHash),
+  });
+  const data = blsState.kind === "data" ? blsState.value : undefined;
 
-  useEffect(() => {
-    let cancelled = false;
-    const grab = async () => {
-      try {
-        const res = await fetch("/chain/latest");
-        if (!res.ok) return;
-        const payload = (await res.json()) as {
-          blocks?: { hash: string; height: number }[];
-        };
-        const blocks = payload.blocks ?? [];
-        if (blocks.length === 0) return;
-        const head = blocks[blocks.length - 1];
-        if (!cancelled && head) setBlockHash(head.hash);
-      } catch {}
-    };
-    void grab();
-    const t = window.setInterval(grab, 4000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(t);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!blockHash) return;
-    let cancelled = false;
-    setLoading(true);
-    const grab = async () => {
-      try {
-        const res = await fetch(`/chain/bls/${blockHash}`);
-        if (!res.ok) return;
-        const payload = (await res.json()) as BLSPayload;
-        if (!cancelled) setData(payload);
-      } catch {}
-      setLoading(false);
-    };
-    void grab();
-    return () => {
-      cancelled = true;
-    };
-  }, [blockHash]);
+  const errorMessage =
+    latestState.kind === "error"
+      ? latestState.message
+      : blsState.kind === "error"
+        ? blsState.message
+        : null;
 
   if (!data) {
+    if (errorMessage) return <FetchError message={errorMessage} />;
     return (
       <div className="font-mono text-xs text-[color:var(--color-penumbra-muted)]">
-        {loading ? "loading BLS aggregate…" : "no block yet"}
+        {blsState.kind === "loading" ? "loading BLS aggregate…" : "no block yet"}
       </div>
     );
   }
   return (
     <div className="font-mono space-y-3">
+      {errorMessage && <FetchError message={errorMessage} />}
       <div className="grid grid-cols-3 gap-2 text-[10px]">
         <Stat label="block height" value={String(data.block_height)} accent />
         <Stat label="signers" value={String(data.n_signers)} accent />

@@ -7,8 +7,8 @@
  * rotates fairly across validators.
  */
 
-import { useEffect, useState } from "react";
-import { Stat } from "./_shared";
+import { useFetchJsonPoll } from "../hooks/useFetchJson";
+import { FetchError, Stat } from "./_shared";
 
 interface Validator {
   index: number;
@@ -32,26 +32,12 @@ interface Snapshot {
 }
 
 export function VRFLeaderChart() {
-  const [data, setData] = useState<Snapshot | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    const tick = async () => {
-      try {
-        const res = await fetch("/chain/vrf-leader");
-        if (!res.ok) return;
-        const payload = (await res.json()) as Snapshot;
-        if (!cancelled) setData(payload);
-      } catch {}
-    };
-    void tick();
-    const t = window.setInterval(tick, 1500);
-    return () => {
-      cancelled = true;
-      window.clearInterval(t);
-    };
-  }, []);
+  const state = useFetchJsonPoll<Snapshot>("/chain/vrf-leader", 1500);
+  const data =
+    state.kind === "data" ? state.value : state.kind === "error" ? state.lastValue : undefined;
 
   if (!data) {
+    if (state.kind === "error") return <FetchError message={state.message} />;
     return (
       <div className="font-mono text-xs text-[color:var(--color-penumbra-muted)]">
         loading VRF state…
@@ -65,6 +51,7 @@ export function VRFLeaderChart() {
 
   return (
     <div className="font-mono space-y-3">
+      {state.kind === "error" && <FetchError message={state.message} />}
       <div className="grid grid-cols-3 gap-2 text-[10px]">
         <Stat label="height" value={data.current_height} accent />
         <Stat label="validators" value={data.validators.length} />

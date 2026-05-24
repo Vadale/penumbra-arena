@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Block, Stat, Verdict } from "./_shared";
+import { Block, FetchError, Stat, Verdict } from "./_shared";
 
 interface Payload {
   available: boolean;
@@ -29,13 +29,21 @@ interface Payload {
 export function SPHINCSChart() {
   const [data, setData] = useState<Payload | null>(null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const run = async () => {
     setBusy(true);
+    setError(null);
     try {
       const res = await fetch("/crypto/sphincs/demo");
-      if (res.ok) setData((await res.json()) as Payload);
-    } catch {}
+      if (!res.ok) {
+        setError(`HTTP ${res.status} on /crypto/sphincs/demo`);
+      } else {
+        setData((await res.json()) as Payload);
+      }
+    } catch (exc) {
+      setError(`network error: ${exc instanceof Error ? exc.message : String(exc)}`);
+    }
     setBusy(false);
   };
 
@@ -44,6 +52,7 @@ export function SPHINCSChart() {
   }, []);
 
   if (!data?.available) {
+    if (error) return <FetchError message={error} />;
     return (
       <div className="font-mono text-xs text-[color:var(--color-penumbra-muted)]">
         {busy ? "signing with SPHINCS+…" : "SPHINCS+ unavailable"}
@@ -56,6 +65,7 @@ export function SPHINCSChart() {
 
   return (
     <div className="font-mono space-y-3">
+      {error && <FetchError message={error} />}
       <div className="grid grid-cols-3 gap-2 text-[10px]">
         <Stat label="algorithm" value="SPHINCS+-128f" accent />
         <Stat label="security" value="128-bit PQ" />

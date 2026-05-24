@@ -6,8 +6,9 @@
  * how much could a perfectly-informed planner save vs the live policy?
  */
 
-import { useEffect, useState } from "react";
-import { Stat } from "./_shared";
+import { useState } from "react";
+import { useFetchJsonPoll } from "../hooks/useFetchJson";
+import { FetchError, Stat } from "./_shared";
 
 interface RouteRow {
   agent_idx: number;
@@ -30,29 +31,19 @@ interface Payload {
 }
 
 export function LogisticsVRPChart() {
-  const [data, setData] = useState<Payload | null>(null);
   const [solver, setSolver] = useState<"two_opt" | "greedy" | "or_tools">("two_opt");
-
-  useEffect(() => {
-    let cancel = false;
-    const tick = async () => {
-      try {
-        const res = await fetch(`/logistics/vrp-baseline?solver=${solver}`);
-        if (res.ok && !cancel) setData((await res.json()) as Payload);
-      } catch {}
-    };
-    void tick();
-    const h = window.setInterval(tick, 10000);
-    return () => {
-      cancel = true;
-      window.clearInterval(h);
-    };
-  }, [solver]);
+  const state = useFetchJsonPoll<Payload>(`/logistics/vrp-baseline?solver=${solver}`, 10000);
+  const data =
+    state.kind === "data" ? state.value : state.kind === "error" ? state.lastValue : undefined;
 
   if (!data?.available) {
     return (
       <div className="font-mono text-xs text-[color:var(--color-penumbra-muted)] space-y-2">
-        <div>no VRP baseline yet ({data?.reason ?? "loading"})</div>
+        {state.kind === "error" ? (
+          <FetchError message={state.message} />
+        ) : (
+          <div>no VRP baseline yet ({data?.reason ?? "loading"})</div>
+        )}
         <SolverPicker solver={solver} onChange={setSolver} />
       </div>
     );
@@ -66,6 +57,7 @@ export function LogisticsVRPChart() {
 
   return (
     <div className="font-mono space-y-3">
+      {state.kind === "error" && <FetchError message={state.message} />}
       <SolverPicker solver={solver} onChange={setSolver} />
 
       <div className="grid grid-cols-3 gap-2 text-[10px]">

@@ -8,8 +8,8 @@
  * future return averaged over the agents.
  */
 
-import { useEffect, useState } from "react";
-import { Stat } from "./_shared";
+import { useFetchJsonPoll } from "../hooks/useFetchJson";
+import { FetchError, Stat } from "./_shared";
 
 interface AgentRow {
   agent_id: number;
@@ -25,28 +25,14 @@ interface Payload {
 }
 
 export function ValueMapChart() {
-  const [data, setData] = useState<Payload | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    const tick = async () => {
-      try {
-        const res = await fetch("/learning/value-map");
-        if (!res.ok) return;
-        const payload = (await res.json()) as Payload;
-        if (!cancelled) setData(payload);
-      } catch {}
-    };
-    void tick();
-    // 4s — value_estimate + per-agent action_probabilities is a heavy
-    // PyTorch forward pass; slow the poll under stress.
-    const t = window.setInterval(tick, 4000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(t);
-    };
-  }, []);
+  // 4s cadence — value_estimate + per-agent action_probabilities is a heavy
+  // PyTorch forward pass; slow the poll under stress.
+  const state = useFetchJsonPoll<Payload>("/learning/value-map", 4000);
+  const data =
+    state.kind === "data" ? state.value : state.kind === "error" ? state.lastValue : undefined;
 
   if (!data?.available || !data.per_agent) {
+    if (state.kind === "error") return <FetchError message={state.message} />;
     return (
       <div className="font-mono text-xs text-[color:var(--color-penumbra-muted)]">
         value map unavailable (MAPPO not loaded)
@@ -74,6 +60,7 @@ export function ValueMapChart() {
 
   return (
     <div className="font-mono space-y-3">
+      {state.kind === "error" && <FetchError message={state.message} />}
       <div className="grid grid-cols-4 gap-2 text-[10px]">
         <Stat
           label="V(s)"

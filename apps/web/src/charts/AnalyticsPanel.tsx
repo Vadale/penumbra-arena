@@ -45,6 +45,12 @@ function Cell({
   const sparkFill = ember
     ? "color-mix(in srgb, var(--color-penumbra-ember) 18%, transparent)"
     : "color-mix(in srgb, var(--color-penumbra-cyan) 18%, transparent)";
+  // Non-color marker so colorblind users can tell accent / ember / default
+  // apart at a glance. △ reads as "warning"; ★ as "highlighted".
+  const marker = ember ? "△" : accent ? "★" : "";
+  const markerClass = ember
+    ? "text-[color:var(--color-penumbra-ember)]"
+    : "text-[color:var(--color-penumbra-cyan)]";
   return (
     <button
       type="button"
@@ -54,8 +60,13 @@ function Cell({
     >
       <div className="flex items-start justify-between">
         <div>
-          <div className="text-[9px] uppercase tracking-[0.15em] text-[color:var(--color-penumbra-dim)] group-hover:text-[color:var(--color-penumbra-muted)]">
-            {label}
+          <div className="flex items-center gap-1 text-[9px] uppercase tracking-[0.15em] text-[color:var(--color-penumbra-dim)] group-hover:text-[color:var(--color-penumbra-muted)]">
+            {marker && (
+              <span aria-hidden="true" className={`text-[8px] ${markerClass}`}>
+                {marker}
+              </span>
+            )}
+            <span>{label}</span>
           </div>
           <div className={`tabular-nums text-[13px] leading-tight ${valueClass}`}>{value}</div>
         </div>
@@ -73,6 +84,14 @@ function Cell({
         <div className="text-[9px] text-[color:var(--color-penumbra-dim)]">{caption}</div>
       )}
     </button>
+  );
+}
+
+function SectionHeader({ children }: { children: string }) {
+  return (
+    <div className="mt-3 mb-1 border-b border-[color:var(--color-penumbra-border)] pb-0.5 text-[10px] uppercase tracking-[0.18em] text-[color:var(--color-penumbra-muted)] first:mt-0">
+      {children}
+    </div>
   );
 }
 
@@ -95,6 +114,7 @@ export function AnalyticsPanel() {
 
   return (
     <div className="space-y-2">
+      <SectionHeader>statistics</SectionHeader>
       <div className="grid grid-cols-1 gap-1">
         <Cell
           label="traj.mean"
@@ -118,39 +138,8 @@ export function AnalyticsPanel() {
           onClick={() => open("hdbscan_clusters")}
         />
         <Cell
-          label="arima.next"
-          value={fmt(snap.arima_next)}
-          caption={snap.arima_std !== null ? `σ=${fmt(snap.arima_std)}` : undefined}
-          history={histories.arima_next}
-          onClick={() => open("arima_next")}
-        />
-        <Cell
-          label="sinkhorn"
-          value={fmt(snap.sinkhorn_cost)}
-          caption="W₁"
-          history={histories.sinkhorn_cost}
-          onClick={() => open("sinkhorn_cost")}
-        />
-        <Cell
-          label="var.95"
-          value={fmt(snap.var95)}
-          caption="tail risk"
-          history={histories.var95}
-          onClick={() => open("var95")}
-        />
-        <Cell
-          label="h₀"
-          value={fmt(snap.h0_total)}
-          caption="components"
-          history={histories.h0_total}
-          onClick={() => open("h0_total")}
-        />
-        <Cell
-          label="h₁"
-          value={fmt(snap.h1_total)}
-          caption="loops"
-          history={histories.h1_total}
-          onClick={() => open("h1_total")}
+          label="changepts"
+          value={snap.changepoints.length > 0 ? snap.changepoints.join(",") : "—"}
         />
         <Cell
           label="bayes.θ"
@@ -158,153 +147,6 @@ export function AnalyticsPanel() {
           caption="P(high‖)"
           history={histories.bayesian_theta}
           onClick={() => open("bayesian_theta")}
-        />
-        <Cell
-          label="changepts"
-          value={snap.changepoints.length > 0 ? snap.changepoints.join(",") : "—"}
-        />
-        <Cell
-          label="dp.ε spent"
-          value={snap.dp_budget ? fmt(snap.dp_budget.epsilon_spent, 2) : "—"}
-          caption={
-            snap.dp_budget
-              ? `rem ${fmt(snap.dp_budget.epsilon_remaining, 2)} / ${fmt(snap.dp_budget.epsilon_total, 1)}`
-              : "dp off"
-          }
-          history={histories.dp_epsilon_spent}
-          ember={dpExhausted}
-          accent={!!snap.dp_budget && !dpExhausted}
-          onClick={() => open("dp_epsilon_spent")}
-        />
-        <Cell
-          label="sigs.ok"
-          value={snap.signing_stats.verified.toLocaleString()}
-          caption={
-            snap.signing_stats.rejected > 0
-              ? `${snap.signing_stats.rejected} bad · ${snap.signing_stats.n_agents} ag`
-              : `${snap.signing_stats.n_agents} ag · 0 bad`
-          }
-          history={histories.signing_verified}
-          ember={snap.signing_stats.rejected > 0}
-          accent
-          onClick={() => open("signing_verified")}
-        />
-        <Cell
-          label="topics"
-          value={snap.n_topics !== null ? String(snap.n_topics) : "—"}
-          caption={
-            snap.n_topics && snap.n_topics > 0
-              ? (Object.values(snap.topic_top_words)[0]?.slice(0, 3).join("·") ?? "")
-              : "warming"
-          }
-          history={histories.n_topics}
-          onClick={() => open("topics")}
-        />
-        <Cell
-          label="pca λ₁"
-          value={snap.pca?.eigenvalues[0] !== undefined ? fmt(snap.pca.eigenvalues[0]) : "—"}
-          caption={
-            snap.pca?.explained_variance_ratio
-              ? `cum ${fmt((snap.pca.explained_variance_ratio[0] ?? 0) * 100, 0)}%`
-              : "warming"
-          }
-          accent
-          onClick={() => open("pca")}
-        />
-        <Cell
-          label="logit β"
-          value={snap.logit?.slope !== undefined ? fmt(snap.logit.slope, 3) : "—"}
-          caption={
-            snap.logit?.pseudo_r2 !== undefined
-              ? `pseudo R² ${fmt(snap.logit.pseudo_r2, 2)}`
-              : "warming"
-          }
-          accent
-          onClick={() => open("logit")}
-        />
-        <Cell
-          label="granger"
-          value={(() => {
-            const g = snap.granger;
-            if (!g) return "—";
-            const k = g.series_names.length + 1;
-            const count = g.p_values.flat().filter((p, i) => p < 0.05 && i % k !== 0).length;
-            return String(count);
-          })()}
-          caption={snap.granger ? "edges p<.05" : "warming"}
-          accent
-          onClick={() => open("granger")}
-        />
-        <Cell
-          label="buys"
-          value={snap.economy?.total_purchases.toLocaleString() ?? "—"}
-          caption={
-            snap.economy
-              ? `${snap.economy.total_revenue.toFixed(0)} rev · ${Object.keys(snap.economy.category_counts).length} cats`
-              : "warming"
-          }
-          accent
-          onClick={() => open("economy")}
-        />
-        <Cell
-          label="KM median"
-          value={
-            snap.survival && snap.survival.median_time !== null
-              ? fmt(snap.survival.median_time, 0)
-              : "—"
-          }
-          caption={
-            snap.survival
-              ? `${snap.survival.n_events} ev · ${snap.survival.n_censored} cens`
-              : "warming"
-          }
-          accent
-          onClick={() => open("survival")}
-        />
-        <Cell
-          label="fiedler λ₂"
-          value={snap.spectral ? fmt(snap.spectral.fiedler_value, 4) : "—"}
-          caption={
-            snap.spectral
-              ? `${snap.spectral.n_nodes} nodes · ${snap.spectral.n_edges} edges`
-              : "warming"
-          }
-          accent
-          onClick={() => open("spectral")}
-        />
-        <Cell
-          label="ATE (IPW)"
-          value={snap.causal ? fmt(snap.causal.ipw_ate, 2) : "—"}
-          caption={
-            snap.causal
-              ? `±${snap.causal.ipw_se.toFixed(2)} · ${snap.causal.n_treated}t/${snap.causal.n_control}c`
-              : "warming"
-          }
-          accent
-          onClick={() => open("causal")}
-        />
-        <Cell
-          label="VAR p"
-          value={snap.var_irf ? String(snap.var_irf.lag_order) : "—"}
-          caption={
-            snap.var_irf
-              ? `${snap.var_irf.series_names.length}-var · h=${snap.var_irf.horizon}`
-              : "warming"
-          }
-          accent
-          onClick={() => open("var_irf")}
-        />
-        <Cell
-          label="GARCH α+β"
-          value={snap.garch ? fmt(snap.garch.persistence, 3) : "—"}
-          caption={
-            snap.garch
-              ? `ω=${snap.garch.omega.toFixed(3)} · α=${snap.garch.alpha.toFixed(2)}`
-              : "warming"
-          }
-          ember={!!snap.garch && snap.garch.persistence > 0.98}
-          accent={!!snap.garch && snap.garch.persistence <= 0.98}
-          onClick={() => open("garch")}
         />
         <Cell
           label="ANOVA F"
@@ -356,6 +198,170 @@ export function AnalyticsPanel() {
           onClick={() => open("permutation")}
         />
         <Cell
+          label="topics"
+          value={snap.n_topics !== null ? String(snap.n_topics) : "—"}
+          caption={
+            snap.n_topics && snap.n_topics > 0
+              ? (Object.values(snap.topic_top_words)[0]?.slice(0, 3).join("·") ?? "")
+              : "warming"
+          }
+          history={histories.n_topics}
+          onClick={() => open("topics")}
+        />
+      </div>
+
+      <SectionHeader>econometrics · time series · risk</SectionHeader>
+      <div className="grid grid-cols-1 gap-1">
+        <Cell
+          label="arima.next"
+          value={fmt(snap.arima_next)}
+          caption={snap.arima_std !== null ? `σ=${fmt(snap.arima_std)}` : undefined}
+          history={histories.arima_next}
+          onClick={() => open("arima_next")}
+        />
+        <Cell
+          label="VAR p"
+          value={snap.var_irf ? String(snap.var_irf.lag_order) : "—"}
+          caption={
+            snap.var_irf
+              ? `${snap.var_irf.series_names.length}-var · h=${snap.var_irf.horizon}`
+              : "warming"
+          }
+          accent
+          onClick={() => open("var_irf")}
+        />
+        <Cell
+          label="GARCH α+β"
+          value={snap.garch ? fmt(snap.garch.persistence, 3) : "—"}
+          caption={
+            snap.garch
+              ? `ω=${snap.garch.omega.toFixed(3)} · α=${snap.garch.alpha.toFixed(2)}`
+              : "warming"
+          }
+          ember={!!snap.garch && snap.garch.persistence > 0.98}
+          accent={!!snap.garch && snap.garch.persistence <= 0.98}
+          onClick={() => open("garch")}
+        />
+        <Cell
+          label="granger"
+          value={(() => {
+            const g = snap.granger;
+            if (!g) return "—";
+            const k = g.series_names.length + 1;
+            const count = g.p_values.flat().filter((p, i) => p < 0.05 && i % k !== 0).length;
+            return String(count);
+          })()}
+          caption={snap.granger ? "edges p<.05" : "warming"}
+          accent
+          onClick={() => open("granger")}
+        />
+        <Cell
+          label="var.95"
+          value={fmt(snap.var95)}
+          caption="tail risk"
+          history={histories.var95}
+          onClick={() => open("var95")}
+        />
+        <Cell
+          label="KM median"
+          value={
+            snap.survival && snap.survival.median_time !== null
+              ? fmt(snap.survival.median_time, 0)
+              : "—"
+          }
+          caption={
+            snap.survival
+              ? `${snap.survival.n_events} ev · ${snap.survival.n_censored} cens`
+              : "warming"
+          }
+          accent
+          onClick={() => open("survival")}
+        />
+        <Cell
+          label="ATE (IPW)"
+          value={snap.causal ? fmt(snap.causal.ipw_ate, 2) : "—"}
+          caption={
+            snap.causal
+              ? `±${snap.causal.ipw_se.toFixed(2)} · ${snap.causal.n_treated}t/${snap.causal.n_control}c`
+              : "warming"
+          }
+          accent
+          onClick={() => open("causal")}
+        />
+      </div>
+
+      <SectionHeader>linear algebra · topology · transport</SectionHeader>
+      <div className="grid grid-cols-1 gap-1">
+        <Cell
+          label="pca λ₁"
+          value={snap.pca?.eigenvalues[0] !== undefined ? fmt(snap.pca.eigenvalues[0]) : "—"}
+          caption={
+            snap.pca?.explained_variance_ratio
+              ? `cum ${fmt((snap.pca.explained_variance_ratio[0] ?? 0) * 100, 0)}%`
+              : "warming"
+          }
+          accent
+          onClick={() => open("pca")}
+        />
+        <Cell
+          label="logit β"
+          value={snap.logit?.slope !== undefined ? fmt(snap.logit.slope, 3) : "—"}
+          caption={
+            snap.logit?.pseudo_r2 !== undefined
+              ? `pseudo R² ${fmt(snap.logit.pseudo_r2, 2)}`
+              : "warming"
+          }
+          accent
+          onClick={() => open("logit")}
+        />
+        <Cell
+          label="fiedler λ₂"
+          value={snap.spectral ? fmt(snap.spectral.fiedler_value, 4) : "—"}
+          caption={
+            snap.spectral
+              ? `${snap.spectral.n_nodes} nodes · ${snap.spectral.n_edges} edges`
+              : "warming"
+          }
+          accent
+          onClick={() => open("spectral")}
+        />
+        <Cell
+          label="sinkhorn"
+          value={fmt(snap.sinkhorn_cost)}
+          caption="W₁"
+          history={histories.sinkhorn_cost}
+          onClick={() => open("sinkhorn_cost")}
+        />
+        <Cell
+          label="h₀"
+          value={fmt(snap.h0_total)}
+          caption="components"
+          history={histories.h0_total}
+          onClick={() => open("h0_total")}
+        />
+        <Cell
+          label="h₁"
+          value={fmt(snap.h1_total)}
+          caption="loops"
+          history={histories.h1_total}
+          onClick={() => open("h1_total")}
+        />
+      </div>
+
+      <SectionHeader>economy · markets · wealth</SectionHeader>
+      <div className="grid grid-cols-1 gap-1">
+        <Cell
+          label="buys"
+          value={snap.economy?.total_purchases.toLocaleString() ?? "—"}
+          caption={
+            snap.economy
+              ? `${snap.economy.total_revenue.toFixed(0)} rev · ${Object.keys(snap.economy.category_counts).length} cats`
+              : "warming"
+          }
+          accent
+          onClick={() => open("economy")}
+        />
+        <Cell
           label="candles"
           value={
             snap.candles && snap.candles.length > 0
@@ -400,260 +406,9 @@ export function AnalyticsPanel() {
           accent={!!snap.wealth && snap.wealth.gini <= 0.45}
           onClick={() => open("wealth")}
         />
-        <Cell
-          label="MAPPO π"
-          value="inspect"
-          caption="click agent's policy"
-          accent
-          onClick={() => open("policy_inspector")}
-        />
-        <Cell
-          label="actions"
-          value="live"
-          caption="swarm choice mix"
-          accent
-          onClick={() => open("action_histogram")}
-        />
-        <Cell
-          label="DP δ"
-          value="clean ↔ noised"
-          caption="privacy noise live"
-          accent
-          onClick={() => open("dp_compare")}
-        />
-        <Cell
-          label="VRF leader"
-          value="rotation"
-          caption="chain consensus"
-          accent
-          onClick={() => open("vrf_leader")}
-        />
-        <Cell
-          label="mempool"
-          value="pending"
-          caption="next block contents"
-          accent
-          onClick={() => open("mempool")}
-        />
-        <Cell
-          label="ZK proof"
-          value="verify"
-          caption="Groth16 legal-path"
-          accent
-          onClick={() => open("zk_verify")}
-        />
-        <Cell
-          label="BLS agg"
-          value="inspect"
-          caption="block signature"
-          accent
-          onClick={() => open("bls_aggregate")}
-        />
-        <Cell
-          label="slash"
-          value="forge evidence"
-          caption="byzantine demo"
-          ember
-          onClick={() => open("slashing")}
-        />
-        <Cell
-          label="training"
-          value="live PPO"
-          caption="start / stop / curves"
-          accent
-          onClick={() => open("training_curves")}
-        />
-        <Cell
-          label="V(s)"
-          value="critic"
-          caption="value + entropy map"
-          accent
-          onClick={() => open("value_map")}
-        />
-        <Cell
-          label="reward"
-          value="shape"
-          caption="tune objective live"
-          accent
-          onClick={() => open("reward_shaping")}
-        />
-        <Cell
-          label="GAT attn"
-          value="graph"
-          caption="GATv2 attention"
-          accent
-          onClick={() => open("gat_attention")}
-        />
-        <Cell
-          label="saliency"
-          value="∂p/∂x"
-          caption="feature gradient"
-          accent
-          onClick={() => open("saliency")}
-        />
-        <Cell
-          label="CKKS"
-          value="enc/dec"
-          caption="HE round-trip"
-          accent
-          onClick={() => open("ckks_compare")}
-        />
-        <Cell
-          label="Kyber"
-          value="PQ KEM"
-          caption="ML-KEM-768"
-          accent
-          onClick={() => open("kyber_kem")}
-        />
-        <Cell
-          label="A/B π"
-          value="multi-ckpt"
-          caption="KL + agreement"
-          accent
-          onClick={() => open("multi_checkpoint")}
-        />
-        <Cell
-          label="VDF"
-          value="Wesolowski"
-          caption="compute vs verify"
-          accent
-          onClick={() => open("vdf")}
-        />
-        <Cell
-          label="Dilithium"
-          value="agent sig"
-          caption="PQ signature"
-          accent
-          onClick={() => open("dilithium")}
-        />
-        <Cell
-          label="Shamir"
-          value="(n, t)"
-          caption="secret sharing"
-          accent
-          onClick={() => open("shamir")}
-        />
-        <Cell
-          label="TFHE"
-          value="LWE bits"
-          caption="homomorphic gates"
-          accent
-          onClick={() => open("tfhe")}
-        />
-        <Cell
-          label="snapshots"
-          value="world"
-          caption="save / load state"
-          accent
-          onClick={() => open("world_snapshot")}
-        />
-        <Cell
-          label="arena 2D"
-          value="graph"
-          caption="force-directed"
-          accent
-          onClick={() => open("arena_graph")}
-        />
-        <Cell
-          label="Pedersen"
-          value="commit"
-          caption="hide + bind + add"
-          accent
-          onClick={() => open("pedersen")}
-        />
-        <Cell
-          label="Beaver"
-          value="SMPC mul"
-          caption="N-party multiplication"
-          accent
-          onClick={() => open("beaver")}
-        />
-        <Cell
-          label="Schnorr ZK"
-          value="Σ-protocol"
-          caption="Fiat-Shamir proof"
-          accent
-          onClick={() => open("schnorr")}
-        />
-        <Cell
-          label="ZK mul"
-          value="circom"
-          caption="a·b === c"
-          accent
-          onClick={() => open("zk_multiplier")}
-        />
-        <Cell
-          label="forge"
-          value="snark attack"
-          caption="verifier must reject"
-          ember
-          onClick={() => open("snark_forge")}
-        />
-        <Cell
-          label="STARK"
-          value="FRI verifier"
-          caption="transparent · no setup"
-          accent
-          onClick={() => open("stark")}
-        />
-        <Cell
-          label="FROST"
-          value="t-of-n Schnorr"
-          caption="threshold sig · plain (R, s)"
-          accent
-          onClick={() => open("frost")}
-        />
-        <Cell
-          label="SPHINCS+"
-          value="hash-based PQ"
-          caption="vs Dilithium · size trade"
-          accent
-          onClick={() => open("sphincs")}
-        />
-        <Cell
-          label="Verkle"
-          value="KZG opening"
-          caption="proof size vs Merkle"
-          accent
-          onClick={() => open("verkle")}
-        />
-        <Cell
-          label="BBS+"
-          value="selective disclosure"
-          caption="anon credential reveal"
-          accent
-          onClick={() => open("bbs_plus")}
-        />
-        <Cell
-          label="thr. ECDSA"
-          value="GG18"
-          caption="n-of-n secp256k1 sign"
-          accent
-          onClick={() => open("threshold_ecdsa")}
-        />
-        <Cell
-          label="Yao"
-          value="garbled circuits"
-          caption="millionaires · a ? b"
-          accent
-          onClick={() => open("yao")}
-        />
-        <Cell
-          label="PSI"
-          value="OPRF/DH"
-          caption="set intersect · no leak"
-          accent
-          onClick={() => open("psi")}
-        />
-        <Cell
-          label="mix-net"
-          value="Loopix onion"
-          caption="unlinkable routing"
-          accent
-          onClick={() => open("mix_net")}
-        />
       </div>
 
+      <SectionHeader>logistics</SectionHeader>
       <div className="grid grid-cols-2 gap-1">
         <Cell
           label="logistics — fill rate"
@@ -707,6 +462,66 @@ export function AnalyticsPanel() {
           accent
           onClick={() => open("logistics_dispatch")}
         />
+      </div>
+
+      <SectionHeader>RL · learning · federated</SectionHeader>
+      <div className="grid grid-cols-1 gap-1">
+        <Cell
+          label="MAPPO π"
+          value="inspect"
+          caption="click agent's policy"
+          accent
+          onClick={() => open("policy_inspector")}
+        />
+        <Cell
+          label="actions"
+          value="live"
+          caption="swarm choice mix"
+          accent
+          onClick={() => open("action_histogram")}
+        />
+        <Cell
+          label="training"
+          value="live PPO"
+          caption="start / stop / curves"
+          accent
+          onClick={() => open("training_curves")}
+        />
+        <Cell
+          label="V(s)"
+          value="critic"
+          caption="value + entropy map"
+          accent
+          onClick={() => open("value_map")}
+        />
+        <Cell
+          label="reward"
+          value="shape"
+          caption="tune objective live"
+          accent
+          onClick={() => open("reward_shaping")}
+        />
+        <Cell
+          label="GAT attn"
+          value="graph"
+          caption="GATv2 attention"
+          accent
+          onClick={() => open("gat_attention")}
+        />
+        <Cell
+          label="saliency"
+          value="∂p/∂x"
+          caption="feature gradient"
+          accent
+          onClick={() => open("saliency")}
+        />
+        <Cell
+          label="A/B π"
+          value="multi-ckpt"
+          caption="KL + agreement"
+          accent
+          onClick={() => open("multi_checkpoint")}
+        />
         <Cell
           label="federated learning"
           value="FedAvg + CKKS"
@@ -714,20 +529,234 @@ export function AnalyticsPanel() {
           accent
           onClick={() => open("federated_status")}
         />
+      </div>
+
+      <SectionHeader>chain · consensus</SectionHeader>
+      <div className="grid grid-cols-1 gap-1">
         <Cell
-          label="event bus"
-          value="cross-pillar"
-          caption="signals propagating"
+          label="VRF leader"
+          value="rotation"
+          caption="chain consensus"
           accent
-          onClick={() => open("event_bus")}
+          onClick={() => open("vrf_leader")}
         />
         <Cell
-          label="event graph"
-          value="producer → consumer"
-          caption="kinds + handler latency"
+          label="mempool"
+          value="pending"
+          caption="next block contents"
           accent
-          onClick={() => open("event_graph")}
+          onClick={() => open("mempool")}
         />
+        <Cell
+          label="BLS agg"
+          value="inspect"
+          caption="block signature"
+          accent
+          onClick={() => open("bls_aggregate")}
+        />
+        <Cell
+          label="ZK proof"
+          value="verify"
+          caption="Groth16 legal-path"
+          accent
+          onClick={() => open("zk_verify")}
+        />
+        <Cell
+          label="slash"
+          value="forge evidence"
+          caption="byzantine demo"
+          ember
+          onClick={() => open("slashing")}
+        />
+      </div>
+
+      <SectionHeader>privacy · signing · DP</SectionHeader>
+      <div className="grid grid-cols-1 gap-1">
+        <Cell
+          label="dp.ε spent"
+          value={snap.dp_budget ? fmt(snap.dp_budget.epsilon_spent, 2) : "—"}
+          caption={
+            snap.dp_budget
+              ? `rem ${fmt(snap.dp_budget.epsilon_remaining, 2)} / ${fmt(snap.dp_budget.epsilon_total, 1)}`
+              : "dp off"
+          }
+          history={histories.dp_epsilon_spent}
+          ember={dpExhausted}
+          accent={!!snap.dp_budget && !dpExhausted}
+          onClick={() => open("dp_epsilon_spent")}
+        />
+        <Cell
+          label="DP δ"
+          value="clean ↔ noised"
+          caption="privacy noise live"
+          accent
+          onClick={() => open("dp_compare")}
+        />
+        <Cell
+          label="sigs.ok"
+          value={snap.signing_stats.verified.toLocaleString()}
+          caption={
+            snap.signing_stats.rejected > 0
+              ? `${snap.signing_stats.rejected} bad · ${snap.signing_stats.n_agents} ag`
+              : `${snap.signing_stats.n_agents} ag · 0 bad`
+          }
+          history={histories.signing_verified}
+          ember={snap.signing_stats.rejected > 0}
+          accent
+          onClick={() => open("signing_verified")}
+        />
+      </div>
+
+      <SectionHeader>crypto — HE · PQ · primitives</SectionHeader>
+      <div className="grid grid-cols-1 gap-1">
+        <Cell
+          label="CKKS"
+          value="enc/dec"
+          caption="HE round-trip"
+          accent
+          onClick={() => open("ckks_compare")}
+        />
+        <Cell
+          label="TFHE"
+          value="LWE bits"
+          caption="homomorphic gates"
+          accent
+          onClick={() => open("tfhe")}
+        />
+        <Cell
+          label="Kyber"
+          value="PQ KEM"
+          caption="ML-KEM-768"
+          accent
+          onClick={() => open("kyber_kem")}
+        />
+        <Cell
+          label="Dilithium"
+          value="agent sig"
+          caption="PQ signature"
+          accent
+          onClick={() => open("dilithium")}
+        />
+        <Cell
+          label="SPHINCS+"
+          value="hash-based PQ"
+          caption="vs Dilithium · size trade"
+          accent
+          onClick={() => open("sphincs")}
+        />
+        <Cell
+          label="VDF"
+          value="Wesolowski"
+          caption="compute vs verify"
+          accent
+          onClick={() => open("vdf")}
+        />
+      </div>
+
+      <SectionHeader>crypto — SMPC · ZK · advanced</SectionHeader>
+      <div className="grid grid-cols-1 gap-1">
+        <Cell
+          label="Shamir"
+          value="(n, t)"
+          caption="secret sharing"
+          accent
+          onClick={() => open("shamir")}
+        />
+        <Cell
+          label="Pedersen"
+          value="commit"
+          caption="hide + bind + add"
+          accent
+          onClick={() => open("pedersen")}
+        />
+        <Cell
+          label="Beaver"
+          value="SMPC mul"
+          caption="N-party multiplication"
+          accent
+          onClick={() => open("beaver")}
+        />
+        <Cell
+          label="Schnorr ZK"
+          value="Σ-protocol"
+          caption="Fiat-Shamir proof"
+          accent
+          onClick={() => open("schnorr")}
+        />
+        <Cell
+          label="ZK mul"
+          value="circom"
+          caption="a·b === c"
+          accent
+          onClick={() => open("zk_multiplier")}
+        />
+        <Cell
+          label="forge"
+          value="snark attack"
+          caption="verifier must reject"
+          ember
+          onClick={() => open("snark_forge")}
+        />
+        <Cell
+          label="STARK"
+          value="FRI verifier"
+          caption="transparent · no setup"
+          accent
+          onClick={() => open("stark")}
+        />
+        <Cell
+          label="FROST"
+          value="t-of-n Schnorr"
+          caption="threshold sig · plain (R, s)"
+          accent
+          onClick={() => open("frost")}
+        />
+        <Cell
+          label="Verkle"
+          value="KZG opening"
+          caption="proof size vs Merkle"
+          accent
+          onClick={() => open("verkle")}
+        />
+        <Cell
+          label="BBS+"
+          value="selective disclosure"
+          caption="anon credential reveal"
+          accent
+          onClick={() => open("bbs_plus")}
+        />
+        <Cell
+          label="thr. ECDSA"
+          value="GG18"
+          caption="n-of-n secp256k1 sign"
+          accent
+          onClick={() => open("threshold_ecdsa")}
+        />
+        <Cell
+          label="Yao"
+          value="garbled circuits"
+          caption="millionaires · a ? b"
+          accent
+          onClick={() => open("yao")}
+        />
+        <Cell
+          label="PSI"
+          value="OPRF/DH"
+          caption="set intersect · no leak"
+          accent
+          onClick={() => open("psi")}
+        />
+        <Cell
+          label="mix-net"
+          value="Loopix onion"
+          caption="unlinkable routing"
+          accent
+          onClick={() => open("mix_net")}
+        />
+      </div>
+
+      <SectionHeader>defenses · attacks</SectionHeader>
+      <div className="grid grid-cols-2 gap-1">
         <Cell
           label="security — blocked"
           value="signing rejected"
@@ -818,6 +847,38 @@ export function AnalyticsPanel() {
           caption="must FAIL on TenSEAL"
           accent
           onClick={() => open("attack_cache_sidechannel")}
+        />
+      </div>
+
+      <SectionHeader>interactive · sandboxes · world</SectionHeader>
+      <div className="grid grid-cols-2 gap-1">
+        <Cell
+          label="event bus"
+          value="cross-pillar"
+          caption="signals propagating"
+          accent
+          onClick={() => open("event_bus")}
+        />
+        <Cell
+          label="event graph"
+          value="producer → consumer"
+          caption="kinds + handler latency"
+          accent
+          onClick={() => open("event_graph")}
+        />
+        <Cell
+          label="snapshots"
+          value="world"
+          caption="save / load state"
+          accent
+          onClick={() => open("world_snapshot")}
+        />
+        <Cell
+          label="arena 2D"
+          value="graph"
+          caption="force-directed"
+          accent
+          onClick={() => open("arena_graph")}
         />
         <Cell
           label="operator — scenarios"

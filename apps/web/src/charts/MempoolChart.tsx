@@ -4,8 +4,8 @@
  * Live snapshot of what will be folded into the NEXT block.
  */
 
-import { useEffect, useState } from "react";
-import { Stat } from "./_shared";
+import { useFetchJsonPoll } from "../hooks/useFetchJson";
+import { FetchError, Stat } from "./_shared";
 
 interface Outcome {
   match_id: number;
@@ -27,26 +27,12 @@ interface Mempool {
 }
 
 export function MempoolChart() {
-  const [data, setData] = useState<Mempool | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    const tick = async () => {
-      try {
-        const res = await fetch("/chain/mempool");
-        if (!res.ok) return;
-        const payload = (await res.json()) as Mempool;
-        if (!cancelled) setData(payload);
-      } catch {}
-    };
-    void tick();
-    const t = window.setInterval(tick, 1500);
-    return () => {
-      cancelled = true;
-      window.clearInterval(t);
-    };
-  }, []);
+  const state = useFetchJsonPoll<Mempool>("/chain/mempool", 1500);
+  const data =
+    state.kind === "data" ? state.value : state.kind === "error" ? state.lastValue : undefined;
 
   if (!data) {
+    if (state.kind === "error") return <FetchError message={state.message} />;
     return (
       <div className="font-mono text-xs text-[color:var(--color-penumbra-muted)]">
         loading mempool…
@@ -56,6 +42,7 @@ export function MempoolChart() {
 
   return (
     <div className="font-mono space-y-3">
+      {state.kind === "error" && <FetchError message={state.message} />}
       <div className="grid grid-cols-2 gap-2 text-[10px]">
         <Stat label="pending outcomes" value={data.n_outcomes} accent={data.n_outcomes > 0} />
         <Stat label="pending slashings" value={data.n_slashings} ember={data.n_slashings > 0} />

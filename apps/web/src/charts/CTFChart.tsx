@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Stat } from "./_shared";
+import { FetchError, Stat } from "./_shared";
 
 interface Challenge {
   id: string;
@@ -35,17 +35,23 @@ export function CTFChart() {
   const [result, setResult] = useState<SubmitResult | null>(null);
   const [board, setBoard] = useState<LeaderboardRow[]>([]);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
       try {
         const r = await fetch("/ctf/challenges");
-        if (!r.ok) return;
+        if (!r.ok) {
+          setError(`HTTP ${r.status} on /ctf/challenges`);
+          return;
+        }
         const body = (await r.json()) as { challenges?: Challenge[] };
         const list = body.challenges ?? [];
         setChallenges(list);
         if (list[0] && !selected) setSelected(list[0].id);
-      } catch {}
+      } catch (exc) {
+        setError(`network error: ${exc instanceof Error ? exc.message : String(exc)}`);
+      }
     };
     void load();
   }, []);
@@ -58,10 +64,15 @@ export function CTFChart() {
     const load = async () => {
       try {
         const r = await fetch(`/ctf/leaderboard/${encodeURIComponent(selected)}`);
-        if (!r.ok) return;
+        if (!r.ok) {
+          setError(`HTTP ${r.status} on /ctf/leaderboard/${selected}`);
+          return;
+        }
         const body = (await r.json()) as { leaderboard?: LeaderboardRow[] };
         setBoard(body.leaderboard ?? []);
-      } catch {}
+      } catch (exc) {
+        setError(`network error: ${exc instanceof Error ? exc.message : String(exc)}`);
+      }
     };
     void load();
   }, [selected]);
@@ -69,21 +80,28 @@ export function CTFChart() {
   const submit = async () => {
     if (!selected) return;
     setBusy(true);
+    setError(null);
     try {
       const r = await fetch(`/ctf/submit/${encodeURIComponent(selected)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ flag, session_id: sessionId }),
       });
-      if (r.ok) {
+      if (!r.ok) {
+        setError(`HTTP ${r.status} on /ctf/submit/${selected}`);
+      } else {
         setResult((await r.json()) as SubmitResult);
         const board2 = await fetch(`/ctf/leaderboard/${encodeURIComponent(selected)}`);
-        if (board2.ok) {
+        if (!board2.ok) {
+          setError(`HTTP ${board2.status} on /ctf/leaderboard/${selected}`);
+        } else {
           const body = (await board2.json()) as { leaderboard?: LeaderboardRow[] };
           setBoard(body.leaderboard ?? []);
         }
       }
-    } catch {}
+    } catch (exc) {
+      setError(`network error: ${exc instanceof Error ? exc.message : String(exc)}`);
+    }
     setBusy(false);
   };
 
@@ -91,6 +109,7 @@ export function CTFChart() {
 
   return (
     <div className="font-mono space-y-3">
+      {error && <FetchError message={error} />}
       <div className="text-[10px] text-[color:var(--color-penumbra-dim)]">
         Solve a privacy / crypto attack challenge, submit the resulting flag, climb the
         per-challenge leaderboard. Hints live in the YAML next to each challenge id.

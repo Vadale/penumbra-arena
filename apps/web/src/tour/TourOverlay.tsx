@@ -34,7 +34,7 @@ const STEPS: Step[] = [
   },
   {
     title: "4 / 6 · Analytics tiles (right)",
-    body: "52 clickable tiles covering descriptive + inferential + econometrics + ML + crypto + chain + economy. Stats panels open detail modals with educational descriptions. Live polling rates tuned per panel weight.",
+    body: "90+ clickable tiles covering descriptive + inferential + econometrics + ML + crypto + chain + economy + logistics + defenses + attacks. Stats panels open detail modals with educational descriptions. Live polling rates tuned per panel weight.",
     emphasis: "right",
   },
   {

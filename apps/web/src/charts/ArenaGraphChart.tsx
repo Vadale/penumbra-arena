@@ -6,8 +6,9 @@
  * relaxation pass) is enough for ~50 nodes and 0 external deps.
  */
 
-import { useEffect, useMemo, useState } from "react";
-import { Stat } from "./_shared";
+import { useMemo } from "react";
+import { useFetchJsonPoll } from "../hooks/useFetchJson";
+import { FetchError, Stat } from "./_shared";
 
 interface Topology {
   nodes: number[];
@@ -94,24 +95,9 @@ function layout(topology: Topology): Map<number, { x: number; y: number }> {
 }
 
 export function ArenaGraphChart() {
-  const [topology, setTopology] = useState<Topology | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    const grab = async () => {
-      try {
-        const res = await fetch("/arena/topology");
-        if (!res.ok) return;
-        const payload = (await res.json()) as Topology;
-        if (!cancelled) setTopology(payload);
-      } catch {}
-    };
-    void grab();
-    const t = window.setInterval(grab, 6000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(t);
-    };
-  }, []);
+  const state = useFetchJsonPoll<Topology>("/arena/topology", 6000);
+  const topology =
+    state.kind === "data" ? state.value : state.kind === "error" ? state.lastValue : undefined;
 
   const positions = useMemo(
     () => (topology ? layout(topology) : new Map<number, { x: number; y: number }>()),
@@ -119,6 +105,7 @@ export function ArenaGraphChart() {
   );
 
   if (!topology) {
+    if (state.kind === "error") return <FetchError message={state.message} />;
     return (
       <div className="font-mono text-xs text-[color:var(--color-penumbra-muted)]">
         loading arena…
@@ -130,6 +117,7 @@ export function ArenaGraphChart() {
 
   return (
     <div className="font-mono space-y-2">
+      {state.kind === "error" && <FetchError message={state.message} />}
       <div className="grid grid-cols-3 gap-2 text-[10px]">
         <Stat label="nodes" value={String(topology.nodes.length)} accent />
         <Stat label="edges" value={String(topology.edges.length)} accent />

@@ -4,8 +4,8 @@
  * Mean utilisation across the fleet plus a small per-agent strip.
  */
 
-import { useEffect, useState } from "react";
-import { Stat } from "./_shared";
+import { useFetchJsonPoll } from "../hooks/useFetchJson";
+import { FetchError, Stat } from "./_shared";
 
 interface Payload {
   available: boolean;
@@ -14,24 +14,12 @@ interface Payload {
 }
 
 export function LogisticsCapacityChart() {
-  const [data, setData] = useState<Payload | null>(null);
-  useEffect(() => {
-    let cancel = false;
-    const tick = async () => {
-      try {
-        const res = await fetch("/logistics/capacity");
-        if (res.ok && !cancel) setData((await res.json()) as Payload);
-      } catch {}
-    };
-    void tick();
-    const h = window.setInterval(tick, 5000);
-    return () => {
-      cancel = true;
-      window.clearInterval(h);
-    };
-  }, []);
+  const state = useFetchJsonPoll<Payload>("/logistics/capacity", 5000);
+  const data =
+    state.kind === "data" ? state.value : state.kind === "error" ? state.lastValue : undefined;
 
   if (!data?.available) {
+    if (state.kind === "error") return <FetchError message={state.message} />;
     return (
       <div className="font-mono text-xs text-[color:var(--color-penumbra-muted)]">
         no capacity data yet
@@ -41,6 +29,7 @@ export function LogisticsCapacityChart() {
   const util = data.mean_utilization ?? 0;
   return (
     <div className="font-mono space-y-3">
+      {state.kind === "error" && <FetchError message={state.message} />}
       <div className="grid grid-cols-2 gap-2 text-[10px]">
         <Stat label="mean util" value={util * 100} digits={1} suffix="%" accent={util > 0.5} />
         <Stat label="fleet size" value={data.per_agent?.length ?? 0} />

@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Stat, Verdict } from "./_shared";
+import { FetchError, Stat, Verdict } from "./_shared";
 
 interface Share {
   x: number;
@@ -31,13 +31,21 @@ export function ShamirChart() {
   const [t, setT] = useState(3);
   const [data, setData] = useState<Payload | null>(null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const run = async () => {
     setBusy(true);
+    setError(null);
     try {
       const res = await fetch(`/crypto/shamir/demo?n=${n}&t=${t}`);
-      if (res.ok) setData((await res.json()) as Payload);
-    } catch {}
+      if (!res.ok) {
+        setError(`HTTP ${res.status} on /crypto/shamir/demo`);
+      } else {
+        setData((await res.json()) as Payload);
+      }
+    } catch (exc) {
+      setError(`network error: ${exc instanceof Error ? exc.message : String(exc)}`);
+    }
     setBusy(false);
   };
 
@@ -48,6 +56,7 @@ export function ShamirChart() {
 
   return (
     <div className="font-mono space-y-3">
+      {error && <FetchError message={error} />}
       <div className="flex items-center gap-3 text-[10px]">
         <label className="flex items-center gap-1">
           <span className="uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">n</span>

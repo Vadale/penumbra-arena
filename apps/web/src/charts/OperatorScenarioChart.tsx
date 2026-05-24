@@ -9,7 +9,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { Stat } from "./_shared";
+import { FetchError, Stat } from "./_shared";
 
 interface ScenarioSummary {
   id: string;
@@ -54,9 +54,13 @@ export function OperatorScenarioChart() {
   const fetchList = useCallback(async () => {
     try {
       const res = await fetch("/operator/scenarios");
-      if (res.ok) setList((await res.json()) as ScenariosResponse);
-    } catch {
-      // surface inside the empty-state below
+      if (!res.ok) {
+        setError(`HTTP ${res.status} on /operator/scenarios`);
+        return;
+      }
+      setList((await res.json()) as ScenariosResponse);
+    } catch (exc) {
+      setError(`network error: ${exc instanceof Error ? exc.message : String(exc)}`);
     }
   }, []);
 
@@ -73,9 +77,15 @@ export function OperatorScenarioChart() {
     const poll = async () => {
       try {
         const res = await fetch(`/operator/scenarios/${activeId}/status`);
-        if (res.ok && !cancelled) setStatus((await res.json()) as ProgressPayload);
-      } catch {
-        // ignore transient transport errors
+        if (!res.ok) {
+          if (!cancelled) setError(`HTTP ${res.status} on /operator/scenarios/${activeId}/status`);
+          return;
+        }
+        if (!cancelled) setStatus((await res.json()) as ProgressPayload);
+      } catch (exc) {
+        if (!cancelled) {
+          setError(`network error: ${exc instanceof Error ? exc.message : String(exc)}`);
+        }
       }
     };
     void poll();
@@ -113,6 +123,7 @@ export function OperatorScenarioChart() {
   };
 
   if (!list?.available || !list.scenarios) {
+    if (error) return <FetchError message={error} />;
     return (
       <div className="font-mono text-xs text-[color:var(--color-penumbra-muted)]">
         scenarios unavailable (enable operator first via POST /operator/enable)
@@ -126,7 +137,7 @@ export function OperatorScenarioChart() {
 
   return (
     <div className="font-mono space-y-3">
-      {error && <div className="text-[10px] text-[color:var(--color-penumbra-ember)]">{error}</div>}
+      {error && <FetchError message={error} />}
       <div className="grid grid-cols-1 gap-1">
         {list.scenarios.map((s) => {
           const accent = difficultyAccent(s.difficulty);

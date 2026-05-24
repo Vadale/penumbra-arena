@@ -6,8 +6,8 @@
  * adversary advantage but more records suppressed.
  */
 
-import { useEffect, useState } from "react";
-import { Stat } from "./_shared";
+import { useFetchJsonOnce } from "../hooks/useFetchJson";
+import { FetchError, Stat } from "./_shared";
 
 interface Point {
   k: number;
@@ -26,26 +26,14 @@ interface Payload {
 }
 
 export function DefenseKAnonymityChart() {
-  const [data, setData] = useState<Payload | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const run = async () => {
-    setBusy(true);
-    try {
-      const res = await fetch("/defenses/k_anonymity/demo");
-      if (res.ok) setData((await res.json()) as Payload);
-    } catch {}
-    setBusy(false);
-  };
-
-  useEffect(() => {
-    void run();
-  }, []);
+  const state = useFetchJsonOnce<Payload>("/defenses/k_anonymity/demo");
+  const data = state.kind === "data" ? state.value : undefined;
 
   if (!data?.available || !data.curve) {
+    if (state.kind === "error") return <FetchError message={state.message} />;
     return (
       <div className="font-mono text-xs text-[color:var(--color-penumbra-muted)]">
-        {busy ? "computing…" : "k-anonymity unavailable"}
+        {state.kind === "loading" ? "computing…" : "k-anonymity unavailable"}
       </div>
     );
   }

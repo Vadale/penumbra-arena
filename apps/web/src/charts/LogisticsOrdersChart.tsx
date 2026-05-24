@@ -5,8 +5,8 @@
  * the pending order book.
  */
 
-import { useEffect, useState } from "react";
-import { Stat } from "./_shared";
+import { useFetchJsonPoll } from "../hooks/useFetchJson";
+import { FetchError, Stat } from "./_shared";
 
 interface Payload {
   available: boolean;
@@ -18,24 +18,12 @@ interface Payload {
 }
 
 export function LogisticsOrdersChart() {
-  const [data, setData] = useState<Payload | null>(null);
-  useEffect(() => {
-    let cancel = false;
-    const tick = async () => {
-      try {
-        const res = await fetch("/logistics/orders");
-        if (res.ok && !cancel) setData((await res.json()) as Payload);
-      } catch {}
-    };
-    void tick();
-    const h = window.setInterval(tick, 5000);
-    return () => {
-      cancel = true;
-      window.clearInterval(h);
-    };
-  }, []);
+  const state = useFetchJsonPoll<Payload>("/logistics/orders", 5000);
+  const data =
+    state.kind === "data" ? state.value : state.kind === "error" ? state.lastValue : undefined;
 
   if (!data?.available) {
+    if (state.kind === "error") return <FetchError message={state.message} />;
     return (
       <div className="font-mono text-xs text-[color:var(--color-penumbra-muted)]">
         no order data yet
@@ -44,6 +32,7 @@ export function LogisticsOrdersChart() {
   }
   return (
     <div className="font-mono space-y-3">
+      {state.kind === "error" && <FetchError message={state.message} />}
       <div className="grid grid-cols-4 gap-2 text-[10px]">
         <Stat label="pending" value={data.n_pending ?? 0} />
         <Stat label="fulfilled" value={data.n_fulfilled ?? 0} accent />
