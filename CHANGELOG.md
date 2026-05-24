@@ -6,6 +6,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — Interactive lab + runtime tunables + chart PNG quality (2026-05-24)
+
+After end-to-end user testing of the v3 dashboard, surfaced + fixed:
+
+- **3 React routes -> 4 routes**: new `/config` for live runtime
+  configuration (5 mutable + 3 restart-required fields). Plus:
+  AgentDetailPanel (click on agent in arena), Lab Experiments
+  (centralized inject + step + recent injections log), Branch Compare
+  (A vs B side-by-side), TimeScrubber (500-tick replay buffer w/
+  REPLAY MODE banner), NotificationSettings (browser notifications
+  per event kind), AchievementsPanel (9 unlock rules + toast),
+  brush-select on 5 time-series charts.
+- **Export every chart**: 7 metrics -> ~25 metrics with server-side
+  matplotlib (800x400 with titles + axes + R^2 + CI bands).
+  Client-side DOM-to-PNG fallback fixed to scale viewBox to 800x400
+  with background color (was producing transparent postage stamps).
+- **5 new env vars** for "watchable at 2 Hz default" tuning:
+  PENUMBRA_TICK_HZ (default 2.0), PENUMBRA_GOAL_WALK_PERIOD
+  (default 20, recommend 80), PENUMBRA_WEATHER_PROB (default 0.02,
+  recommend 0.005), PENUMBRA_MATCH_MAX_TICKS (default 1200, recommend
+  3600), PENUMBRA_ENABLE_REPL (companion to ENABLE_PTY).
+- **PENUMBRA_API_URL** honoured by `pna` / `psh` / `pno` CLIs so a
+  single `export PENUMBRA_API_URL=http://localhost:8100` routes every
+  subcommand (was per-subcommand `--api` flag only).
+- **Coach allow-list extended to `pno`** (was {"pna","psh"} only ->
+  rejected `pno enable` from the dashboard coach panel).
+- **/operator route 404 fix**: Vite proxy `/operator` now bypasses on
+  the bare path so the React SPA serves it (sub-paths still proxy).
+- **USAGE.md** added: 509-line hands-on quickstart covering boot, the
+  3 CLIs, 20+ REST endpoints, dashboard interactions, 6 cookbook
+  workflows, troubleshooting.
+
 ### Added — Phase 6a + 5 + 6b (2026-05-24)
 
 #### Phase 6a — Cross-pillar EventBus + 5 handler tiers

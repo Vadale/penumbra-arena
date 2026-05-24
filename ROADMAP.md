@@ -253,15 +253,18 @@ description + live interaction.
 - Sinkhorn divide-by-zero + ripser cols>rows warning suppressed at
   call site (cosmetic but log-spamming).
 
-## Test + tag counts (current — post-Phase-6b)
+## Test + tag counts (current — post-Phase-6b + interactivity lab)
 
 - **40+ tags** on GitHub, every one a runnable repo state.
-- **75+ commits**.
-- **832 backend tests** + **~30 vitest** = **860+ total**, all green.
+- **80+ commits**.
+- **~860 backend tests** + **105 vitest** = **965+ total**, all green.
 - **CI**: green (Python + Web workflows in `.github/workflows/ci.yml`).
-- **91 clickable dashboard tiles / 96 chart components** (was ~57 pre-Phase-2.5).
-- **3 React routes**: `/` (dashboard), `/bench` (leaderboard), `/operator`
-  (cyber range Console).
+- **97 clickable dashboard tiles / 102 chart components** (was ~57
+  pre-Phase-2.5; Lab + Achievements + Notifications + BranchCompare +
+  AgentDetail added post-Phase-6b).
+- **4 React routes**: `/` (dashboard), `/bench` (leaderboard),
+  `/operator` (cyber range Console), `/config` (live configuration
+  editor).
 - **11 packages**: core, crypto, chain, learning, analytics, attacker,
   shell_coach, transport (base 8) + operator, ctf, notebook (Phase 5+6b).
 - **9 Penumbra-Bench baselines** at tier=tiny (greedy 0.8166 →

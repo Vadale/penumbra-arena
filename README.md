@@ -9,19 +9,22 @@
 > concept tiles), a **benchmark suite** (Penumbra-Bench), and a
 > **synthetic dataset** on Hugging Face Hub (Penumbra-Data).
 
-**Status**: post-Phase-6b (cyber range), v3.0-ready in code.
-860+ tests green (~832 backend + ~30 frontend), strict typing
-across the stack, ~80k LOC across 11 packages. See
-[`ROADMAP.md`](ROADMAP.md) for the build history,
-[`CHANGELOG.md`](CHANGELOG.md) for recent additions,
+**Status**: post-Phase-6b + interactive lab. **965+ tests** green
+(~860 backend + 105 frontend), strict typing across the stack,
+~85k LOC across 11 packages. See [`USAGE.md`](USAGE.md) for the
+hands-on quickstart, [`ROADMAP.md`](ROADMAP.md) for the build
+history, [`CHANGELOG.md`](CHANGELOG.md) for recent additions,
 [`SECURITY_AUDIT.md`](SECURITY_AUDIT.md) for the crypto/chain/
 attacker audit, and [`USER_TODO.md`](USER_TODO.md) for the
 maintainer checklist before the public launch.
 
-**3 React routes**: `/` (dashboard with 91 clickable tiles / 96 chart components),
-`/bench` (Penumbra-Bench leaderboard), `/operator` (cyber-range
-Console). Three CLIs: `pna` (attacker), `psh` (shell coach),
-`pno` (operator).
+**4 React routes**: `/` (dashboard with 97 clickable tiles / 102
+chart components — Lab + Achievements + AgentDetail + BranchCompare
++ TimeScrubber + Notifications), `/bench` (Penumbra-Bench
+leaderboard), `/operator` (cyber-range Console with Save & Resume),
+`/config` (live runtime configuration). Three CLIs: `pna` (attacker),
+`psh` (shell coach), `pno` (operator) — all honour
+`PENUMBRA_API_URL`.
 
 ## Concept
 

@@ -109,10 +109,29 @@ pnpm --filter web build                  # production build
 Runtime:
 ```sh
 docker compose up                        # full stack on localhost
-PENUMBRA_SEED=42 uv run python -m penumbra.simulation
+
+# Recommended boot (slower watchable dynamics + PTY + REPL + MAPPO):
+PENUMBRA_SEED=42 \
+PENUMBRA_TICK_HZ=2.0 \
+PENUMBRA_GOAL_WALK_PERIOD=80 \
+PENUMBRA_WEATHER_PROB=0.005 \
+PENUMBRA_MATCH_MAX_TICKS=3600 \
+PENUMBRA_ENABLE_PTY=1 \
+PENUMBRA_ENABLE_REPL=1 \
+PENUMBRA_MAPPO_CHECKPOINT="$(pwd)/checkpoints/mappo_v0.pt" \
+uv run uvicorn penumbra_transport.api:app --port 8100
+
+PENUMBRA_API_PORT=8100 pnpm --filter web dev
+
 uv tool install ./packages/attacker      # then: pna --help
 uv tool install ./packages/shell_coach   # then: psh lessons
+uv tool install ./packages/operator      # then: pno --help
+
+# After install, set the API URL once for all three CLIs:
+export PENUMBRA_API_URL=http://localhost:8100
 ```
+
+See [`USAGE.md`](USAGE.md) for the full hands-on tour.
 
 Profiling (M4):
 ```sh
@@ -138,6 +157,29 @@ uv run python -X tracemalloc=5 -m penumbra.simulation
 - State in zustand stores; never prop-drill more than two levels.
 
 **File naming**: snake_case for Python modules; PascalCase for React components; kebab-case for YAML lessons.
+
+## Runtime tunables (env vars)
+
+The backend reads these at boot. See [`USAGE.md`](USAGE.md) §1 for the
+full table.
+
+| Var | Default | Recommended (2 Hz viewing) | Purpose |
+|---|---|---|---|
+| `PENUMBRA_SEED` | 42 | — | Seed fan-out |
+| `PENUMBRA_TICK_HZ` | 2.0 | 2.0 | Simulation cadence |
+| `PENUMBRA_GOAL_WALK_PERIOD` | 20 | 80 | Ticks between goal migration |
+| `PENUMBRA_WEATHER_PROB` | 0.02 | 0.005 | Per-tick weather flip probability |
+| `PENUMBRA_MATCH_MAX_TICKS` | 1200 | 3600 | Match length (30 min at 2 Hz) |
+| `PENUMBRA_ENABLE_PTY` | unset | 1 | Real macOS zsh in bottom shell tab |
+| `PENUMBRA_ENABLE_REPL` | unset | 1 | Sandbox Python REPL in bottom repl tab |
+| `PENUMBRA_MAPPO_CHECKPOINT` | unset | `$(pwd)/checkpoints/mappo_v0.pt` | MAPPO policy; otherwise random walk |
+| `PENUMBRA_HE_BACKEND` | `openfhe` | — | `openfhe` or `tenseal` |
+| `PENUMBRA_API_PORT` | 8000 | 8100 (Vite dev) | Backend port |
+| `PENUMBRA_API_URL` | http://localhost:8000 | http://localhost:8100 | Default for `pna` / `psh` / `pno` CLIs |
+
+`/config` exposes the live values via `GET /config` and accepts partial
+updates via `POST /config` (runtime-mutable keys: `tick_hz`,
+`reward_weights.*`, `defenses.dp_epsilon_budget`).
 
 ## Reproducibility rules
 
