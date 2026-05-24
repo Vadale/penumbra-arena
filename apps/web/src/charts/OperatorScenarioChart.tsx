@@ -9,6 +9,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { useAchievementsStore } from "../stores/achievements";
 import { FetchError, Stat } from "./_shared";
 
 interface ScenarioSummary {
@@ -50,6 +51,7 @@ export function OperatorScenarioChart() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [status, setStatus] = useState<ProgressPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const markScenarioCompleted = useAchievementsStore((s) => s.markScenarioCompleted);
 
   const fetchList = useCallback(async () => {
     try {
@@ -95,6 +97,12 @@ export function OperatorScenarioChart() {
       window.clearInterval(handle);
     };
   }, [activeId]);
+
+  useEffect(() => {
+    if (status?.victory_met && status.scenario_id) {
+      markScenarioCompleted(status.scenario_id);
+    }
+  }, [status?.victory_met, status?.scenario_id, markScenarioCompleted]);
 
   const start = async (id: string) => {
     setError(null);

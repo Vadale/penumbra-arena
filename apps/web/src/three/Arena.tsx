@@ -1,6 +1,8 @@
 import { OrbitControls } from "@react-three/drei";
-import { Canvas } from "@react-three/fiber";
+import { Canvas, type ThreeEvent } from "@react-three/fiber";
 import { useMemo } from "react";
+import { useSelectedAgentStore } from "../stores/selectedAgent";
+import { useEffectiveFrame } from "../streams/effectiveFrame";
 import { usePenumbraStore } from "../streams/store";
 
 /**
@@ -39,11 +41,13 @@ function Agent({
   position,
   history,
   total,
+  onSelect,
 }: {
   id: number;
   position: number;
   history: number[];
   total: number;
+  onSelect: (id: number) => void;
 }) {
   const xyz = useMemo(() => layoutNode(position, total), [position, total]);
   const { std } = useMemo(() => meanAndStd(history), [history]);
@@ -54,9 +58,15 @@ function Agent({
   // Higher std → wider AND more transparent halo.
   const haloAlpha = Math.max(0.06, Math.min(0.45, 0.32 - std * 0.04));
 
+  const onClick = (e: ThreeEvent<MouseEvent>) => {
+    e.stopPropagation();
+    onSelect(id);
+  };
+
   return (
     <group position={xyz}>
-      <mesh>
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: r3f <mesh> is a 3D primitive, not a DOM element; biome's a11y rule doesn't apply */}
+      <mesh onClick={onClick}>
         <sphereGeometry args={[0.12, 16, 16]} />
         <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.4} />
       </mesh>
@@ -79,9 +89,10 @@ function Goal({ position, total }: { position: number; total: number }) {
 }
 
 export function Arena() {
-  const lastFrame = usePenumbraStore((s) => s.lastFrame);
+  const lastFrame = useEffectiveFrame();
   const connected = usePenumbraStore((s) => s.connected);
   const history = usePenumbraStore((s) => s.agentPositionHistory);
+  const setSelectedAgentId = useSelectedAgentStore((s) => s.setSelectedAgentId);
 
   if (!connected || lastFrame === null) {
     return (
@@ -116,6 +127,7 @@ export function Arena() {
             position={position}
             history={history[id] ?? []}
             total={total}
+            onSelect={setSelectedAgentId}
           />
         );
       })}

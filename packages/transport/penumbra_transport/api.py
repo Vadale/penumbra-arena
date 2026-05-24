@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 import os
 from collections.abc import AsyncIterator
@@ -18,7 +19,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from penumbra_core.rng import bootstrap
 from penumbra_core.simulation import Simulation, SimulationConfig
@@ -281,10 +282,29 @@ def build_app(
         return {"state": "running"}
 
     @app.post("/control/step")
-    async def step() -> dict[str, object]:
+    async def step(payload: dict[str, object] = Body(default={})) -> dict[str, object]:
+        """Advance the simulation by ``n`` ticks (default 1) regardless of pause.
+
+        Body: ``{"n": int}`` with ``n`` in ``[1, 100]``. Empty body or
+        omitted ``n`` defaults to 1 for backward compatibility with the
+        original no-body call.
+        """
         sim: Simulation = app.state.penumbra.simulation
-        sim.step_once()
-        return {"tick": sim.tick_counter}
+        raw_n = payload.get("n", 1) if isinstance(payload, dict) else 1
+        try:
+            n = int(raw_n)  # type: ignore[arg-type]
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=f"invalid n: {raw_n!r}") from exc
+        if n < 1 or n > 100:
+            raise HTTPException(status_code=400, detail="n must be in [1, 100]")
+        previous_tick = sim.tick_counter
+        for _ in range(n):
+            sim.step_once()
+        return {
+            "previous_tick": previous_tick,
+            "new_tick": sim.tick_counter,
+            "tick": sim.tick_counter,
+        }
 
     @app.post("/control/time-warp/{multiplier}")
     async def set_time_warp(multiplier: int) -> dict[str, int]:
@@ -3694,7 +3714,412 @@ def build_app(
         diff["parquet_path"] = str(slog.parquet_path(session_id))  # type: ignore[attr-defined]
         return diff
 
+    # ── Interactivity surfaces (agent inspect / step / inject / export / config)
+
+    from penumbra_transport.interactivity import (
+        SUPPORTED_FORMATS,
+        SUPPORTED_METRICS,
+        InteractivityError,
+        UnsupportedMetricError,
+        agent_name_for,
+        build_export_notebook,
+        chart_series,
+        render_csv,
+        render_json,
+        render_png,
+        short_fingerprint,
+    )
+
+    @app.get("/agents")
+    async def agents_list() -> list[dict[str, object]]:
+        """Compact summary of every live agent."""
+        sim_local: Simulation = app.state.penumbra.simulation
+        orchestrator = app.state.penumbra.orchestrator
+        market = orchestrator.market
+        out: list[dict[str, object]] = []
+        for agent in sim_local.agents:
+            wallet = None
+            if market is not None:
+                wallet = market.wallets.get(int(agent.id))  # type: ignore[attr-defined]
+            position_node = int(agent.position)
+            xy = _node_position(sim_local, position_node)
+            out.append(
+                {
+                    "id": int(agent.id),
+                    "position": [float(xy[0]), float(xy[1])],
+                    "money": float(wallet.coins) if wallet is not None else 0.0,
+                    "name": agent_name_for(int(agent.id)),
+                }
+            )
+        return out
+
+    @app.get("/agents/{agent_id}")
+    async def agent_detail(agent_id: int) -> dict[str, object]:
+        """Full inspection payload for one agent."""
+        sim_local: Simulation = app.state.penumbra.simulation
+        if agent_id < 0 or agent_id >= len(sim_local.agents):
+            raise HTTPException(status_code=404, detail=f"no agent {agent_id}")
+        orchestrator = app.state.penumbra.orchestrator
+        agent = sim_local.agents[agent_id]
+        market = orchestrator.market
+        wallet = None
+        if market is not None:
+            wallet = market.wallets.get(int(agent.id))  # type: ignore[attr-defined]
+        runtime = app.state.penumbra.mappo_runtime
+        policy_label = "mappo" if runtime is not None else "random_walk"
+
+        position_node = int(agent.position)
+        xy = _node_position(sim_local, position_node)
+
+        # MAPPO probability vector (best-effort).
+        action_distribution: list[float] = []
+        last_obs_summary: dict[str, float | int] = {"mean": 0.0, "std": 0.0, "dim": 0}
+        if runtime is not None:
+            try:
+                feats, _neighbours, _ = _build_observation_for_agent(agent_id)
+                agent_net = runtime.agent_net  # type: ignore[attr-defined]
+                probs = agent_net.action_probabilities(  # type: ignore[attr-defined]
+                    feats,
+                    temperature=runtime.temperature,  # type: ignore[attr-defined]
+                )
+                action_distribution = [float(p) for p in probs[0]]
+                if feats.size > 0:
+                    last_obs_summary = {
+                        "mean": float(np.mean(feats)),
+                        "std": float(np.std(feats)),
+                        "dim": int(feats.size),
+                    }
+            except Exception:  # pragma: no cover - defensive
+                logger.exception("failed to compute action distribution for %d", agent_id)
+                action_distribution = []
+
+        # Recent actions from the runtime, if any.
+        recent_actions: list[dict[str, object]] = []
+        if runtime is not None:
+            last_actions = getattr(runtime, "last_actions", None) or []
+            if 0 <= agent_id < len(last_actions):
+                recent_actions.append(
+                    {
+                        "tick": int(sim_local.tick_counter),
+                        "action": _label_action(int(last_actions[agent_id])),
+                    }
+                )
+
+        # Encrypted-state size: approximate via the latest heatmap
+        # sample (one shared ciphertext for the whole heatmap; per-agent
+        # CKKS isn't materialised this tick, so we report the heatmap
+        # ciphertext size as a proxy).
+        encrypted_state_bytes = 0
+        heatmap_latest = orchestrator.heatmap.latest
+        if heatmap_latest is not None:
+            density = getattr(heatmap_latest, "density", None)
+            if density is not None:
+                encrypted_state_bytes = int(getattr(density, "nbytes", 0))
+
+        keystore = orchestrator.keystore
+        kyber_fp = ""
+        dilithium_fp = ""
+        if 0 <= agent_id < len(keystore.keypairs):
+            kp = keystore.keypairs[agent_id]
+            dilithium_fp = short_fingerprint(kp.public_key)
+            # No separate Kyber key per agent in the current keystore;
+            # derive a stable proxy from the Dilithium public key bytes
+            # so the fingerprint is deterministic per agent.
+            kyber_fp = short_fingerprint(kp.public_key + b"|kyber")
+
+        return {
+            "id": int(agent.id),
+            "position": [float(xy[0]), float(xy[1])],
+            "money": float(wallet.coins) if wallet is not None else 0.0,
+            "name": agent_name_for(int(agent.id)),
+            "current_policy": policy_label,
+            "recent_actions": recent_actions,
+            "action_distribution": action_distribution,
+            "encrypted_state_bytes": encrypted_state_bytes,
+            "kyber_pk_fingerprint": kyber_fp,
+            "dilithium_pk_fingerprint": dilithium_fp,
+            "last_obs_summary": last_obs_summary,
+        }
+
+    @app.post("/control/inject")
+    async def control_inject(payload: dict[str, object]) -> dict[str, object]:
+        """Inject a synthetic event onto the orchestrator's bus."""
+        from penumbra_transport.events import Event
+
+        kind_raw = payload.get("kind", "")
+        if not isinstance(kind_raw, str) or not kind_raw:
+            raise HTTPException(status_code=400, detail="missing 'kind' field")
+        kind = kind_raw
+        sub_payload_raw = payload.get("payload", {}) or {}
+        sub_payload: dict[str, object] = (
+            dict(sub_payload_raw) if isinstance(sub_payload_raw, dict) else {}
+        )
+
+        orchestrator = app.state.penumbra.orchestrator
+        sim_local: Simulation = app.state.penumbra.simulation
+        tick = int(sim_local.tick_counter)
+
+        event_payload: dict[str, object]
+        if kind == "cpi.shock":
+            ratio = float(sub_payload.get("ratio", 1.4))  # type: ignore[arg-type]
+            event_payload = {"ratio": ratio, **sub_payload}
+        elif kind == "garch.spike":
+            magnitude = float(sub_payload.get("magnitude", 2.0))  # type: ignore[arg-type]
+            event_payload = {
+                "magnitude": magnitude,
+                "ratio": float(sub_payload.get("ratio", magnitude)),  # type: ignore[arg-type]
+                **sub_payload,
+            }
+        elif kind == "agent.blocked":
+            if "agent_id" not in sub_payload:
+                raise HTTPException(status_code=400, detail="agent.blocked requires agent_id")
+            event_payload = {
+                "agent_id": int(sub_payload["agent_id"]),  # type: ignore[arg-type]
+                "reason": str(sub_payload.get("reason", "synthetic")),
+                "until_tick": int(sub_payload.get("until_tick", tick + 30)),  # type: ignore[arg-type]
+            }
+        elif kind == "validator.slashed":
+            if "validator_id" not in sub_payload:
+                raise HTTPException(
+                    status_code=400, detail="validator.slashed requires validator_id"
+                )
+            event_payload = {
+                "validator_id": int(sub_payload["validator_id"]),  # type: ignore[arg-type]
+                **sub_payload,
+            }
+        else:
+            raise HTTPException(status_code=400, detail=f"unknown event kind: {kind!r}")
+
+        orchestrator.event_bus.emit(  # type: ignore[attr-defined]
+            Event(kind=kind, tick=tick, payload=event_payload)
+        )
+        return {"ok": True, "kind": kind, "tick": tick, "payload": event_payload}
+
+    @app.get("/export/chart/{metric}")
+    async def export_chart(metric: str, format: str = "json") -> Response:
+        """Export a dashboard series as CSV / JSON / PNG."""
+        fmt = format.lower()
+        if fmt not in SUPPORTED_FORMATS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"format must be one of {list(SUPPORTED_FORMATS)}",
+            )
+        if metric not in SUPPORTED_METRICS:
+            raise HTTPException(
+                status_code=404,
+                detail=f"unsupported metric: {metric!r}; supported = {list(SUPPORTED_METRICS)}",
+            )
+        orchestrator = app.state.penumbra.orchestrator
+        snapshot = orchestrator.latest_dashboard_snapshot
+        trainer = app.state.penumbra.live_trainer
+        training_samples = (
+            list(getattr(trainer, "history", []) or []) if trainer is not None else []
+        )
+        try:
+            payload = chart_series(
+                metric,
+                dashboard_snapshot=snapshot,
+                training_samples=training_samples,
+                chain_height=int(orchestrator.node.height),
+                mempool_size=len(orchestrator.node.mempool),
+            )
+        except UnsupportedMetricError as exc:  # pragma: no cover - guarded above
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        filename = f"{metric}.{fmt}"
+        if fmt == "csv":
+            body = render_csv(payload)
+            return Response(
+                content=body,
+                media_type="text/csv",
+                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            )
+        if fmt == "json":
+            body = render_json(payload)
+            return Response(
+                content=body,
+                media_type="application/json",
+                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            )
+        # png
+        try:
+            body = render_png(payload)
+        except InteractivityError as exc:
+            return _png_unavailable_response(str(exc))
+        return Response(
+            content=body,
+            media_type="image/png",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    @app.get("/export/notebook")
+    async def export_notebook(metric: str) -> Response:
+        """Return a minimal .ipynb that fetches + plots ``metric``."""
+        if metric not in SUPPORTED_METRICS:
+            raise HTTPException(
+                status_code=404,
+                detail=f"unsupported metric: {metric!r}; supported = {list(SUPPORTED_METRICS)}",
+            )
+        body = build_export_notebook(metric)
+        return Response(
+            content=body,
+            media_type="application/x-ipynb+json",
+            headers={"Content-Disposition": f'attachment; filename="{metric}.ipynb"'},
+        )
+
+    @app.get("/config")
+    async def config_get() -> dict[str, object]:
+        """Return the current effective runtime configuration."""
+        sim_local: Simulation = app.state.penumbra.simulation
+        loop_ref: TickLoop = app.state.penumbra.loop
+        orchestrator = app.state.penumbra.orchestrator
+
+        from penumbra_learning.env import REWARD_WEIGHTS
+
+        dp_mechanism = orchestrator.heatmap.dp_mechanism
+        dp_epsilon_budget = float(dp_mechanism.budget.epsilon) if dp_mechanism is not None else 0.0
+        k_anonymity_k = 0
+        if orchestrator.operator_context is not None:
+            defenses = getattr(orchestrator.operator_context, "defenses", None)  # type: ignore[attr-defined]
+            if defenses is not None:
+                k_cfg = getattr(defenses, "k_anonymity", None) or {}
+                if isinstance(k_cfg, dict):
+                    k_anonymity_k = int(k_cfg.get("k", 0))
+
+        return {
+            "n_agents": int(sim_local.config.n_agents),
+            "match_max_ticks": int(sim_local.config.match_max_ticks),
+            "tick_hz": float(loop_ref.tick_hz),
+            "reward_weights": {
+                "dispatch_bonus": float(REWARD_WEIGHTS.logistics_dispatch_bonus),
+                "dispatch_penalty": float(REWARD_WEIGHTS.logistics_dispatch_penalty),
+                "fill_rate_bonus": float(REWARD_WEIGHTS.fill_rate_bonus),
+            },
+            "defenses": {
+                "k_anonymity_k": k_anonymity_k,
+                "dp_epsilon_budget": dp_epsilon_budget,
+            },
+            "pty_enabled": bool(pty_enabled()),
+            "mappo_loaded": bool(app.state.penumbra.mappo_runtime is not None),
+        }
+
+    @app.post("/config")
+    async def config_post(payload: dict[str, object]) -> dict[str, object]:
+        """Apply a partial config update; report which keys took effect."""
+        applied: list[str] = []
+        restart_required: list[str] = []
+        reasons: dict[str, str] = {}
+
+        loop_ref: TickLoop = app.state.penumbra.loop
+        orchestrator = app.state.penumbra.orchestrator
+
+        if "tick_hz" in payload:
+            try:
+                hz = float(payload["tick_hz"])  # type: ignore[arg-type]
+            except (TypeError, ValueError) as exc:
+                raise HTTPException(
+                    status_code=400, detail=f"invalid tick_hz: {payload['tick_hz']!r}"
+                ) from exc
+            if not any(abs(hz - allowed) < 1e-6 for allowed in _allowed_tick_hz):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"tick_hz must be one of {list(_allowed_tick_hz)}",
+                )
+            loop_ref.set_tick_hz(hz)
+            applied.append("tick_hz")
+
+        reward_weights_raw = payload.get("reward_weights", {})
+        reward_weights: dict[str, object] = (
+            dict(reward_weights_raw) if isinstance(reward_weights_raw, dict) else {}
+        )
+        if reward_weights:
+            from penumbra_learning.env import REWARD_WEIGHTS
+
+            mapping = {
+                "dispatch_bonus": "logistics_dispatch_bonus",
+                "dispatch_penalty": "logistics_dispatch_penalty",
+                "fill_rate_bonus": "fill_rate_bonus",
+            }
+            for key, attr in mapping.items():
+                if key in reward_weights:
+                    try:
+                        setattr(REWARD_WEIGHTS, attr, float(reward_weights[key]))  # type: ignore[arg-type]
+                    except (TypeError, ValueError) as exc:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"invalid reward_weights.{key}: {reward_weights[key]!r}",
+                        ) from exc
+                    applied.append(f"reward_weights.{key}")
+
+        defenses_raw = payload.get("defenses", {})
+        defenses_in: dict[str, object] = (
+            dict(defenses_raw) if isinstance(defenses_raw, dict) else {}
+        )
+        if "dp_epsilon_budget" in defenses_in:
+            mechanism = orchestrator.heatmap.dp_mechanism
+            try:
+                new_eps = float(defenses_in["dp_epsilon_budget"])  # type: ignore[arg-type]
+            except (TypeError, ValueError) as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"invalid defenses.dp_epsilon_budget: {defenses_in['dp_epsilon_budget']!r}"
+                    ),
+                ) from exc
+            if mechanism is None:
+                restart_required.append("defenses.dp_epsilon_budget")
+                reasons["defenses.dp_epsilon_budget"] = "no DP mechanism on heatmap"
+            else:
+                mechanism.budget.epsilon = new_eps
+                applied.append("defenses.dp_epsilon_budget")
+
+        for key in ("n_agents", "match_max_ticks"):
+            if key in payload:
+                restart_required.append(key)
+                reasons[key] = f"{key} fixed at simulation build time"
+        if "k_anonymity_k" in defenses_in:
+            restart_required.append("defenses.k_anonymity_k")
+            reasons["defenses.k_anonymity_k"] = "set via operator action set_k_anonymity"
+
+        return {
+            "applied": applied,
+            "restart_required": restart_required,
+            "reasons": reasons,
+        }
+
+    def _png_unavailable_response(reason: str) -> Response:
+        body = json.dumps({"error": "png export requires matplotlib", "reason": reason})
+        return Response(
+            content=body.encode("utf-8"),
+            media_type="application/json",
+            status_code=503,
+        )
+
+    def _label_action(idx: int) -> str:
+        if idx < 0:
+            return "random"
+        try:
+            from penumbra_learning.env import NEIGHBOURS_K
+        except ImportError:
+            return f"action_{idx}"
+        if idx == NEIGHBOURS_K:
+            return "stay"
+        return f"neigh_{idx}"
+
     return app
+
+
+def _node_position(simulation: Simulation, node_id: int) -> tuple[float, float]:
+    """Best-effort 2D embedding for a graph node.
+
+    The arena's graph carries no canonical coordinates, so we project
+    the node id onto a stable ring so the dashboard has *something*
+    to draw. Pure + deterministic.
+    """
+    arena = simulation.arena
+    n_nodes = max(int(arena.graph.number_of_nodes()), 1)
+    angle = 2.0 * np.pi * (int(node_id) % n_nodes) / float(n_nodes)
+    return float(np.cos(angle)), float(np.sin(angle))
 
 
 def _build_simulation_with_optional_mappo() -> tuple[Simulation, object | None]:

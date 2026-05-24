@@ -1,13 +1,23 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChainExplorer } from "../chain/Explorer";
 import { NarrowViewportBanner } from "../charts/_shared";
+import { AchievementToastHost } from "../charts/AchievementsPanel";
+import { AgentDetailPanel } from "../charts/AgentDetailPanel";
 import { AnalyticsPanel } from "../charts/AnalyticsPanel";
+import {
+  type NotificationPermissionState,
+  permissionBadge,
+  readPermission,
+} from "../charts/NotificationSettings";
+import { ReplayBanner, TimeScrubber } from "../charts/TimeScrubber";
 import { WelcomeOverlay } from "../charts/WelcomeOverlay";
 import { CoachConsole } from "../coach/Console";
+import { useEventNotifications } from "../hooks/useEventNotifications";
 import { HelpOverlay } from "../shell/HelpOverlay";
 import { SpeedControl } from "../shell/SpeedControl";
 import { StatusBar } from "../shell/StatusBar";
 import { useKeyboardShortcuts } from "../shell/useKeyboardShortcuts";
+import { useFrameHistoryRecorder } from "../streams/frameHistory";
 import { usePenumbraStore } from "../streams/store";
 import { usePenumbraSocket } from "../streams/ws";
 import { ReplConsole } from "../terminal/ReplConsole";
@@ -23,6 +33,8 @@ type ArenaMode = "map" | "world" | "graph" | "3d";
 
 export function Dashboard() {
   usePenumbraSocket();
+  useFrameHistoryRecorder();
+  useEventNotifications();
 
   const connected = usePenumbraStore((s) => s.connected);
   const lastFrame = usePenumbraStore((s) => s.lastFrame);
@@ -34,6 +46,18 @@ export function Dashboard() {
   // Mirrored from /control/tick_hz so the arena caption can show the
   // live rate without polling a second endpoint.
   const [tickHz, setTickHz] = useState<number | null>(null);
+  const [notifPerm, setNotifPerm] = useState<NotificationPermissionState>(() => readPermission());
+
+  useEffect(() => {
+    const refresh = () => setNotifPerm(readPermission());
+    refresh();
+    window.addEventListener("focus", refresh);
+    const handle = window.setInterval(refresh, 5000);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      window.clearInterval(handle);
+    };
+  }, []);
 
   const onPauseToggle = useCallback(async () => {
     const next = !paused;
@@ -101,6 +125,13 @@ export function Dashboard() {
           >
             operator
           </a>
+          <a
+            href="/config"
+            className="rounded-sm border border-[color:var(--color-penumbra-border)] px-2 py-0.5 text-xs uppercase tracking-wider text-[color:var(--color-penumbra-muted)] hover:text-[color:var(--color-penumbra-cyan)]"
+          >
+            config
+          </a>
+          <NotifPermBadge permission={notifPerm} />
           <span
             className={
               connected
@@ -135,11 +166,13 @@ export function Dashboard() {
               </ArenaTab>
             </div>
             {!connected && lastFrame === null && <ArenaEmptyState />}
+            <ReplayBanner />
             {arenaMode === "map" && <TileMap />}
             {arenaMode === "world" && <WorldView />}
             {arenaMode === "graph" && <Arena2D />}
             {arenaMode === "3d" && <Arena />}
           </div>
+          <TimeScrubber />
           <div className="flex h-[42%] min-h-0 flex-col border-t border-r border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-panel)]">
             <div className="flex items-center gap-3 border-b border-[color:var(--color-penumbra-border)] px-3 py-1.5 text-xs uppercase tracking-[0.18em]">
               <PanelTab active={bottomTab === "coach"} onClick={() => setBottomTab("coach")}>
@@ -192,7 +225,23 @@ export function Dashboard() {
       <WelcomeOverlay />
       <TourOverlay />
       <HelpOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />
+      <AgentDetailPanel />
+      <AchievementToastHost />
     </div>
+  );
+}
+
+function NotifPermBadge({ permission }: { permission: NotificationPermissionState }) {
+  const badge = permissionBadge(permission);
+  return (
+    <span
+      role="status"
+      aria-label={`notifications ${badge.label}`}
+      title={`browser notifications ${badge.label}`}
+      className={`rounded-sm border bg-[color:var(--color-penumbra-bg)] px-1.5 py-0.5 text-xs uppercase tracking-wider ${badge.className}`}
+    >
+      <span aria-hidden="true">{badge.symbol}</span> {badge.label}
+    </span>
   );
 }
 

@@ -28,10 +28,22 @@
  * - Agents — '@' glyphs at orbit positions, drawn per frame.
  */
 
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createNoise2D } from "simplex-noise";
-import { usePenumbraStore } from "../streams/store";
+import { useSelectedAgentStore } from "../stores/selectedAgent";
+import { useEffectiveFrame } from "../streams/effectiveFrame";
 import { useArenaTopology } from "../streams/topology";
+
+interface AgentHit {
+  id: number;
+  cx: number;
+  cy: number;
+  r: number;
+}
+
+type TileMapTooltip =
+  | { kind: "agent"; id: number; x: number; y: number }
+  | { kind: "node"; id: number; count: number; x: number; y: number };
 
 const COLS = 90;
 const ROWS = 54;
@@ -486,12 +498,15 @@ interface AgentAnim {
 
 export function TileMap() {
   const topology = useArenaTopology();
-  const lastFrame = usePenumbraStore((s) => s.lastFrame);
+  const lastFrame = useEffectiveFrame();
+  const setSelectedAgentId = useSelectedAgentStore((s) => s.setSelectedAgentId);
   const terrainCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const liveCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const animsRef = useRef<Map<number, AgentAnim>>(new Map());
   const previousNodesRef = useRef<Map<number, number>>(new Map());
   const edgeHeatRef = useRef<Map<string, number>>(new Map());
+  const agentHitsRef = useRef<AgentHit[]>([]);
+  const [tooltip, setTooltip] = useState<TileMapTooltip | null>(null);
 
   const layout = useMemo(() => {
     if (topology === null) return null;
@@ -672,6 +687,7 @@ export function TileMap() {
       ctx.font = FONT_AGENT;
       ctx.textBaseline = "middle";
       ctx.textAlign = "center";
+      const nextHits: AgentHit[] = [];
       // First group agents by their CURRENT node (the position from the
       // last simulation frame). Then for each group, lay them out in
       // expanding rings of 8 so a 50-agent collapse fans out instead of
@@ -742,13 +758,104 @@ export function TileMap() {
           // The @ glyph.
           ctx.fillStyle = agentColor(aid);
           ctx.fillText("@", x, y + 0.5);
+          nextHits.push({ id: aid, cx: x, cy: y, r: CELL * 0.7 });
         });
       }
+      agentHitsRef.current = nextHits;
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [layout, lastFrame, topology]);
+
+  // Translate a clientX/Y into the canvas's internal WIDTH × HEIGHT
+  // coordinate space, undoing CSS object-fit:contain letterboxing.
+  // Returns null if the click landed in the letterbox area.
+  const clientToCanvas = useCallback(
+    (clientX: number, clientY: number): [number, number] | null => {
+      const canvas = liveCanvasRef.current;
+      if (canvas === null) return null;
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return null;
+      const scale = Math.min(rect.width / WIDTH, rect.height / HEIGHT);
+      const renderedW = WIDTH * scale;
+      const renderedH = HEIGHT * scale;
+      const offsetX = (rect.width - renderedW) / 2;
+      const offsetY = (rect.height - renderedH) / 2;
+      const x = (clientX - rect.left - offsetX) / scale;
+      const y = (clientY - rect.top - offsetY) / scale;
+      if (x < 0 || y < 0 || x > WIDTH || y > HEIGHT) return null;
+      return [x, y];
+    },
+    [],
+  );
+
+  const hitAgent = useCallback((cx: number, cy: number): number | null => {
+    // Test newest-first so agents on outer orbit rings (drawn last)
+    // win over the ones underneath.
+    const hits = agentHitsRef.current;
+    for (let i = hits.length - 1; i >= 0; i--) {
+      const h = hits[i];
+      if (h === undefined) continue;
+      const dx = cx - h.cx;
+      const dy = cy - h.cy;
+      if (dx * dx + dy * dy <= h.r * h.r) return h.id;
+    }
+    return null;
+  }, []);
+
+  const hitNode = useCallback(
+    (cx: number, cy: number): number | null => {
+      if (layout === null) return null;
+      const tileX = Math.floor(cx / CELL);
+      const tileY = Math.floor(cy / CELL);
+      for (const [nodeId, [c, r]] of layout.nodeCells.entries()) {
+        if (Math.abs(c - tileX) <= 1 && Math.abs(r - tileY) <= 1) return nodeId;
+      }
+      return null;
+    },
+    [layout],
+  );
+
+  const occupancyByNode = useMemo(() => {
+    const m = new Map<number, number>();
+    if (lastFrame === null) return m;
+    for (const pos of Object.values(lastFrame.agent_positions)) {
+      m.set(pos, (m.get(pos) ?? 0) + 1);
+    }
+    return m;
+  }, [lastFrame]);
+
+  const onMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvasPt = clientToCanvas(e.clientX, e.clientY);
+    if (canvasPt === null) {
+      setTooltip(null);
+      return;
+    }
+    const [cx, cy] = canvasPt;
+    const aid = hitAgent(cx, cy);
+    if (aid !== null) {
+      setTooltip({ kind: "agent", id: aid, x: e.clientX, y: e.clientY });
+      return;
+    }
+    const nodeId = hitNode(cx, cy);
+    if (nodeId !== null) {
+      const count = occupancyByNode.get(nodeId) ?? 0;
+      setTooltip({ kind: "node", id: nodeId, count, x: e.clientX, y: e.clientY });
+      return;
+    }
+    setTooltip(null);
+  };
+
+  const onClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvasPt = clientToCanvas(e.clientX, e.clientY);
+    if (canvasPt === null) return;
+    const [cx, cy] = canvasPt;
+    const aid = hitAgent(cx, cy);
+    if (aid !== null) {
+      setSelectedAgentId(aid);
+    }
+  };
 
   if (topology === null || layout === null) {
     return (
@@ -759,7 +866,8 @@ export function TileMap() {
   }
 
   return (
-    <div className="relative h-full w-full">
+    // biome-ignore lint/a11y/noStaticElementInteractions: presentational wrapper hosts only a hover-cancel handler
+    <div className="relative h-full w-full" onMouseLeave={() => setTooltip(null)}>
       <canvas
         ref={terrainCanvasRef}
         className="pointer-events-none absolute inset-0 h-full w-full"
@@ -769,10 +877,29 @@ export function TileMap() {
       <canvas
         ref={liveCanvasRef}
         className="relative h-full w-full"
-        style={{ imageRendering: "pixelated", objectFit: "contain" }}
+        style={{ imageRendering: "pixelated", objectFit: "contain", cursor: "crosshair" }}
         role="img"
         aria-label="Penumbra world tilemap"
+        onMouseMove={onMouseMove}
+        onClick={onClick}
       />
+      {tooltip !== null && <TileMapTooltipOverlay tooltip={tooltip} />}
+    </div>
+  );
+}
+
+function TileMapTooltipOverlay({ tooltip }: { tooltip: TileMapTooltip }) {
+  const label =
+    tooltip.kind === "agent"
+      ? `agent #${tooltip.id}`
+      : `tile #${tooltip.id} · agents: ${tooltip.count}`;
+  return (
+    <div
+      role="tooltip"
+      className="pointer-events-none fixed z-50 border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-panel)] px-2 py-1 font-mono text-[10px] text-[color:var(--color-penumbra-text)] shadow-lg"
+      style={{ left: tooltip.x + 12, top: tooltip.y + 12 }}
+    >
+      {label}
     </div>
   );
 }

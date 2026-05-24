@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { useAchievementsStore } from "../stores/achievements";
 import { FetchError, Stat } from "./_shared";
 
 interface Challenge {
@@ -43,6 +44,7 @@ export function CTFChart() {
   const [board, setBoard] = useState<LeaderboardRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const markCtfSolved = useAchievementsStore((s) => s.markCtfSolved);
 
   useEffect(() => {
     const load = async () => {
@@ -97,7 +99,9 @@ export function CTFChart() {
       if (!r.ok) {
         setError(`HTTP ${r.status} on /ctf/submit/${selected}`);
       } else {
-        setResult((await r.json()) as SubmitResult);
+        const submitResult = (await r.json()) as SubmitResult;
+        setResult(submitResult);
+        if (submitResult.correct) markCtfSolved(selected);
         const board2 = await fetch(`/ctf/leaderboard/${encodeURIComponent(selected)}`);
         if (!board2.ok) {
           setError(`HTTP ${board2.status} on /ctf/leaderboard/${selected}`);

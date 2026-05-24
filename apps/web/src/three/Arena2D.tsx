@@ -18,9 +18,14 @@
  */
 
 import * as d3 from "d3";
-import { useEffect, useMemo, useRef } from "react";
-import { usePenumbraStore } from "../streams/store";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSelectedAgentStore } from "../stores/selectedAgent";
+import { useEffectiveFrame } from "../streams/effectiveFrame";
 import { useArenaTopology } from "../streams/topology";
+
+type Tooltip =
+  | { kind: "node"; id: number; count: number; x: number; y: number }
+  | { kind: "edge"; u: number; v: number; cost: number; x: number; y: number };
 
 interface NodeDatum extends d3.SimulationNodeDatum {
   id: number;
@@ -38,10 +43,12 @@ const FORCE_CHARGE = -160;
 
 export function Arena2D() {
   const topology = useArenaTopology();
-  const lastFrame = usePenumbraStore((s) => s.lastFrame);
+  const lastFrame = useEffectiveFrame();
+  const setSelectedAgentId = useSelectedAgentStore((s) => s.setSelectedAgentId);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const simulationRef = useRef<d3.Simulation<NodeDatum, LinkDatum> | null>(null);
   const nodeMapRef = useRef<Map<number, NodeDatum>>(new Map());
+  const [tooltip, setTooltip] = useState<Tooltip | null>(null);
 
   // Build / update the force simulation when topology arrives.
   useEffect(() => {
@@ -106,6 +113,21 @@ export function Arena2D() {
     return counts;
   }, [lastFrame]);
 
+  // Pick a representative agent id per node so a click on the node
+  // tile selects the lowest-id agent currently there. Arena2D shows
+  // node occupancy rather than individual agent dots, so this is the
+  // best handoff we can offer until a per-agent overlay lands.
+  const firstAgentByNode = useMemo(() => {
+    const m = new Map<number, number>();
+    if (lastFrame === null) return m;
+    for (const [idStr, pos] of Object.entries(lastFrame.agent_positions)) {
+      const aid = Number(idStr);
+      const cur = m.get(pos);
+      if (cur === undefined || aid < cur) m.set(pos, aid);
+    }
+    return m;
+  }, [lastFrame]);
+
   // d3 redraw loop, driven by simulation ticks.
   useEffect(() => {
     const simulation = simulationRef.current;
@@ -166,81 +188,138 @@ export function Arena2D() {
   const links = topology.edges;
   const nodes = Array.from(nodeMapRef.current.values());
 
+  const onNodeClick = (nodeId: number) => {
+    const aid = firstAgentByNode.get(nodeId);
+    if (aid !== undefined) setSelectedAgentId(aid);
+  };
+
+  const setNodeTooltip = (e: React.MouseEvent, n: NodeDatum) => {
+    const count = occupancy.get(n.id) ?? 0;
+    setTooltip({ kind: "node", id: n.id, count, x: e.clientX, y: e.clientY });
+  };
+  const setEdgeTooltip = (e: React.MouseEvent, l: { u: number; v: number; cost: number }) => {
+    setTooltip({ kind: "edge", u: l.u, v: l.v, cost: l.cost, x: e.clientX, y: e.clientY });
+  };
+
   return (
-    <svg
-      ref={svgRef}
-      viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-      className="h-full w-full"
-      role="img"
-      aria-label="Penumbra arena graph"
-    >
-      <g data-edges>
-        {links.map((l) => (
-          <line
-            key={`${l.u}-${l.v}`}
-            data-link
-            stroke={colorScale(l.cost)}
-            strokeWidth={1}
-            strokeOpacity={0.7}
-          />
-        ))}
-      </g>
-      <g data-nodes>
-        {nodes.map((n) => {
-          const count = occupancy.get(n.id) ?? 0;
-          const baseRadius = 5;
-          const radius = baseRadius + Math.sqrt(count) * 2.5;
-          return (
-            <g key={n.id} data-node>
-              {n.isGoal && (
+    // biome-ignore lint/a11y/noStaticElementInteractions: presentational wrapper hosts only a hover-cancel handler
+    <div className="relative h-full w-full" onMouseLeave={() => setTooltip(null)}>
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+        className="h-full w-full"
+        role="img"
+        aria-label="Penumbra arena graph"
+      >
+        <g data-edges>
+          {links.map((l) => (
+            // biome-ignore lint/a11y/noStaticElementInteractions: SVG <line> is a tooltip hover target only (no click)
+            <line
+              key={`${l.u}-${l.v}`}
+              data-link
+              stroke={colorScale(l.cost)}
+              strokeWidth={1}
+              strokeOpacity={0.7}
+              onMouseEnter={(e) => setEdgeTooltip(e, l)}
+              onMouseMove={(e) => setEdgeTooltip(e, l)}
+              onMouseLeave={() => setTooltip(null)}
+              style={{ cursor: "default" }}
+            />
+          ))}
+        </g>
+        <g data-nodes>
+          {nodes.map((n) => {
+            const count = occupancy.get(n.id) ?? 0;
+            const baseRadius = 5;
+            const radius = baseRadius + Math.sqrt(count) * 2.5;
+            const clickable = count > 0;
+            return (
+              // biome-ignore lint/a11y/noStaticElementInteractions: SVG <g> tile hit target; role="button" only when clickable
+              <g
+                key={n.id}
+                data-node
+                role={clickable ? "button" : undefined}
+                tabIndex={clickable ? 0 : undefined}
+                aria-label={clickable ? `Inspect agents at tile ${n.id}` : undefined}
+                onClick={() => onNodeClick(n.id)}
+                onKeyDown={(e) => {
+                  if (clickable && (e.key === "Enter" || e.key === " ")) {
+                    e.preventDefault();
+                    onNodeClick(n.id);
+                  }
+                }}
+                onMouseEnter={(e) => setNodeTooltip(e, n)}
+                onMouseMove={(e) => setNodeTooltip(e, n)}
+                onMouseLeave={() => setTooltip(null)}
+                style={{ cursor: clickable ? "pointer" : "default" }}
+              >
+                {n.isGoal && (
+                  <circle
+                    r={radius + 6}
+                    fill="none"
+                    stroke="var(--color-penumbra-cyan)"
+                    strokeWidth={1.2}
+                    strokeDasharray="3 3"
+                    opacity={0.8}
+                  />
+                )}
                 <circle
-                  r={radius + 6}
-                  fill="none"
-                  stroke="var(--color-penumbra-cyan)"
-                  strokeWidth={1.2}
-                  strokeDasharray="3 3"
-                  opacity={0.8}
+                  r={radius}
+                  fill={
+                    n.isGoal
+                      ? "var(--color-penumbra-cyan-bg)"
+                      : count > 0
+                        ? "var(--color-penumbra-panel)"
+                        : "var(--color-penumbra-bg)"
+                  }
+                  stroke={count > 0 ? "var(--color-penumbra-text)" : "var(--color-penumbra-border)"}
+                  strokeWidth={count > 0 ? 1.2 : 0.7}
                 />
-              )}
-              <circle
-                r={radius}
-                fill={
-                  n.isGoal
-                    ? "var(--color-penumbra-cyan-bg)"
-                    : count > 0
-                      ? "var(--color-penumbra-panel)"
-                      : "var(--color-penumbra-bg)"
-                }
-                stroke={count > 0 ? "var(--color-penumbra-text)" : "var(--color-penumbra-border)"}
-                strokeWidth={count > 0 ? 1.2 : 0.7}
-              />
-              {count > 0 && (
-                <text
-                  textAnchor="middle"
-                  dominantBaseline="central"
-                  fontSize={10}
-                  fill="var(--color-penumbra-text)"
-                  style={{ fontFamily: "var(--font-mono)" }}
-                >
-                  {count}
-                </text>
-              )}
-              {n.isGoal && (
-                <text
-                  textAnchor="middle"
-                  dominantBaseline="central"
-                  fontSize={8}
-                  y={radius + 12}
-                  fill="var(--color-penumbra-cyan)"
-                  style={{ fontFamily: "var(--font-mono)" }}
-                >
-                  goal {n.id}
-                </text>
-              )}
-            </g>
-          );
-        })}
-      </g>
-    </svg>
+                {count > 0 && (
+                  <text
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    fontSize={10}
+                    fill="var(--color-penumbra-text)"
+                    style={{ fontFamily: "var(--font-mono)", pointerEvents: "none" }}
+                  >
+                    {count}
+                  </text>
+                )}
+                {n.isGoal && (
+                  <text
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    fontSize={8}
+                    y={radius + 12}
+                    fill="var(--color-penumbra-cyan)"
+                    style={{ fontFamily: "var(--font-mono)", pointerEvents: "none" }}
+                  >
+                    goal {n.id}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+        </g>
+      </svg>
+      {tooltip !== null && <ArenaTooltip tooltip={tooltip} />}
+    </div>
+  );
+}
+
+function ArenaTooltip({ tooltip }: { tooltip: Tooltip }) {
+  const label =
+    tooltip.kind === "node"
+      ? `tile #${tooltip.id} · agents: ${tooltip.count}`
+      : `edge ${tooltip.u}↔${tooltip.v} · weight ${tooltip.cost.toFixed(2)}`;
+  return (
+    <div
+      role="tooltip"
+      className="pointer-events-none fixed z-50 border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-panel)] px-2 py-1 font-mono text-[10px] text-[color:var(--color-penumbra-text)] shadow-lg"
+      style={{ left: tooltip.x + 12, top: tooltip.y + 12 }}
+    >
+      {label}
+    </div>
   );
 }

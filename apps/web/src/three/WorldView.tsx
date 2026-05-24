@@ -17,7 +17,8 @@
 
 import * as d3 from "d3";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { usePenumbraStore } from "../streams/store";
+import { useSelectedAgentStore } from "../stores/selectedAgent";
+import { useEffectiveFrame } from "../streams/effectiveFrame";
 import { useArenaTopology } from "../streams/topology";
 
 interface NodePosition {
@@ -70,7 +71,8 @@ interface AgentRender {
 
 export function WorldView() {
   const topology = useArenaTopology();
-  const lastFrame = usePenumbraStore((s) => s.lastFrame);
+  const lastFrame = useEffectiveFrame();
+  const setSelectedAgentId = useSelectedAgentStore((s) => s.setSelectedAgentId);
   const [positions, setPositions] = useState<Map<number, NodePosition>>(new Map());
   const previousAgentRef = useRef<Map<number, AgentRender>>(new Map());
 
@@ -346,13 +348,25 @@ export function WorldView() {
           }
           const color = agentColor(id);
           return (
+            // biome-ignore lint/a11y/useSemanticElements: cannot nest a <button> inside <svg>; SVG hit target uses role
             <g
               key={id}
+              role="button"
+              tabIndex={0}
+              aria-label={`Inspect agent ${id}`}
+              onClick={() => setSelectedAgentId(id)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setSelectedAgentId(id);
+                }
+              }}
               style={{
                 transform: `translate(${x}px, ${y}px) rotate(${angleDeg}deg)`,
                 transition: "transform 320ms cubic-bezier(0.4, 0.0, 0.2, 1)",
                 transformBox: "fill-box",
                 transformOrigin: "center",
+                cursor: "pointer",
               }}
             >
               {/* Trail/afterimage — small soft dot at the back of the triangle */}

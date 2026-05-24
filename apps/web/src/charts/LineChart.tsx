@@ -5,10 +5,16 @@
  * Computes axis ticks dynamically, supports a hover tooltip that
  * shows the exact value at the closest sample, and renders min /
  * max / mean / std stats below the chart.
+ *
+ * Now also supports a drag-to-select brush (see useBrushSelection):
+ * dragging across the chart highlights a window of samples and
+ * recomputes the summary stats from that slice; "× clear selection"
+ * resets.
  */
 
-import { useMemo, useState } from "react";
-import { Stat } from "./_shared";
+import { useMemo, useRef, useState } from "react";
+import { useBrushSelection, windowStats } from "../hooks/useBrushSelection";
+import { BrushStatsCard, Stat } from "./_shared";
 
 interface Props {
   values: number[];
@@ -29,7 +35,7 @@ const M: MarginBox = { top: 12, right: 16, bottom: 24, left: 44 };
 
 export function LineChart({ values, label, yUnit, width = 560, height = 280 }: Props) {
   const finite = values.filter((v) => Number.isFinite(v));
-  const stats = useMemo(() => {
+  const fullStats = useMemo(() => {
     if (finite.length === 0) return null;
     const sorted = [...finite].sort((a, b) => a - b);
     const min = sorted[0] as number;
@@ -40,11 +46,37 @@ export function LineChart({ values, label, yUnit, width = 560, height = 280 }: P
   }, [finite]);
 
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
 
   const plotW = width - M.left - M.right;
   const plotH = height - M.top - M.bottom;
 
-  if (stats === null || values.length < 2) {
+  // Index-domain brush (data x = sample index in `values`).
+  const lastIdx = Math.max(values.length - 1, 1);
+  const sxIdx = (i: number) => M.left + (i / lastIdx) * plotW;
+  const invertIdx = (px: number): number => {
+    const norm = (px - M.left) / plotW;
+    const clamped = Math.max(0, Math.min(1, norm));
+    return Math.round(clamped * lastIdx);
+  };
+
+  const { range, clear, overlay } = useBrushSelection<number>(svgRef, sxIdx, invertIdx, {
+    x: M.left,
+    y: M.top,
+    width: plotW,
+    height: plotH,
+  });
+
+  const slicedValues = useMemo(() => {
+    if (range === null) return values;
+    const lo = Math.max(0, Math.min(values.length, range.start));
+    const hi = Math.max(0, Math.min(values.length, range.end + 1));
+    return values.slice(lo, hi);
+  }, [range, values]);
+
+  const slicedStats = useMemo(() => windowStats(slicedValues), [slicedValues]);
+
+  if (fullStats === null || values.length < 2) {
     return (
       <div className="flex h-full w-full items-center justify-center text-xs text-[color:var(--color-penumbra-muted)]">
         not enough samples yet
@@ -52,9 +84,9 @@ export function LineChart({ values, label, yUnit, width = 560, height = 280 }: P
     );
   }
 
-  const span = stats.max - stats.min || 1;
-  const yMin = stats.min - span * 0.05;
-  const yMax = stats.max + span * 0.05;
+  const span = fullStats.max - fullStats.min || 1;
+  const yMin = fullStats.min - span * 0.05;
+  const yMax = fullStats.max + span * 0.05;
   const yRange = yMax - yMin;
   const xStep = plotW / (values.length - 1);
 
@@ -87,9 +119,12 @@ export function LineChart({ values, label, yUnit, width = 560, height = 280 }: P
 
   const hoverPoint = hoverIdx !== null ? points[hoverIdx] : null;
 
+  const displayStats = slicedStats ?? fullStats;
+
   return (
     <div className="font-mono">
       <svg
+        ref={svgRef}
         width="100%"
         viewBox={`0 0 ${width} ${height}`}
         onMouseMove={onMove}
@@ -195,14 +230,26 @@ export function LineChart({ values, label, yUnit, width = 560, height = 280 }: P
             </text>
           </>
         )}
+
+        {overlay}
       </svg>
 
-      {/* summary stats */}
+      {/* brush window summary */}
+      <BrushStatsCard
+        range={range}
+        stats={slicedStats}
+        onClear={clear}
+        unit={yUnit}
+        startLabel={range ? `idx=${range.start}` : undefined}
+        endLabel={range ? `idx=${range.end}` : undefined}
+      />
+
+      {/* summary stats (slice if brushed, else full) */}
       <div className="mt-2 grid grid-cols-4 gap-2 text-[10px]">
-        <Stat label="min" value={stats.min} digits="adaptive" />
-        <Stat label="max" value={stats.max} digits="adaptive" />
-        <Stat label="mean" value={stats.mean} digits="adaptive" />
-        <Stat label="std" value={stats.std} digits="adaptive" />
+        <Stat label="min" value={displayStats.min} digits="adaptive" />
+        <Stat label="max" value={displayStats.max} digits="adaptive" />
+        <Stat label="mean" value={displayStats.mean} digits="adaptive" />
+        <Stat label="std" value={displayStats.std} digits="adaptive" />
       </div>
     </div>
   );

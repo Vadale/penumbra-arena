@@ -12,8 +12,11 @@
  * Dismiss via Escape, backdrop click, or the explicit close button.
  */
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { downloadChartAsPng } from "../hooks/useExport";
 import { useFocusTrap } from "../hooks/useFocusTrap";
+import { useAchievementsStore } from "../stores/achievements";
+import type { InjectionKind } from "../stores/labHistory";
 import type {
   ANOVAReport as ANOVAReportData,
   ArimaForecast as ArimaForecastData,
@@ -39,7 +42,10 @@ import type {
   WealthReport as WealthReportData,
 } from "../streams/dashboard";
 import { useActionHistogram } from "../streams/learning";
+import { ExportButtons } from "./_shared";
+import { InjectBlockAgentForm, InjectTriggerButton } from "./_shared/InjectTriggerButton";
 import { ACFChart } from "./ACFChart";
+import { AchievementsPanel } from "./AchievementsPanel";
 import { ActionHistogramChart } from "./ActionHistogramChart";
 import { ANOVAChart } from "./ANOVAChart";
 import { ArenaGraphChart } from "./ArenaGraphChart";
@@ -55,6 +61,7 @@ import { BBSPlusChart } from "./BBSPlusChart";
 import { BeaverChart } from "./BeaverChart";
 import { BLSChart } from "./BLSChart";
 import { BlockedAgentsChart } from "./BlockedAgentsChart";
+import { BranchCompareChart } from "./BranchCompareChart";
 import { CandlestickChart } from "./CandlestickChart";
 import { CausalChart } from "./CausalChart";
 import { CKKSCompareChart } from "./CKKSCompareChart";
@@ -80,6 +87,7 @@ import { GarchChart } from "./GarchChart";
 import { GrangerMatrix } from "./GrangerMatrix";
 import { InflationChart } from "./InflationChart";
 import { KyberKEMChart } from "./KyberKEMChart";
+import { LabPanel } from "./LabPanel";
 import { LineChart } from "./LineChart";
 import { LogisticsCapacityChart } from "./LogisticsCapacityChart";
 import { LogisticsDispatchChart } from "./LogisticsDispatchChart";
@@ -95,6 +103,7 @@ import { MixNetChart } from "./MixNetChart";
 import { MonteCarloFan } from "./MonteCarloFan";
 import { MultiCheckpointChart } from "./MultiCheckpointChart";
 import { MultiplierZKChart } from "./MultiplierZKChart";
+import { NotificationSettings } from "./NotificationSettings";
 import { OperatorScenarioChart } from "./OperatorScenarioChart";
 import { PCAScree } from "./PCAScree";
 import { PedersenChart } from "./PedersenChart";
@@ -223,7 +232,11 @@ export type MetricKind =
   | "custom_policy"
   | "ctf"
   | "story_mode"
-  | "world_branches";
+  | "world_branches"
+  | "lab_experiments"
+  | "notifications"
+  | "achievements"
+  | "branch_compare";
 
 interface Props {
   open: boolean;
@@ -264,6 +277,16 @@ type MetricMeta = {
   yUnit?: string;
   cli?: string;
 };
+
+const EXPORTABLE: ReadonlySet<MetricKind> = new Set<MetricKind>([
+  "inflation",
+  "garch",
+  "training_curves",
+  "wealth",
+  "candles",
+  "mempool",
+  "signing_verified",
+]);
 
 const META: Record<MetricKind, MetricMeta> = {
   trajectory_mean: {
@@ -757,6 +780,51 @@ const META: Record<MetricKind, MetricMeta> = {
       "Phase 5 Tier 4: snapshot the live simulation into N in-memory branches via pickle round-trip. Advance any branch independently for K ticks and compare positions + wealth + tick counter side-by-side. Branches are intentionally non-persistent — process-local what-if explorations.",
     cli: "pna world save baseline && pna world load baseline",
   },
+  lab_experiments: {
+    label: "Lab — trigger events live",
+    description:
+      "Force CPI shocks, GARCH spikes, agent blocks, validator slashes; step the simulation manually. Wires to the EventBus so all 5 cross-pillar handler tiers react in real time.",
+  },
+  branch_compare: {
+    label: "Branch compare — split view A vs B",
+    description:
+      "Pick two world branches and compare mean wealth, position dispersion, and tick count side-by-side. Each metric pair shares a y-axis scale so visual heights are honest. Swap A↔B or reset selection. Per-branch time-series are derived deterministically from the snapshot until the backend exposes a per-branch timeseries endpoint.",
+  },
+  notifications: {
+    label: "Browser notifications — opt-in per kind",
+    description:
+      "Browser notifications for cross-pillar events — opt-in per kind. Toggle the event kinds you want to be notified about; the dashboard polls /events/recent every 5s and fires a deduplicated Notification when a new matching event arrives. Permission is requested separately and can be revoked from the browser address bar.",
+  },
+  achievements: {
+    label: "Achievements — discovery progress",
+    description:
+      "Gamified discovery tracker. Tiles you open, scenarios you complete, CTF flags you capture, lab experiments you trigger, and speed settings you try all feed an ~8-badge unlock grid. Progress persists in localStorage; a toast (or browser notification, if granted) fires when a new badge unlocks.",
+  },
+};
+
+interface InjectMapping {
+  kind: InjectionKind;
+  label: string;
+  payload: Record<string, unknown>;
+}
+
+const INJECT_TRIGGERS: Partial<Record<MetricKind, InjectMapping>> = {
+  inflation: { kind: "cpi.shock", label: "trigger cpi shock", payload: { ratio: 1.5 } },
+  garch: {
+    kind: "garch.spike",
+    label: "force garch spike",
+    payload: { magnitude: 3.0 },
+  },
+  signing_verified: {
+    kind: "validator.slashed",
+    label: "slash validator 0",
+    payload: { validator_id: 0 },
+  },
+  bls_aggregate: {
+    kind: "validator.slashed",
+    label: "slash validator 0",
+    payload: { validator_id: 0 },
+  },
 };
 
 export function DetailModal({
@@ -792,6 +860,9 @@ export function DetailModal({
   wealth,
 }: Props) {
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  const chartContainerRef = useRef<HTMLDivElement | null>(null);
+  const [pngError, setPngError] = useState<string | null>(null);
+  const markTileOpened = useAchievementsStore((s) => s.markTileOpened);
   useFocusTrap(dialogRef, open && metric !== null);
 
   useEffect(() => {
@@ -805,8 +876,29 @@ export function DetailModal({
     };
   }, [open, onClose]);
 
+  useEffect(() => {
+    if (open && metric !== null) {
+      markTileOpened(metric);
+    }
+  }, [open, metric, markTileOpened]);
+
+  const handleClientPng = useCallback(async (kind: MetricKind) => {
+    setPngError(null);
+    const element = chartContainerRef.current;
+    if (!element) {
+      setPngError("chart not yet mounted");
+      return;
+    }
+    try {
+      await downloadChartAsPng(element, `${kind}.png`);
+    } catch (exc) {
+      setPngError(exc instanceof Error ? exc.message : String(exc));
+    }
+  }, []);
+
   if (!open || metric === null) return null;
   const meta = META[metric];
+  const supportsServerExport = EXPORTABLE.has(metric);
 
   const body = (() => {
     if (metric === "topics") {
@@ -1075,6 +1167,18 @@ export function DetailModal({
     if (metric === "world_branches") {
       return <WorldBranchChart />;
     }
+    if (metric === "lab_experiments") {
+      return <LabPanel />;
+    }
+    if (metric === "branch_compare") {
+      return <BranchCompareChart />;
+    }
+    if (metric === "notifications") {
+      return <NotificationSettings />;
+    }
+    if (metric === "achievements") {
+      return <AchievementsPanel />;
+    }
     return <LineChart values={values ?? []} label={meta.label} yUnit={meta.yUnit} />;
   })();
 
@@ -1121,10 +1225,58 @@ export function DetailModal({
             </code>
           </div>
         )}
-        <div className="border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] p-3">
+        <div className="mb-2 flex items-start justify-between gap-2">
+          {supportsServerExport ? (
+            <ExportButtons metric={metric} />
+          ) : (
+            <div className="text-[10px] text-[color:var(--color-penumbra-muted)]">
+              Export not yet supported for this metric — open the underlying endpoint via the
+              Try-in-shell hint above.
+            </div>
+          )}
+          <div className="flex flex-col items-end gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                void handleClientPng(metric);
+              }}
+              aria-label="Download chart as PNG"
+              className="border border-[color:var(--color-penumbra-border)] bg-transparent px-2 py-[2px] font-mono text-[10px] uppercase text-[color:var(--color-penumbra-muted)] hover:border-[color:var(--color-penumbra-cyan)] hover:text-[color:var(--color-penumbra-cyan)]"
+            >
+              {"↓ download as png"}
+            </button>
+            {pngError ? (
+              <div className="font-mono text-[10px] text-[color:var(--color-penumbra-ember)]">
+                png export failed: {pngError}
+              </div>
+            ) : null}
+          </div>
+        </div>
+        <div
+          ref={chartContainerRef}
+          className="border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] p-3"
+        >
           {body}
         </div>
+        <TriggerSection metric={metric} />
       </div>
+    </div>
+  );
+}
+
+function TriggerSection({ metric }: { metric: MetricKind }) {
+  const mapping = INJECT_TRIGGERS[metric];
+  const showBlockForm = metric === "security_blocked";
+  if (!mapping && !showBlockForm) return null;
+  return (
+    <div className="mt-3 border-t border-[color:var(--color-penumbra-border)] pt-2">
+      <div className="mb-1 text-[10px] uppercase tracking-[0.2em] text-[color:var(--color-penumbra-dim)]">
+        trigger this event
+      </div>
+      {mapping && (
+        <InjectTriggerButton label={mapping.label} kind={mapping.kind} payload={mapping.payload} />
+      )}
+      {showBlockForm && <InjectBlockAgentForm />}
     </div>
   );
 }

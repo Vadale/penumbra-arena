@@ -12,6 +12,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { useAchievementsStore } from "../stores/achievements";
 
 interface TickHzPayload {
   tick_hz: number;
@@ -32,6 +33,7 @@ export function SpeedControl({
   const [tickHz, setTickHz] = useState<number | null>(null);
   const [allowed, setAllowed] = useState<number[]>(FALLBACK_ALLOWED);
   const [busy, setBusy] = useState(false);
+  const markSpeedUsed = useAchievementsStore((s) => s.markSpeedUsed);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,6 +70,7 @@ export function SpeedControl({
         const body = (await r.json()) as TickHzPayload;
         setTickHz(body.tick_hz);
         onRateChange?.(body.tick_hz);
+        markSpeedUsed(String(body.tick_hz));
       }
     } catch {
       // ignore; next click will retry

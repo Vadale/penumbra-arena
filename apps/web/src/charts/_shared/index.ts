@@ -2,6 +2,9 @@
 
 export type { BlockProps } from "./Block";
 export { Block } from "./Block";
+export type { BrushStatsCardProps } from "./BrushStats";
+export { BrushStatsCard } from "./BrushStats";
+export { ExportButtons } from "./ExportButtons";
 export type { FetchErrorProps } from "./FetchError";
 export { FetchError } from "./FetchError";
 export { NarrowViewportBanner } from "./NarrowViewportBanner";

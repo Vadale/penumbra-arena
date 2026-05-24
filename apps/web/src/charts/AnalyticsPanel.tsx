@@ -946,6 +946,34 @@ export function AnalyticsPanel() {
           accent
           onClick={() => open("world_branches")}
         />
+        <Cell
+          label="branch compare"
+          value="split view A vs B"
+          caption="shared y-axis"
+          accent
+          onClick={() => open("branch_compare")}
+        />
+        <Cell
+          label="Lab"
+          value="trigger events live"
+          caption="CPI / GARCH / block / slash · manual step"
+          ember
+          onClick={() => open("lab_experiments")}
+        />
+        <Cell
+          label="notifications"
+          value="cross-pillar alerts"
+          caption="opt-in browser notifications"
+          accent
+          onClick={() => open("notifications")}
+        />
+        <Cell
+          label="achievements"
+          value="discovery progress"
+          caption="badges + tile coverage"
+          accent
+          onClick={() => open("achievements")}
+        />
       </div>
 
       {summary && (
@@ -1056,6 +1084,10 @@ export function AnalyticsPanel() {
             case "ctf":
             case "story_mode":
             case "world_branches":
+            case "branch_compare":
+            case "lab_experiments":
+            case "notifications":
+            case "achievements":
               return undefined;
             default:
               return histories[mapMetricToHistoryKey(openMetric)];
@@ -1178,6 +1210,10 @@ function mapMetricToHistoryKey(
     | "world_branches"
     | "story_mode"
     | "operator_leaderboard"
+    | "lab_experiments"
+    | "notifications"
+    | "achievements"
+    | "branch_compare"
   >,
 ): keyof ReturnType<typeof useDashboardLive>["history"] {
   switch (m) {
