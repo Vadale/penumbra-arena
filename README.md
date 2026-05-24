@@ -126,6 +126,7 @@ The full per-package contracts + endpoint table live in
 | File | What it has |
 |---|---|
 | [`README.md`](README.md) | This file — orientation. |
+| [`USAGE.md`](USAGE.md) | **Hands-on quickstart** — boot, dashboard interactions, all three CLIs (`pna` / `psh` / `pno`), REST endpoints, common workflows, troubleshooting. |
 | [`ROADMAP.md`](ROADMAP.md) | Build phases, what shipped where, tag-by-tag. |
 | [`PROMPTING_GUIDE.md`](PROMPTING_GUIDE.md) | Step-by-step recipes for adding features. |
 | [`CLAUDE.md`](CLAUDE.md) | Claude Code instructions: conventions, agent guide, M4 budget. |
