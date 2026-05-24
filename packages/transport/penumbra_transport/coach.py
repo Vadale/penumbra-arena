@@ -23,7 +23,7 @@ import shutil
 from dataclasses import dataclass
 from typing import Final
 
-ALLOWED_BINARIES: Final[frozenset[str]] = frozenset({"pna", "psh"})
+ALLOWED_BINARIES: Final[frozenset[str]] = frozenset({"pna", "psh", "pno"})
 TIMEOUT_SECONDS: Final[float] = 30.0
 
 

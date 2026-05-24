@@ -3915,6 +3915,7 @@ def build_app(
         training_samples = (
             list(getattr(trainer, "history", []) or []) if trainer is not None else []
         )
+        extra_context = await _build_export_context(metric, app)
         try:
             payload = chart_series(
                 metric,
@@ -3922,6 +3923,7 @@ def build_app(
                 training_samples=training_samples,
                 chain_height=int(orchestrator.node.height),
                 mempool_size=len(orchestrator.node.mempool),
+                extra_context=extra_context,
             )
         except UnsupportedMetricError as exc:  # pragma: no cover - guarded above
             raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -4095,6 +4097,216 @@ def build_app(
             status_code=503,
         )
 
+    async def _build_export_context(metric: str, app_ref: FastAPI) -> dict[str, object]:
+        """Lazily collect auxiliary chart context for extended metrics.
+
+        The legacy 7 metrics use only ``dashboard_snapshot`` +
+        ``training_samples`` + chain/mempool counters. Phase-bonus
+        metrics (VRF leader frequency, value map, GAT attention, ...)
+        need extra payloads that aren't on the snapshot. We compute
+        only what the requested metric needs so a CSV/PNG of a tabular
+        metric stays cheap.
+        """
+        ctx: dict[str, object] = {}
+        orch = app_ref.state.penumbra.orchestrator
+        if metric == "dp_epsilon_spent":
+            dp_mech = orch.heatmap.dp_mechanism
+            if dp_mech is not None:
+                ctx["dp_budget"] = {
+                    "epsilon_total": float(dp_mech.budget.epsilon),
+                    "epsilon_spent": float(dp_mech.budget.epsilon_spent),
+                    "epsilon_remaining": float(dp_mech.budget.remaining_epsilon),
+                }
+        elif metric == "signing_verified":
+            ks = orch.keystore
+            ctx["signing_stats"] = {
+                "verified": int(ks.stats.verified),
+                "rejected": int(ks.stats.rejected),
+                "n_agents": len(ks.keypairs),
+            }
+        elif metric == "vrf_leader":
+            node = orch.node
+            recent = []
+            for blk in node.chain[-12:]:
+                proposer = blk.header.proposer_pubkey
+                leader_idx = next(
+                    (i for i, v in enumerate(node.validators) if v.bls_pubkey == proposer),
+                    -1,
+                )
+                recent.append({"height": int(blk.header.height), "leader_index": int(leader_idx)})
+            ctx["vrf_leader"] = {"recent": recent}
+        elif metric == "kyber_kem":
+            try:
+                from penumbra_crypto.pq import kem_encapsulate, kem_keygen
+            except ImportError:
+                ctx["kyber_demo"] = None
+            else:
+                kp = kem_keygen()
+                result = kem_encapsulate(kp.public_key)
+                ctx["kyber_demo"] = {
+                    "public_key_size": len(kp.public_key),
+                    "secret_key_size": len(kp.secret_key),
+                    "ciphertext_size": len(result.ciphertext),
+                    "shared_secret_size": len(result.shared_secret),
+                }
+        elif metric == "multi_checkpoint":
+            runtime = app_ref.state.penumbra.mappo_runtime
+            second = getattr(app_ref.state.penumbra, "second_mappo", None)
+            if runtime is None or second is None:
+                ctx["multi_checkpoint"] = {"available": False}
+            else:
+                try:
+                    import torch
+                    from penumbra_learning.env import NEIGHBOURS_K, PAD_VALUE
+
+                    sim_local: Simulation = app_ref.state.penumbra.simulation
+                    feats_all: list[list[float]] = []
+                    for agent in sim_local.agents:
+                        obs = agent.observe(sim_local.arena, tick=sim_local.tick_counter)
+                        neighbours = sorted(obs.neighbour_costs.keys())
+                        goals = set(obs.visible_goals)
+                        f: list[float] = []
+                        for j in range(NEIGHBOURS_K):
+                            if j < len(neighbours):
+                                n_id = neighbours[j]
+                                f.extend(
+                                    [
+                                        float(obs.neighbour_costs[n_id]),
+                                        1.0 if n_id in goals else 0.0,
+                                        1.0 if n_id in goals else 0.0,
+                                    ]
+                                )
+                            else:
+                                f.extend([PAD_VALUE, PAD_VALUE, PAD_VALUE])
+                        feats_all.append(f)
+                    device = runtime.agent_net.device  # type: ignore[attr-defined]
+                    x = torch.tensor(feats_all, dtype=torch.float32, device=device)
+                    with torch.no_grad():
+                        logits_a = runtime.agent_net.actor.net(x) / float(  # type: ignore[attr-defined]
+                            runtime.temperature
+                        )
+                        logits_b = second.actor.net(x.to(second.device)) / float(  # type: ignore[attr-defined]
+                            runtime.temperature
+                        )
+                        logits_b = logits_b.to(device)
+                        probs_a = torch.softmax(logits_a, dim=-1)
+                        probs_b = torch.softmax(logits_b, dim=-1)
+                    eps = 1e-9
+                    kl_per_agent = (
+                        probs_a * (probs_a.add(eps).log() - probs_b.add(eps).log())
+                    ).sum(dim=-1)
+                    agree = probs_a.argmax(dim=-1) == probs_b.argmax(dim=-1)
+                    ctx["multi_checkpoint"] = {
+                        "available": True,
+                        "agreement_rate": float(agree.float().mean().item()),
+                        "mean_kl": float(kl_per_agent.mean().item()),
+                        "max_kl": float(kl_per_agent.max().item()),
+                        "per_agent_kl": [float(v) for v in kl_per_agent.tolist()],
+                    }
+                except Exception:
+                    logger.debug("multi_checkpoint context build failed", exc_info=True)
+                    ctx["multi_checkpoint"] = {"available": False}
+        elif metric == "value_map":
+            runtime = app_ref.state.penumbra.mappo_runtime
+            if runtime is None:
+                ctx["value_map"] = {"available": False}
+            else:
+                try:
+                    sim_local = app_ref.state.penumbra.simulation
+                    from penumbra_learning.env import NEIGHBOURS_K, PAD_VALUE
+
+                    vm_feats: list[np.ndarray] = []
+                    for ag in sim_local.agents:
+                        obs = ag.observe(sim_local.arena, tick=sim_local.tick_counter)
+                        neighbours = sorted(obs.neighbour_costs.keys())
+                        goals = set(obs.visible_goals)
+                        f: list[float] = []
+                        for j in range(NEIGHBOURS_K):
+                            if j < len(neighbours):
+                                n = neighbours[j]
+                                cost = float(obs.neighbour_costs[n])
+                                is_goal = 1.0 if n in goals else 0.0
+                                f.extend([cost, is_goal, is_goal])
+                            else:
+                                f.extend([PAD_VALUE, PAD_VALUE, PAD_VALUE])
+                        vm_feats.append(np.asarray(f, dtype=np.float32))
+                    feats_arr = np.stack(vm_feats, axis=0)
+                    probs = runtime.agent_net.action_probabilities(  # type: ignore[attr-defined]
+                        feats_arr, temperature=runtime.temperature
+                    )
+                    with np.errstate(divide="ignore", invalid="ignore"):
+                        entropies = -np.where(probs > 0, probs * np.log(probs), 0).sum(axis=1)
+                    cfg = runtime.agent_net.config  # type: ignore[attr-defined]
+                    expected = int(cfg.obs_dim * cfg.n_agents)
+                    flat = feats_arr.reshape(-1).astype(np.float32, copy=False)
+                    if flat.size < expected:
+                        padded = np.full((expected,), PAD_VALUE, dtype=np.float32)
+                        padded[: flat.size] = flat
+                        flat = padded
+                    else:
+                        flat = flat[:expected]
+                    v_state = runtime.agent_net.value_estimate(flat)  # type: ignore[attr-defined]
+                    ctx["value_map"] = {
+                        "available": True,
+                        "v_state": float(v_state),
+                        "per_agent": [
+                            {
+                                "agent_id": int(i),
+                                "entropy": float(entropies[i]),
+                                "top_prob": float(np.max(probs[i])),
+                            }
+                            for i in range(len(sim_local.agents))
+                        ],
+                    }
+                except Exception:
+                    logger.debug("value_map context build failed", exc_info=True)
+                    ctx["value_map"] = {"available": False}
+        elif metric == "gat_attention":
+            try:
+                import torch
+                from penumbra_learning.gat_pathfinder import GATv2Pathfinder
+
+                sim_local = app_ref.state.penumbra.simulation
+                arena = sim_local.arena
+                nodes = sorted(arena.graph.nodes())
+                n = len(nodes)
+                node_idx = {nid: i for i, nid in enumerate(nodes)}
+                goals = set(arena.goals)
+                x = torch.zeros((n, 2), dtype=torch.float32)
+                for i, nid in enumerate(nodes):
+                    deg = arena.graph.degree(nid)
+                    x[i, 0] = 1.0 if nid in goals else 0.0
+                    x[i, 1] = float(deg) / 10.0
+                adj = torch.zeros((n, n), dtype=torch.bool)
+                edge_cost = torch.zeros((n, n), dtype=torch.float32)
+                for u, v in arena.graph.edges():
+                    i, j = node_idx[u], node_idx[v]
+                    adj[i, j] = True
+                    adj[j, i] = True
+                    c = float(arena.cost_of(int(u), int(v)))
+                    edge_cost[i, j] = c
+                    edge_cost[j, i] = c
+                for i in range(n):
+                    adj[i, i] = True
+                net = GATv2Pathfinder()
+                with torch.no_grad():
+                    _value, attn1, _attn2 = net.attention_matrices(x, adj, edge_cost)
+                ctx["gat_attention"] = {
+                    "available": True,
+                    "node_ids": [int(nid) for nid in nodes],
+                    "attention_layer1": [list(row) for row in attn1.tolist()],
+                }
+            except Exception:
+                logger.debug("gat_attention context build failed", exc_info=True)
+                ctx["gat_attention"] = {"available": False}
+        elif metric == "arena_graph":
+            sim_local = app_ref.state.penumbra.simulation
+            arena = sim_local.arena
+            nodes = list(arena.graph.nodes())
+            edges = [{"u": int(u), "v": int(v)} for u, v in arena.graph.edges()]
+            ctx["arena_topology"] = {"nodes": nodes, "edges": edges}
+        return ctx
+
     def _label_action(idx: int) -> str:
         if idx < 0:
             return "random"
@@ -4160,7 +4372,19 @@ def _build_simulation_with_optional_mappo() -> tuple[Simulation, object | None]:
         logger.info("restoring simulation from %s", snapshot)
         return load_simulation(Path(snapshot), policy_factory=factory), None  # type: ignore[arg-type]
 
-    config = SimulationConfig()
+    from penumbra_core.arena import ArenaConfig
+
+    # Env-tunable simulation dynamics for "watchability" at 2 Hz default.
+    # Defaults are calibrated for the original 10 Hz; at 2 Hz the world
+    # feels chaotic (goal migrates every 10 s, match resets every 10 min).
+    # Override to slow things down for visual study.
+    goal_walk_period = int(os.environ.get("PENUMBRA_GOAL_WALK_PERIOD", "20"))
+    weather_prob = float(os.environ.get("PENUMBRA_WEATHER_PROB", "0.02"))
+    match_max_ticks = int(os.environ.get("PENUMBRA_MATCH_MAX_TICKS", "1200"))
+    config = SimulationConfig(
+        arena=ArenaConfig(goal_walk_period=goal_walk_period, weather_prob=weather_prob),
+        match_max_ticks=match_max_ticks,
+    )
     seeded = bootstrap()
     if not checkpoint:
         return Simulation.build(config, seeded), None

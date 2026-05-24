@@ -279,6 +279,7 @@ type MetricMeta = {
 };
 
 const EXPORTABLE: ReadonlySet<MetricKind> = new Set<MetricKind>([
+  // Legacy tabular metrics (line charts).
   "inflation",
   "garch",
   "training_curves",
@@ -286,6 +287,30 @@ const EXPORTABLE: ReadonlySet<MetricKind> = new Set<MetricKind>([
   "candles",
   "mempool",
   "signing_verified",
+  // Phase-bonus metrics with bespoke server-side chart shapes (see
+  // EXTENDED_METRICS in packages/transport/penumbra_transport/interactivity.py).
+  "trajectory_mean",
+  "trajectory_std",
+  "hdbscan_clusters",
+  "dp_epsilon_spent",
+  "pca",
+  "logit",
+  "granger",
+  "economy",
+  "survival",
+  "spectral",
+  "causal",
+  "var_irf",
+  "anova",
+  "autocorrelation",
+  "correlations",
+  "permutation",
+  "vrf_leader",
+  "kyber_kem",
+  "multi_checkpoint",
+  "value_map",
+  "gat_attention",
+  "arena_graph",
 ]);
 
 const META: Record<MetricKind, MetricMeta> = {

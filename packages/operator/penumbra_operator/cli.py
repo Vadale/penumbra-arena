@@ -24,6 +24,7 @@ Usage
 from __future__ import annotations
 
 import json
+import os
 import urllib.error
 import urllib.request
 from typing import Any
@@ -35,7 +36,7 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
-_DEFAULT_API = "http://localhost:8000"
+_DEFAULT_API = os.environ.get("PENUMBRA_API_URL", "http://localhost:8000")
 
 
 def _api_url(base: str, path: str) -> str:

@@ -14,7 +14,13 @@ extending the code see [`PROMPTING_GUIDE.md`](PROMPTING_GUIDE.md).
 
 ```sh
 # Backend (FastAPI + tick loop on port 8100)
+# Set PENUMBRA_ENABLE_PTY=1 and PENUMBRA_ENABLE_REPL=1 to enable the
+# real macOS zsh and the sandboxed Python REPL in the bottom panel —
+# without them the tabs render "shell disabled" / "REPL disabled" hints.
 PENUMBRA_SEED=42 \
+PENUMBRA_TICK_HZ=2.0 \
+PENUMBRA_ENABLE_PTY=1 \
+PENUMBRA_ENABLE_REPL=1 \
 PENUMBRA_MAPPO_CHECKPOINT="$(pwd)/checkpoints/mappo_v0.pt" \
 uv run uvicorn penumbra_transport.api:app --port 8100
 
@@ -40,6 +46,7 @@ Adjust live with the **speed widget** in the header
 | `PENUMBRA_HE_BACKEND` | `openfhe` | `openfhe` or `tenseal` (fallback) |
 | `PENUMBRA_MAPPO_CHECKPOINT` | unset | Path to a `.pt` checkpoint; falls back to random walk if absent |
 | `PENUMBRA_ENABLE_PTY` | unset | `1` to enable the real `zsh` PTY in the bottom shell tab |
+| `PENUMBRA_ENABLE_REPL` | unset | `1` to enable the sandboxed Python REPL in the bottom repl tab |
 
 ### Install the CLIs once
 
@@ -100,17 +107,18 @@ You can `pno disable` to release the slot, or just leave it active.
 ### 3.3 A full operator session (logistics scenario)
 
 ```sh
-alias pno8100='pno --api http://localhost:8100'   # one-time
+alias pno='pno --api http://localhost:8100'   # one-time (functions, not variables)
+export api='http://localhost:8100'             # for $api in curl URLs
 
-pno8100 enable
-pno8100 status                                  # see starting state
-pno8100 move 3                                  # walk to node 3
-pno8100 dispatch 7 0 50 12.5                    # ship 50 units of product 0 to city 7 for 12.5 coins
-pno8100 query-dp money_supply 0.1               # take a DP measurement, spends ε=0.1
-pno8100 status                                  # see updated coins / epsilon / score
+pno enable
+pno status                                  # see starting state
+pno move 3                                  # walk to node 3
+pno dispatch 7 0 50 12.5                    # ship 50 units of product 0 to city 7 for 12.5 coins
+pno query-dp money_supply 0.1               # take a DP measurement, spends ε=0.1
+pno status                                  # see updated coins / epsilon / score
 
-pno8100 sessions                                # list past sessions
-pno8100 replay <session_id>                     # re-run + scorecard diff
+pno sessions                                # list past sessions
+pno replay <session_id>                     # re-run + scorecard diff
 ```
 
 The dashboard's `/operator` route **mirrors all of this in the
@@ -366,8 +374,10 @@ way to discover what's available.
 ```sh
 # Terminal 1
 PENUMBRA_SEED=42 \
-PENUMBRA_MAPPO_CHECKPOINT="$(pwd)/checkpoints/mappo_v0.pt" \
+PENUMBRA_TICK_HZ=2.0 \
 PENUMBRA_ENABLE_PTY=1 \
+PENUMBRA_ENABLE_REPL=1 \
+PENUMBRA_MAPPO_CHECKPOINT="$(pwd)/checkpoints/mappo_v0.pt" \
 uv run uvicorn penumbra_transport.api:app --port 8100
 
 # Terminal 2
@@ -384,20 +394,20 @@ the `Lab` tile → trigger a CPI shock. Open `/operator` → enable → run
 ### Play a scenario from terminal-only
 
 ```sh
-alias api='http://localhost:8100'
-pno --api $api enable
+export api='http://localhost:8100'         # MUST be `export`, not `alias`
+pno --api "$api" enable
 
 # Pick a scenario via REST
-curl $api/operator/scenarios | jq '.scenarios[].id'
-curl -X POST $api/operator/scenarios/tutorial_first_dispatch/start
+curl -s "$api/operator/scenarios" | jq '.scenarios[].id'
+curl -s -X POST "$api/operator/scenarios/tutorial_first_dispatch/start" | jq
 
 # Take actions
-pno --api $api move 2
-pno --api $api dispatch 5 0 30 8.0
-pno --api $api status
+pno --api "$api" move 2
+pno --api "$api" dispatch 5 0 30 8.0
+pno --api "$api" status
 
-# Check scenario progress
-curl $api/operator/scenarios/tutorial_first_dispatch/status | jq
+# Check scenario progress (quote URLs with `?` — zsh treats `?` as a glob)
+curl -s "$api/operator/scenarios/tutorial_first_dispatch/status" | jq
 ```
 
 ### Run an attack and see the defense
@@ -479,16 +489,17 @@ pna world load baseline    # rewind the live chain
 ## TL;DR (one screen)
 
 ```sh
-# Boot
-PENUMBRA_SEED=42 \
+# Boot (PTY + REPL on so the bottom shell + repl tabs aren't disabled)
+PENUMBRA_SEED=42 PENUMBRA_TICK_HZ=2.0 \
+PENUMBRA_ENABLE_PTY=1 PENUMBRA_ENABLE_REPL=1 \
 PENUMBRA_MAPPO_CHECKPOINT="$(pwd)/checkpoints/mappo_v0.pt" \
-PENUMBRA_ENABLE_PTY=1 \
 uv run uvicorn penumbra_transport.api:app --port 8100 &
 PENUMBRA_API_PORT=8100 pnpm --filter web dev &
 open http://localhost:5173
 
-# Operator
+# Operator (alias for the CLI, export for $api in URLs)
 alias pno='pno --api http://localhost:8100'
+export api='http://localhost:8100'
 pno enable && pno move 3 && pno dispatch 5 0 30 8 && pno status
 
 # Attacker

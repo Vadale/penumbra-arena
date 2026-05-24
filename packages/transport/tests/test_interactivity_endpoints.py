@@ -167,6 +167,70 @@ def test_export_chart_inflation_png() -> None:
         assert response.content[:8] == b"\x89PNG\r\n\x1a\n"
 
 
+@pytest.mark.parametrize(
+    "metric",
+    [
+        "trajectory_mean",
+        "vrf_leader",
+        "signing_verified",
+        "dp_epsilon_spent",
+        "arena_graph",
+        "pca",
+    ],
+)
+def test_export_chart_extended_metric_png(metric: str) -> None:
+    """Extended metrics must produce a well-formed 800x400 PNG, not an empty blob.
+
+    Empty-data branches still render a "no data" placeholder image -- the
+    user-visible contract is "the PNG is a labelled chart of the right
+    size", not "the chart has live data". Either way the bytes start
+    with the PNG magic, ``content-type`` is ``image/png``, and the
+    payload is non-trivial in size (> 1 KB rules out the "single black
+    slab" failure the user reported).
+    """
+    if importlib.util.find_spec("matplotlib") is None:
+        pytest.skip("matplotlib not importable in this venv")
+    with TestClient(_build_test_app()) as client:
+        response = client.get(f"/export/chart/{metric}?format=png")
+        assert response.status_code == 200, response.text
+        assert response.headers.get("content-type", "").startswith("image/png")
+        assert response.content[:8] == b"\x89PNG\r\n\x1a\n"
+        assert (
+            len(response.content) > 1024
+        ), f"{metric} png unexpectedly small ({len(response.content)} bytes)"
+
+
+@pytest.mark.parametrize(
+    "metric",
+    [
+        "trajectory_mean",
+        "vrf_leader",
+        "signing_verified",
+        "dp_epsilon_spent",
+        "pca",
+        "spectral",
+        "causal",
+        "anova",
+        "autocorrelation",
+        "correlations",
+        "permutation",
+        "arena_graph",
+        "hdbscan_clusters",
+    ],
+)
+def test_export_chart_extended_metric_csv_json(metric: str) -> None:
+    """CSV + JSON exports work for every extended metric too."""
+    with TestClient(_build_test_app()) as client:
+        csv_resp = client.get(f"/export/chart/{metric}?format=csv")
+        assert csv_resp.status_code == 200
+        assert "text/csv" in csv_resp.headers.get("content-type", "")
+        json_resp = client.get(f"/export/chart/{metric}?format=json")
+        assert json_resp.status_code == 200
+        body = json_resp.json()
+        assert body["metric"] == metric
+        assert "data" in body
+
+
 def test_export_chart_unsupported_metric_404() -> None:
     with TestClient(_build_test_app()) as client:
         response = client.get("/export/chart/totally_made_up?format=json")

@@ -14,6 +14,7 @@ Usage
 from __future__ import annotations
 
 import json
+import os
 import urllib.error
 import urllib.request
 
@@ -32,7 +33,7 @@ app = typer.Typer(help="Penumbra adversarial console — try each attack and see
 world_app = typer.Typer(help="Snapshot the running chain to disk and back.")
 app.add_typer(world_app, name="world")
 
-_DEFAULT_API = "http://localhost:8000"
+_DEFAULT_API = os.environ.get("PENUMBRA_API_URL", "http://localhost:8000")
 
 
 @app.command()
