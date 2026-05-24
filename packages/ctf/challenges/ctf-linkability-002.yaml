@@ -1,0 +1,14 @@
+id: ctf-linkability-002
+title: Link two anonymous trajectories to the same agent
+setup:
+  n_agents: 20
+  n_matches: 30
+  feature_dim: 8
+  noise_scale: 0.05
+acceptance:
+  min_link_accuracy: 0.6
+  in_seconds: 120
+  hint: |
+    A 1-NN classifier on the per-agent feature vector beats chance even
+    at noise_scale=0.05. See packages/attacker/penumbra_attacker/attacks/linkability.py.
+flag_template: PEN{linkable_{{salt_hash}}}

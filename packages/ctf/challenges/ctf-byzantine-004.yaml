@@ -1,0 +1,15 @@
+id: ctf-byzantine-004
+title: Trigger a slashable equivocation and observe the chain reject it
+setup:
+  validator_pool: 7
+  byzantine_fraction: 0.2
+  equivocation_target_height: 42
+acceptance:
+  equivocation_detected: true
+  validator_slashed: true
+  in_seconds: 60
+  hint: |
+    Sign two conflicting block hashes at the same height with the same
+    validator key; submit both as SlashingEvidence. The chain folds it
+    into the next block.
+flag_template: PEN{byzantine_{{salt_hash}}}

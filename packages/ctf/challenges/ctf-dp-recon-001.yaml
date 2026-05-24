@@ -1,0 +1,15 @@
+id: ctf-dp-recon-001
+title: Reconstruct an agent's position from DP-noised aggregates
+setup:
+  dp_epsilon: 0.1
+  n_aggregates: 1000
+  target_agent: 12
+  noise_mechanism: laplace
+acceptance:
+  predict_position_within: 2
+  in_seconds: 60
+  hint: |
+    Average enough noisy reads of the same query and the noise cancels.
+    1000 samples at epsilon=0.1 is enough to land within 2 nodes if you
+    pick the right linear combination.
+flag_template: PEN{recon_{{salt_hash}}}

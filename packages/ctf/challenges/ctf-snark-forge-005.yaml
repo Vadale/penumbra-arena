@@ -1,0 +1,15 @@
+id: ctf-snark-forge-005
+title: Forge a Groth16 proof and watch the verifier reject it
+setup:
+  circuit: legal_path
+  attempts: 2
+  attack_modes: [flip_a_bit, replay_with_tampered_inputs]
+acceptance:
+  honest_accepts: true
+  forge_rejected: true
+  in_seconds: 30
+  hint: |
+    Flip one bit of A; the pairing equation fails because the point is
+    off-curve. Replay an honest proof against tampered public inputs;
+    the IC linear combination binds, so the verifier rejects.
+flag_template: PEN{forge_{{salt_hash}}}

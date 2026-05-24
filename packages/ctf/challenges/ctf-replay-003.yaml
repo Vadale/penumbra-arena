@@ -1,0 +1,13 @@
+id: ctf-replay-003
+title: Replay a stale signed action without nonce binding
+setup:
+  signing_scheme: schnorr
+  nonce_binding: disabled
+  n_attempts: 50
+acceptance:
+  must_replay: true
+  in_seconds: 30
+  hint: |
+    Without nonce binding, the same (R, s) verifies against the same
+    message. Submit any captured signature unchanged and it accepts.
+flag_template: PEN{replay_{{salt_hash}}}
