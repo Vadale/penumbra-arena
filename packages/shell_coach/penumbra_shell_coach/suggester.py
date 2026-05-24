@@ -1,5 +1,11 @@
 """Rule-based "next command" suggester.
 
+Concept taught: deterministic, transparent recommendation systems —
+how a small rule table keyed on argv shape can outperform an LLM call
+when the task is "what's the idiomatic modern replacement for this
+classic Unix command" and the user values reproducibility over
+fluency.
+
 No LLM call required — these are deterministic heuristics keyed on the
 *shape* of the user's last command. The point is to bridge from a
 classic Unix command to its modern replacement, or to compose simple

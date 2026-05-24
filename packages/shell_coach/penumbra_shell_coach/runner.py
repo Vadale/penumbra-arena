@@ -1,5 +1,10 @@
 """YAML-driven lesson runner.
 
+Concept taught: how a tutorial loop drives the learner one step at a
+time — re-running a *validator command* against real shell output and
+gating progress on a regex match — without depending on an interpreter
+of natural language.
+
 A lesson is a list of steps; each step has:
 - `instruction`: human-readable goal
 - `validate_cmd`: shell command the runner re-executes to check progress

@@ -1,5 +1,12 @@
 """Timing side-channel: inferring CKKS payload shape from operation latency.
 
+Concept taught: constant-time execution is a *defensive primitive*,
+not an optimisation note. Demonstrates how a Welch t-test over
+operation latencies can break the abstraction of "the server sees
+only ciphertext" when the implementation short-circuits on
+zero-slots, and how OpenFHE / TenSEAL's full-ring arithmetic
+preserves the abstraction by construction.
+
 How the attack works
 --------------------
 CKKS encrypts a vector of N floats. If the implementation's operation

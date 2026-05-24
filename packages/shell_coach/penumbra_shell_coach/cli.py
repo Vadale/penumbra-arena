@@ -1,5 +1,10 @@
 """`psh` — Penumbra shell coach CLI.
 
+Concept taught: how a single CLI binds four pedagogical surfaces
+(lessons, explain, suggest, interpret) behind one consistent verb
+grammar — turning Unix-fluency practice into a single tool a learner
+can `--help` their way through.
+
 Usage
 -----
     psh lessons               # list available lessons

@@ -1,5 +1,11 @@
 """Replay attack against nonce-less Dilithium signatures.
 
+Concept taught: signatures over raw payloads are *replayable* — and
+the fix is not "stronger crypto" but binding the signature to a
+freshness witness (tick counter, nonce, session id). Demonstrates
+why Penumbra signs `(action, tick_counter, agent_id)` and not just
+`action`.
+
 How the attack works
 --------------------
 ML-DSA-65 (Dilithium-3) signs raw bytes. If an agent's protocol just

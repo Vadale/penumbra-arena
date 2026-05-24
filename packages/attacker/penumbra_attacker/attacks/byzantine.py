@@ -1,5 +1,11 @@
 """Byzantine validator: signing two conflicting blocks at the same height.
 
+Concept taught: equivocation — the canonical Byzantine fault in PoS
+consensus — is detected by *publicly verifiable evidence*, not by
+trusting honest validators to behave. Shows how slashing turns a
+single forged equivocation into both detection and economic
+deterrent at once.
+
 How the attack works
 --------------------
 A malicious validator who controls one of the N keypairs can sign two

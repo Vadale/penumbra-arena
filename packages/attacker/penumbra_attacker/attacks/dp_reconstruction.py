@@ -1,5 +1,11 @@
 """Dinur-Nissim: reconstructing private data from many DP releases.
 
+Concept taught: differential privacy protects against *one* clever
+query, not against *many* random ones — so a privacy guarantee
+without a *budget accountant* is not a privacy guarantee. The fix is
+ε-tracking that hard-caps total releases, regardless of how the
+queries arrive.
+
 How the attack works
 --------------------
 DP is robust against *one* clever query. It is NOT robust against

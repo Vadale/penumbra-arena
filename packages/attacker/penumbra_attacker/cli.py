@@ -1,5 +1,10 @@
 """`pna` — Penumbra adversarial CLI.
 
+Concept taught: how to expose a catalogue of attacks behind one
+discoverable verb-style CLI — so a learner can run an attack, read
+its docstring, and see the defence in the same shell session
+without context-switching to documentation.
+
 Usage
 -----
     pna --help

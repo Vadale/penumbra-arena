@@ -1,5 +1,10 @@
 """Command explainer.
 
+Concept taught: how a static knowledge base of binary-and-flag
+semantics powers a man-page-style explainer that is faster than
+`man` and reads like an annotated diff — making the learner's
+"why does this flag exist" question answerable in one screen.
+
 Given an argv list, look up the binary's flags from a static knowledge
 base and return a labelled breakdown the user can read at a glance.
 """

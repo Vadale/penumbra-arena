@@ -1,5 +1,11 @@
 """Pedagogical re-implementations of SMPC and ZK building blocks.
 
+Concept taught: how the *primitives* that ship in audited libraries
+(secret sharing, Beaver triples, Pedersen commitments, Schnorr Σ
+protocols, LWE-based TFHE, Yao garbled circuits) actually work
+internally — written from scratch with every step traceable, so the
+abstractions in the production library stop being magic.
+
 These modules are **offline-only**: they are exercised by tests and by
 learner-driven exploration, never on the hot path. Production code uses
 the audited libraries in the parent package.

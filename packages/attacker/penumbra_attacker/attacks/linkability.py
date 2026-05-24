@@ -1,5 +1,11 @@
 """Linkability: de-anonymising an agent from movement patterns.
 
+Concept taught: pseudonym rotation alone does not anonymise — if
+behaviour is consistent across sessions, the *trajectory itself* is
+a fingerprint. Shows why anonymity needs to defend the
+*observable*, not just the identifier, and how Laplace-perturbed
+aggregate features drop a matcher's accuracy back to chance.
+
 How the attack works
 --------------------
 Even if agent IDs are randomised every match, if their *trajectories*

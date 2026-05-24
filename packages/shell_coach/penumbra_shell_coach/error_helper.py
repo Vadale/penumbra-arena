@@ -1,5 +1,10 @@
 """Error helper: interpret common stderr messages and propose a fix.
 
+Concept taught: how a curated regex catalogue + first-match semantics
+turns opaque stderr into actionable next steps — and why this beats a
+generic LLM rephrasing when the universe of plausible errors is
+small, well-known, and benefits from a single canonical remediation.
+
 The pattern → fix mapping is hand-curated. We match the *first* regex
 that hits; the user can always read the full error too.
 """
