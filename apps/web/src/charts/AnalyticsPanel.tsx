@@ -596,6 +596,62 @@ export function AnalyticsPanel() {
           accent
           onClick={() => open("stark")}
         />
+        <Cell
+          label="FROST"
+          value="t-of-n Schnorr"
+          caption="threshold sig · plain (R, s)"
+          accent
+          onClick={() => open("frost")}
+        />
+        <Cell
+          label="SPHINCS+"
+          value="hash-based PQ"
+          caption="vs Dilithium · size trade"
+          accent
+          onClick={() => open("sphincs")}
+        />
+        <Cell
+          label="Verkle"
+          value="KZG opening"
+          caption="proof size vs Merkle"
+          accent
+          onClick={() => open("verkle")}
+        />
+        <Cell
+          label="BBS+"
+          value="selective disclosure"
+          caption="anon credential reveal"
+          accent
+          onClick={() => open("bbs_plus")}
+        />
+        <Cell
+          label="thr. ECDSA"
+          value="GG18"
+          caption="n-of-n secp256k1 sign"
+          accent
+          onClick={() => open("threshold_ecdsa")}
+        />
+        <Cell
+          label="Yao"
+          value="garbled circuits"
+          caption="millionaires · a ? b"
+          accent
+          onClick={() => open("yao")}
+        />
+        <Cell
+          label="PSI"
+          value="OPRF/DH"
+          caption="set intersect · no leak"
+          accent
+          onClick={() => open("psi")}
+        />
+        <Cell
+          label="mix-net"
+          value="Loopix onion"
+          caption="unlinkable routing"
+          accent
+          onClick={() => open("mix_net")}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-1">

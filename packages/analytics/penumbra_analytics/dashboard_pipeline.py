@@ -533,6 +533,10 @@ class DashboardPipeline:
     on_signal: object | None = field(default=None)
     _garch_baseline_persistence: float | None = field(default=None)
     _last_cpi_value: float | None = field(default=None)
+    # Phase 6a Tier 1 — slow EMA of CPI used as the inflation-shock
+    # baseline. Mirrors `_garch_baseline_persistence`: lazily seeded
+    # on the first qualifying tick, then exponentially smoothed.
+    _cpi_baseline: float | None = field(default=None)
     # Phase 6a Tier 3 — DP-budget-aware degraded mode. When the privacy
     # budget runs low the orchestrator calls `degrade_for_dp_warning()`
     # to halve the cadence of the heaviest consumers; when exhausted,
@@ -759,6 +763,35 @@ class DashboardPipeline:
         if self._due(now, "inflation") and len(self._cpi_history) >= 2:
             self._snapshot.inflation = self._compute_inflation()
             self._last_run["inflation"] = now
+            # Tier 1 — emit cpi.shock when the current CPI deviates
+            # from a slow EMA baseline by more than 30%. This is the
+            # "crisis-regime" trigger documented in the README: a
+            # large, persistent price-index dislocation that the
+            # orchestrator translates into Market crisis pricing.
+            # Threshold rationale: 1.30× / 0.77× brackets the empirical
+            # range of a normal Penumbra economy (verified against the
+            # GARCH-spike fixtures); anything outside this is a real
+            # regime change, not noise.
+            infl = self._snapshot.inflation
+            if infl is not None and self.on_signal is not None and len(infl.cpi) >= 5:
+                current_cpi = float(infl.cpi[-1][1])
+                if self._cpi_baseline is None:
+                    seed_values = [float(v) for _, v in infl.cpi[:5]]
+                    self._cpi_baseline = sum(seed_values) / len(seed_values)
+                baseline = self._cpi_baseline
+                if baseline > 0:
+                    ratio = current_cpi / baseline
+                    if ratio > 1.30 or ratio < 1.0 / 1.30:
+                        self.on_signal(  # type: ignore[operator]
+                            "cpi.shock",
+                            {
+                                "cpi": float(current_cpi),
+                                "baseline": float(baseline),
+                                "ratio": float(ratio),
+                            },
+                        )
+                    # Slow exponential smoothing keeps baseline current
+                    self._cpi_baseline = 0.95 * baseline + 0.05 * current_cpi
 
         if self._due(now, "wealth") and len(self._latest_wealth) >= 5:
             self._snapshot.wealth = self._compute_wealth()

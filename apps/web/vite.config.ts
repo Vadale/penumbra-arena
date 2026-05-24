@@ -41,6 +41,8 @@ export default defineConfig({
       "/security": API_HTTP,
       "/attacks": API_HTTP,
       "/operator": API_HTTP,
+      "/ctf": API_HTTP,
+      "/attacker": API_HTTP,
       "/ws": { target: API_WS, ws: true },
     },
   },
