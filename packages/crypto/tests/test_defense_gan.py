@@ -8,10 +8,14 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 from penumbra_crypto.defenses.gan_defenses import (
     GANDefenseError,
+    TrajectoryFeatureGAN,
     demo,
     evaluate_tradeoff,
     fit_gaussian_model,
+    gan_defense_release,
     synthesise_trajectories,
+    synthesize,
+    train_gan,
 )
 
 
@@ -121,3 +125,77 @@ def test_property_output_row_count_equals_request(n_samples: int) -> None:
     real = _real(50, 2)
     out = synthesise_trajectories(real, n_samples=n_samples)
     assert out.shape[0] == n_samples
+
+
+# ── CycleGAN-style generator tests ───────────────────────────────
+
+
+def _real_2d(n: int = 300, seed: int = 11) -> np.ndarray:
+    """A correlated 2D trajectory feature matrix (speed, turn-angle-ish)."""
+    rng = np.random.default_rng(seed=seed)
+    base = rng.standard_normal(size=(n, 2))
+    # Strong positive correlation; non-unit variances to flush out scale bugs.
+    mixer = np.array([[1.2, 0.0], [0.7, 0.6]])
+    return base @ mixer.T + np.array([2.0, -1.0])
+
+
+def test_trajectory_feature_gan_constructs_with_expected_shapes() -> None:
+    gan = TrajectoryFeatureGAN(n_features=2)
+    assert gan.n_features == 2
+    z = gan.sample_latent(4)
+    out = gan.generator(z)
+    assert tuple(out.shape) == (4, 2)
+    score = gan.discriminator(out)
+    assert tuple(score.shape) == (4, 1)
+
+
+def test_train_gan_runs_without_exploding() -> None:
+    real = _real_2d(200)
+    gan = train_gan(real, n_iters=80, batch=32, lr=1e-3, seed=1)
+    samples = synthesize(gan, n_samples=64, seed=2)
+    assert samples.shape == (64, 2)
+    assert np.isfinite(samples).all()
+
+
+def test_synthesize_preserves_marginal_moments() -> None:
+    real = _real_2d(500, seed=13)
+    gan = train_gan(real, n_iters=800, batch=64, lr=2e-3, seed=3)
+    samples = synthesize(gan, n_samples=2_000, seed=4)
+    # Marginal mean within a generous bound — small GAN, 800 iters.
+    assert np.allclose(samples.mean(axis=0), real.mean(axis=0), atol=1.0)
+    # Marginal std within a factor of 2.5 — small GAN, generous bound.
+    ratio = samples.std(axis=0) / real.std(axis=0)
+    assert np.all(ratio > 0.3)
+    assert np.all(ratio < 3.0)
+
+
+def test_synthesize_preserves_pairwise_correlation_sign_and_magnitude() -> None:
+    real = _real_2d(500, seed=17)
+    gan = train_gan(real, n_iters=400, batch=64, lr=2e-3, seed=5)
+    samples = synthesize(gan, n_samples=2_000, seed=6)
+    real_corr_matrix = np.atleast_2d(np.corrcoef(real, rowvar=False))
+    synth_corr_matrix = np.atleast_2d(np.corrcoef(samples, rowvar=False))
+    real_corr = float(real_corr_matrix[0, 1])
+    synth_corr = float(synth_corr_matrix[0, 1])
+    assert np.sign(real_corr) == np.sign(synth_corr)
+    # Magnitude within 0.5 of the empirical correlation.
+    assert abs(real_corr - synth_corr) < 0.5
+
+
+def test_gan_defense_release_returns_requested_row_count() -> None:
+    real = _real_2d(150, seed=19)
+    out = gan_defense_release(real, n_samples=100, n_iters=50, seed=7)
+    assert out.shape == (100, 2)
+    assert np.isfinite(out).all()
+
+
+def test_gan_defense_release_defaults_to_real_row_count() -> None:
+    real = _real_2d(64, seed=23)
+    out = gan_defense_release(real, n_iters=30, seed=8)
+    assert out.shape[0] == real.shape[0]
+
+
+def test_synthesize_rejects_non_positive_n_samples() -> None:
+    gan = TrajectoryFeatureGAN(n_features=2)
+    with pytest.raises(GANDefenseError):
+        synthesize(gan, n_samples=0)

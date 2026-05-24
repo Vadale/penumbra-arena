@@ -2440,6 +2440,7 @@ dependencies = [
     { name = "pqcrypto" },
     { name = "py-ecc" },
     { name = "tenseal" },
+    { name = "torch" },
 ]
 
 [package.metadata]
@@ -2450,6 +2451,7 @@ requires-dist = [
     { name = "pqcrypto", specifier = ">=0.4" },
     { name = "py-ecc", specifier = ">=8.0" },
     { name = "tenseal", specifier = ">=0.3.16" },
+    { name = "torch", specifier = ">=2.4" },
 ]
 
 [[package]]

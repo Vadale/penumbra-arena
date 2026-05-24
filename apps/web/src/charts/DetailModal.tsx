@@ -110,6 +110,7 @@ import { SlashingChart } from "./SlashingChart";
 import { SnarkForgeChart } from "./SnarkForgeChart";
 import { SPHINCSChart } from "./SPHINCSChart";
 import { SpectralChart } from "./SpectralChart";
+import { STARKChart } from "./STARKChart";
 import { StoryModeChart } from "./StoryModeChart";
 import { SurvivalChart } from "./SurvivalChart";
 import { TFHEChart } from "./TFHEChart";
@@ -184,6 +185,7 @@ export type MetricKind =
   | "schnorr"
   | "zk_multiplier"
   | "snark_forge"
+  | "stark"
   | "frost"
   | "sphincs"
   | "verkle"
@@ -534,6 +536,11 @@ const META: Record<MetricKind, { label: string; description: string; yUnit?: str
     label: "SNARK forgery — verifier rejects",
     description:
       "Attempt to fool the Groth16 verifier WITHOUT a witness. Two attacks: (1) flip A's low bit — the proof point goes off-curve, pairing equation fails. (2) Replay an honest proof with TAMPERED public inputs — Groth16 binds proofs to public inputs via the linear-combination IC, so verifier rejects. The honest control still accepts.",
+  },
+  stark: {
+    label: "STARK — transparent FRI verifier",
+    description:
+      "Educational FRI-STARK: Reed-Solomon codeword over an NTT-friendly subgroup, Merkle-pinned commitments, log|D| folding rounds under Fiat-Shamir challenges. NO trusted setup (in contrast to Groth16). Verifier rejects evaluation tampering (folding consistency fails) and Merkle-root tampering (auth-path mismatch). Soundness rests on FRI low-degree, Merkle binding (SHA-256 collision-resistance), and ROM Fiat-Shamir. Production STARKs (Cairo, Plonky3, RISC Zero) ship the same verifier shape with ~80 queries to push soundness error below 2^-100.",
   },
   frost: {
     label: "FROST — threshold Schnorr (round-optimised)",
@@ -920,6 +927,9 @@ export function DetailModal({
     }
     if (metric === "snark_forge") {
       return <SnarkForgeChart />;
+    }
+    if (metric === "stark") {
+      return <STARKChart />;
     }
     if (metric === "frost") {
       return <FROSTChart />;

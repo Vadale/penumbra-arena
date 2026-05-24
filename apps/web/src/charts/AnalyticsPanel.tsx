@@ -589,6 +589,13 @@ export function AnalyticsPanel() {
           ember
           onClick={() => open("snark_forge")}
         />
+        <Cell
+          label="STARK"
+          value="FRI verifier"
+          caption="transparent · no setup"
+          accent
+          onClick={() => open("stark")}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-1">
@@ -863,6 +870,7 @@ export function AnalyticsPanel() {
             case "schnorr":
             case "zk_multiplier":
             case "snark_forge":
+            case "stark":
             case "logistics_fill_rate":
             case "logistics_inventory_health":
             case "logistics_orders":
@@ -983,6 +991,7 @@ function mapMetricToHistoryKey(
     | "schnorr"
     | "zk_multiplier"
     | "snark_forge"
+    | "stark"
     | "logistics_fill_rate"
     | "logistics_inventory_health"
     | "logistics_orders"

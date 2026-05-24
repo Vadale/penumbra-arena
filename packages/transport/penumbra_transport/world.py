@@ -45,7 +45,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from numpy.random import Generator as NumpyGenerator
 from penumbra_chain.node import Node
+from penumbra_core.agent import AgentObservation, Policy, random_walk_policy
+from penumbra_core.arena import NodeId
 from penumbra_core.persistence import load_simulation, save_simulation
 from penumbra_core.simulation import Simulation
 from penumbra_crypto.crypto_persistence import (
@@ -53,6 +56,63 @@ from penumbra_crypto.crypto_persistence import (
     save_dp_budget,
 )
 from penumbra_crypto.dp import PrivacyBudget
+
+
+def _greedy_nearest_goal_policy(observation: AgentObservation, rng: NumpyGenerator) -> NodeId:
+    """Deterministic baseline: step onto the cheapest visible-goal neighbour.
+
+    Falls through to picking the lowest-cost neighbour by id-tie-break
+    when no neighbour is a goal. Pure + pickleable so branched
+    simulations can reattach it after a clone.
+    """
+    del rng
+    neighbours = observation.neighbour_costs
+    if not neighbours:
+        return observation.position
+    goals = set(observation.visible_goals)
+    candidates = [n for n in neighbours if n in goals]
+    if candidates:
+        return min(candidates, key=lambda n: (neighbours[n], n))
+    return min(neighbours.keys(), key=lambda n: (neighbours[n], n))
+
+
+# Registry of default policy factories the branch reattacher can
+# reach by name. Custom-injected policies (e.g. closures over the live
+# orchestrator, sandbox-uploaded code) are NOT preserved across branch
+# by design — the registry only covers the stable defaults.
+DEFAULT_POLICY_REGISTRY: dict[str, Policy] = {
+    "random_walk_policy": random_walk_policy,
+    "greedy_nearest_goal_policy": _greedy_nearest_goal_policy,
+}
+
+
+def register_branch_policy(name: str, policy: Policy) -> None:
+    """Expose a policy to the branch reattacher under ``name``.
+
+    Wired up by the runtime when it loads, e.g., the MAPPO actor:
+
+        register_branch_policy("mappo_policy", mappo_policy_singleton)
+
+    so that branching a sim whose agents ran MAPPO reattaches the same
+    callable instead of falling back to random walk.
+    """
+    if not name:
+        raise InvalidSnapshotNameError("policy name must be non-empty")
+    DEFAULT_POLICY_REGISTRY[name] = policy
+
+
+def _policy_tag(policy: Policy) -> str:
+    """Stable identifier for a Policy: prefer __name__ then qualname."""
+    name = getattr(policy, "__name__", None)
+    if name:
+        return str(name)
+    return getattr(policy, "__qualname__", repr(policy))
+
+
+def _reattach_policy(tag: str) -> Policy:
+    """Look ``tag`` up in the registry; fall back to random walk."""
+    return DEFAULT_POLICY_REGISTRY.get(tag, random_walk_policy)
+
 
 _NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
@@ -209,22 +269,42 @@ class WorldBranchRegistry:
 
         Returns the list of newly-minted branch ids. Each id is the
         prefix `name` plus a 1-based index so they sort lexically.
+
+        Policy preservation
+        -------------------
         Cloning routes through `save_simulation` / `load_simulation`,
         which strips agent policies + match-end callbacks (closures
-        over the live orchestrator never pickle cleanly). Reattach a
-        random-walk policy on restore so the branch still ticks.
+        over the live orchestrator never pickle cleanly). Before
+        cloning we RECORD each agent's policy tag (its `__name__`),
+        then after restoring we look the tag up in
+        `DEFAULT_POLICY_REGISTRY` and reattach. The default registry
+        ships `random_walk_policy` + `greedy_nearest_goal_policy`;
+        runtimes register `mappo_policy` (and any other in-house
+        defaults) at startup via `register_branch_policy`.
+
+        Custom policies injected by the sandbox / REPL are NOT
+        preserved — the registry only covers stable defaults. Agents
+        whose policy tag is unknown fall back to `random_walk_policy`
+        so the branch still ticks.
         """
         _validate_name(name)
         if n_branches < 1:
             raise InvalidSnapshotNameError("n_branches must be >= 1")
         import tempfile
 
+        policy_tags: list[str] = [_policy_tag(a.policy) for a in source.agents]
+
+        def _factory(agent_id: int) -> Policy:
+            if 0 <= agent_id < len(policy_tags):
+                return _reattach_policy(policy_tags[agent_id])
+            return random_walk_policy
+
         created: list[str] = []
         with tempfile.NamedTemporaryFile(suffix=".pkl", delete=True) as fp:
             save_simulation(source, Path(fp.name))
             for i in range(1, n_branches + 1):
                 branch_id = f"{name}-{i}"
-                clone = load_simulation(Path(fp.name))
+                clone = load_simulation(Path(fp.name), policy_factory=_factory)
                 self.branches[branch_id] = BranchEntry(
                     branch_id=branch_id, parent_tick=source.tick_counter, simulation=clone
                 )

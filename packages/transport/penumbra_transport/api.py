@@ -1692,7 +1692,7 @@ def build_app(
 
         from penumbra_crypto.snark import load_proof, load_verifying_key, verify
 
-        artifacts = Path(__file__).resolve().parents[3] / "circuits" / "artifacts"  # noqa: ASYNC240
+        artifacts = Path(__file__).resolve().parents[3] / "circuits" / "artifacts"
         vk_path = artifacts / "vk.json"
         proof_path = artifacts / "proof.json"
         public_path = artifacts / "public.json"
@@ -1785,6 +1785,19 @@ def build_app(
             "honest_verifies": bool(honest_ok),
             "tampered_verifies": bool(tampered_ok),
         }
+
+    @app.get("/crypto/stark/demo")
+    async def crypto_stark_demo() -> dict[str, object]:
+        """Educational FRI-STARK proof + verify + tamper rejections.
+
+        Ships a transparent (no trusted setup) low-degree test for a
+        degree-7 polynomial codeword, alongside two negative cases:
+        flipped evaluation and flipped commitment. Mirrors the snark
+        forgery panel for the verifier-only pattern.
+        """
+        from penumbra_crypto import stark as _stark
+
+        return await asyncio.to_thread(_stark.demo)
 
     @app.get("/crypto/dilithium/inspect/{agent_id}")
     async def crypto_dilithium_inspect(agent_id: int) -> dict[str, object]:
@@ -2658,7 +2671,7 @@ def build_app(
             raise HTTPException(status_code=400, detail="invalid filename")
         if not filename.endswith(".json"):
             raise HTTPException(status_code=400, detail="filename must end with .json")
-        bench_dir = Path(__file__).resolve().parents[3] / "state" / "bench"  # noqa: ASYNC240
+        bench_dir = Path(__file__).resolve().parents[3] / "state" / "bench"
         path = bench_dir / filename
         if not path.is_file():
             raise HTTPException(status_code=404, detail=f"no submission named {filename}")
@@ -3207,7 +3220,7 @@ def build_app(
 
         name = str(payload.get("name", ""))
         raw_n = payload.get("n_branches", 5)
-        n_branches = int(raw_n) if isinstance(raw_n, (int, float, str)) else 5
+        n_branches = int(raw_n) if isinstance(raw_n, int | float | str) else 5
         try:
             ids = global_branches().branch(
                 name, app.state.penumbra.simulation, n_branches=n_branches
@@ -3458,7 +3471,7 @@ def _build_simulation_with_optional_mappo() -> tuple[Simulation, object | None]:
 def _as_float(value: object) -> float:
     """Coerce an arbitrary JSON value to float, defaulting to 0.0."""
     try:
-        if isinstance(value, (int, float)):
+        if isinstance(value, int | float):
             return float(value)
         if isinstance(value, str):
             return float(value)
@@ -3470,7 +3483,7 @@ def _as_float(value: object) -> float:
 def _as_int(value: object) -> int:
     """Coerce an arbitrary JSON value to int, defaulting to 0."""
     try:
-        if isinstance(value, (int, float)):
+        if isinstance(value, int | float):
             return int(value)
         if isinstance(value, str):
             return int(value)

@@ -14,6 +14,10 @@ dependencies = [
   "diffprivlib>=0.6",
   "pqcrypto>=0.4",
   "py_ecc>=8.0",
+  # torch is already in the workspace via penumbra-learning + penumbra-
+  # attacker; we declare it explicitly here because defenses/gan_defenses
+  # ships a small CycleGAN-style synthesizer.
+  "torch>=2.4",
   "penumbra-core",
 ]
 
