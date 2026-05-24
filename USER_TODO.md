@@ -13,6 +13,61 @@ Tutte le fasi di codice (Phase 5 + 6a + 6b) shipped 2026-05-24.
 
 ---
 
+## 🚫 REPO VISIBILITY GATE — NON flippare a public finché P0 non chiusi
+
+**Stato repo GitHub**: `Vadale/penumbra-arena` — **PRIVATE**.
+
+**Topics**: già aggiunti (15: reinforcement-learning, multi-agent,
+federated-learning, homomorphic-encryption, differential-privacy,
+benchmark, dataset, blockchain, cyber-range, privacy-preserving,
+mappo, ckks, post-quantum, zk-snark, research).
+
+**Bloccanti hard per il flip a public** (vedi anche P0 §1-3 sotto):
+
+1. **Email `vadale93@gmail.com` esposta in 3 file** (`SECURITY.md`,
+   `CODE_OF_CONDUCT.md`, `USER_TODO.md` stesso). Una volta pubblico:
+   - Google indicizza in 24-48h
+   - Scanner spam la trovano in giorni
+   - Disclosure crypto-security arrivano sulla personale, non su un
+     alias dedicato
+   - **Azione**: cambia con `security@penumbra-arena.org` (richiede
+     dominio) o `Penumbra-Arena+security@protonmail.com` (gratis)
+
+2. **`docs/hero.png` non esiste** — README lo referenzia → image broken
+   sulla landing page GitHub. **Azione**: vedi P0 §2 sotto per i comandi.
+
+3. **`docs/og.png` non esiste** — quando il link gira su Twitter /
+   LinkedIn / HN, sharing preview = testo nudo → -3x click-through.
+   **Azione**: vedi P0 §3 sotto.
+
+**Soft (raccomandati ma non bloccanti)**:
+
+4. **Leggere il verdetto di un second-opinion model** prima di lanciare
+   (vedi `EVALUATION_PROMPT.md`). Magari l'altro modello suggerisce un
+   repositioning della README che vorrai applicare PRIMA del flip a
+   public, non dopo (per evitare "i primi cento visitatori hanno visto
+   la frase sbagliata").
+
+5. **Penumbra-Bench submissions repo** (`Vadale/penumbra-bench-
+   submissions`) ancora non creato (vedi P1 §5). Se vuoi che il primo
+   bench-PR funzioni il giorno del lancio, crealo prima.
+
+### Come flippare quando hai chiuso 1-3 (e idealmente 4-5)
+
+```sh
+# Dal terminale (richiede gh CLI autenticato, già configurato sul Mac):
+gh repo edit Vadale/penumbra-arena --visibility public --accept-visibility-change-consequences
+
+# Verifica
+gh repo view Vadale/penumbra-arena --json visibility,url
+```
+
+**Avvertenza permanente**: la visibility change è hard-to-undo. Una
+volta indicizzato da Google / clonato da bot / forkato, anche se
+ri-privatizzi gli artefatti rimangono. Misura due volte, taglia una.
+
+---
+
 ## P0 — Bloccanti prima del lancio pubblico
 
 ### 1. Email di security disclosure

@@ -320,3 +320,32 @@ A change is "done" only when:
 - Crypto changes are not destructive but are high-risk; route through `crypto-auditor`.
 - When you discover unexpected state (files, branches, locks), investigate before deleting.
 - Prefer editing existing files to creating new ones. New files require justification.
+
+## Repo visibility policy (mandatory — applies to every future session)
+
+The GitHub repo `Vadale/penumbra-arena` is **PRIVATE on purpose**.
+
+**DO NOT flip visibility to public** unless the user has just told you
+to in this very session, AND the [REPO VISIBILITY GATE](USER_TODO.md)
+items 1-3 are confirmed closed:
+
+1. `vadale93@gmail.com` replaced with a dedicated alias in
+   `SECURITY.md` + `CODE_OF_CONDUCT.md` + `USER_TODO.md`.
+2. `docs/hero.png` exists.
+3. `docs/og.png` exists.
+
+These are blockers because public visibility is hard-to-undo
+(Google indexing + bot forks + cache copies make rollback partial).
+
+If the user asks you to flip without these closed, FLAG the gate,
+ask for re-confirmation, and only proceed after the user explicitly
+overrides ("I know, do it anyway"). Don't infer authorization from
+adjacent requests like "push to GitHub" — those are NOT visibility
+changes.
+
+Same caution applies to:
+- `gh repo edit --delete` (irreversible).
+- Force-pushes to `main` on a public repo (rewrites visible history).
+- Publishing to Hugging Face Hub from `state/datasets/` (CC-BY-4.0
+  means once it's out there, attribution is irrevocable).
+- Submitting to arXiv (preprint ID is permanent).
