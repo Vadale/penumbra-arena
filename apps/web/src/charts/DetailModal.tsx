@@ -12,7 +12,8 @@
  * Dismiss via Escape, backdrop click, or the explicit close button.
  */
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { useFocusTrap } from "../hooks/useFocusTrap";
 import type {
   ANOVAReport as ANOVAReportData,
   ArimaForecast as ArimaForecastData,
@@ -257,7 +258,14 @@ interface Props {
   wealth?: WealthReportData | null;
 }
 
-const META: Record<MetricKind, { label: string; description: string; yUnit?: string }> = {
+type MetricMeta = {
+  label: string;
+  description: string;
+  yUnit?: string;
+  cli?: string;
+};
+
+const META: Record<MetricKind, MetricMeta> = {
   trajectory_mean: {
     label: "trajectory mean — OLS regression on tick",
     description:
@@ -306,11 +314,13 @@ const META: Record<MetricKind, { label: string; description: string; yUnit?: str
     label: "Differential-privacy ε spent",
     description:
       "cumulative privacy budget consumed by Laplace-noised heatmap releases. Saturates and then the system falls back to clean releases.",
+    cli: "pno enable && pno query-dp money_supply 0.05",
   },
   signing_verified: {
     label: "Dilithium signatures verified",
     description:
       "cumulative count of per-tick ML-DSA-65 signature verifications across all agents. Grows linearly; rejected count tracked separately.",
+    cli: "pna replay-cmd",
   },
   topics: {
     label: "BERTopic topics",
@@ -336,6 +346,7 @@ const META: Record<MetricKind, { label: string; description: string; yUnit?: str
     label: "City economy — purchases stream",
     description:
       "Every city stocks 10 of 30 catalogue products (food, hygiene, tools, luxury, medicine). When an agent arrives at a city it Bernoulli(p=.06)-rolls each item; a hit fires a Geometric(1/1.5) quantity purchase. The aggregates here feed regression/Granger/etc with a second semantically distinct stream, so the live charts stop being just a function of the trajectory norm.",
+    cli: "pno enable && pno buy 0 3",
   },
   survival: {
     label: "Kaplan-Meier — match duration",
@@ -406,6 +417,7 @@ const META: Record<MetricKind, { label: string; description: string; yUnit?: str
     label: "MAPPO policy inspector",
     description:
       "Live introspection of the actor network. Pick any agent id and see the observation it's receiving (cost-to-neighbour + is-goal features), the actor's post-softmax action probabilities at the current temperature, and the action it would CHOOSE (highlighted bar). The labels '→ #N' = move to neighbour-N; 'stay' = no-op. Adjust temperature in the status bar to watch the distribution flatten or sharpen in real time.",
+    cli: "psh lesson processes",
   },
   action_histogram: {
     label: "Action histogram — swarm-wide",
@@ -416,6 +428,7 @@ const META: Record<MetricKind, { label: string; description: string; yUnit?: str
     label: "DP — clean vs noised heatmap",
     description:
       "Side-by-side: the CLEAN encrypted-heatmap aggregate (cyan, pre-DP) and the RELEASED density (ember, after Laplace noise). The δ panel shows the raw noise vector (released − clean). The L1/L2 readouts quantify the injected privacy noise. This is normally invisible from outside the server; we expose it here so you can SEE the privacy/utility tradeoff DP is making.",
+    cli: "pna dp-reconstruct --bits 64 --queries 400 --noise 0.1",
   },
   vrf_leader: {
     label: "VRF leader rotation",
@@ -441,11 +454,13 @@ const META: Record<MetricKind, { label: string; description: string; yUnit?: str
     label: "Slashing — submit equivocation evidence",
     description:
       "Pick an active validator and the demo server signs two CONFLICTING block hashes with that validator's secret key, then files the SlashingEvidence. The chain folds the result into the next block — the offender's pubkey moves into slashed_pubkeys, active_indices shrinks, and future blocks finalise with the remaining quorum. This is gated behind PENUMBRA_DEMO_SELF_SLASH=1 so production-shaped runs can't accidentally enable it.",
+    cli: "pna byzantine-cmd --submit-self-slash",
   },
   training_curves: {
     label: "Live MAPPO training — start/stop + curves",
     description:
       "Click START and a background asyncio task begins running PPO updates against the SAME actor that drives the live arena. Each iteration: rollout 64 steps in an internal env, compute GAE advantages, run 4 PPO epochs, append (actor_loss, critic_loss, entropy, KL, mean_reward) to the curves below. The live policy mutates in real time.",
+    cli: "curl -X POST http://localhost:8000/learning/training/start && curl -s http://localhost:8000/learning/training/curves | jq",
   },
   value_map: {
     label: "Critic V(s) + per-node policy entropy",
@@ -471,6 +486,7 @@ const META: Record<MetricKind, { label: string; description: string; yUnit?: str
     label: "CKKS — encrypt → decrypt round-trip",
     description:
       "CKKS is APPROXIMATE homomorphic encryption. We encrypt a known plaintext, decrypt, and show plaintext vs decrypted side by side plus the absolute error per slot. The ciphertext preview is hex of the first 32 bytes — the full thing is kilobytes, opaque, and only the secret-key holder can decrypt it.",
+    cli: "psh lesson crypto_tools",
   },
   kyber_kem: {
     label: "Kyber (ML-KEM-768) — post-quantum KEM",
@@ -486,11 +502,13 @@ const META: Record<MetricKind, { label: string; description: string; yUnit?: str
     label: "Wesolowski VDF — compute vs verify",
     description:
       "Verifiable Delay Function. The Eval phase is INHERENTLY SEQUENTIAL — T modular squarings, no parallel speedup possible. The verify phase is fast (one modular exponentiation per side of the equation π^prime · x^r ≡ y mod p). The compute/verify RATIO is what makes VDFs useful as wall-clock-time tokens for unbiasable randomness (no proposer can pre-compute the result significantly ahead of time).",
+    cli: "curl -s http://localhost:8000/vdf | jq",
   },
   dilithium: {
     label: "Dilithium — agent signature inspector",
     description:
       "Every agent in Penumbra signs its moves with ML-DSA-65 (Dilithium-3). Pick any agent → see its public key, sign a sample message, verify honest+tampered. Post-quantum guarantee comes from Module-LWE + Module-SIS hardness — resists Shor.",
+    cli: "pno sign deadbeef && pno verify <msg> <sig> <pk>",
   },
   shamir: {
     label: "Shamir secret sharing (n, t)",
@@ -506,6 +524,7 @@ const META: Record<MetricKind, { label: string; description: string; yUnit?: str
     label: "World snapshots — save/load full state",
     description:
       "Capture the full perpetual simulation state (chain head, agent positions + policies, encrypted heatmap state, market wallets, RNG cursor) under a name. Load any snapshot to roll back. This is the persistence layer that makes the perpetual loop debuggable — you can experiment, branch, restore.",
+    cli: "pna world save my-snap && pna world list && pna world load my-snap",
   },
   arena_graph: {
     label: "Arena graph — force-directed view",
@@ -536,6 +555,7 @@ const META: Record<MetricKind, { label: string; description: string; yUnit?: str
     label: "SNARK forgery — verifier rejects",
     description:
       "Attempt to fool the Groth16 verifier WITHOUT a witness. Two attacks: (1) flip A's low bit — the proof point goes off-curve, pairing equation fails. (2) Replay an honest proof with TAMPERED public inputs — Groth16 binds proofs to public inputs via the linear-combination IC, so verifier rejects. The honest control still accepts.",
+    cli: "pna snark-forge",
   },
   stark: {
     label: "STARK — transparent FRI verifier",
@@ -621,11 +641,13 @@ const META: Record<MetricKind, { label: string; description: string; yUnit?: str
     label: "Logistics — carrier dispatch",
     description:
       "Greedy nearest-agent assignment + agent-driven fulfilment. Each order is bound to one carrier; the order settles when that agent reaches the destination city carrying the requested product (city inventory ++, agent inventory --, agent.coins += reward). Stale assignments are released after 3x lead time; orders waiting more than 5x lead time fall back to a phantom carrier (id = -1) so the simulation never deadlocks.",
+    cli: "pno enable && pno dispatch 5 0 4 1.5",
   },
   federated_status: {
     label: "Federated learning — status & controls",
     description:
       "FedAvg (Tier 1) and CKKS-encrypted aggregation (Tier 2) over per-agent local SGD deltas. Optional DP-SGD clip + Gaussian noise (Tier 3). Krum / TrimmedMean Byzantine-robust aggregators are also shipped as functions.",
+    cli: "curl -s http://localhost:8000/learning/federated/status | jq",
   },
   event_bus: {
     label: "Event bus — cross-pillar signals",
@@ -676,11 +698,13 @@ const META: Record<MetricKind, { label: string; description: string; yUnit?: str
     label: "Attack — 1-NN agent fingerprint",
     description:
       "Phase 5 Tier 2: build a per-agent feature vector from action histogram, latency stats, trajectory curvature and trade pattern; a 1-NN classifier re-identifies agents across matches well above the 1/N baseline. Defence is DP noise on aggregates + per-match identity shuffling.",
+    cli: "pna linkability-cmd --agents 5 --matches 30",
   },
   attack_trajectory_fingerprint: {
     label: "Attack — HMM trajectory fingerprint",
     description:
       "Phase 5 Tier 2: fit one Baum-Welch HMM per agent over historical action sequences. Forward log-likelihood scoring re-identifies unseen trajectories by picking the most likely model. Captures temporal structure that 1-NN over static features misses. Defence: RAPPOR-style action randomisation.",
+    cli: "pna linkability-cmd --agents 8 --matches 50",
   },
   attack_membership_inference: {
     label: "Attack — Shokri shadow-model MI",
@@ -701,31 +725,37 @@ const META: Record<MetricKind, { label: string; description: string; yUnit?: str
     label: "Attack — cache side-channel on CKKS (must FAIL)",
     description:
       "Phase 5 Tier 2 pedagogical: Flush+Reload-style timing on TenSEAL CKKS add over sparse vs dense ciphertexts; Welch t-test the latencies. Modern CKKS pads to the full polynomial degree on every op, so the t-stat stays small and `leak_detected` returns False. The companion sanity test (artificially leaky op) confirms the attack DOES detect leaks when present.",
+    cli: "pna timing --samples 50",
   },
   operator_scenarios: {
     label: "Operator — scenario engine (12 starter drills)",
     description:
       "Phase 6b Tier 5: pick one of 12 starter scenarios (defense, attack, chain, FL, logistics, sandbox) and the runner snapshots the operator's start state then evaluates victory + failure clauses against live state — at 1 Hz while the Operator panel is open, and at every action via the save-resume hook so a closed tab can be reopened (or the server restarted) and the session resumes from the saved sim-tick. Each scenario declares its preconditions, opening event, and per-axis scorecard weights so the composite is comparable across runs.",
+    cli: "pno enable && pno status",
   },
   custom_policy: {
     label: "Custom Agent Policy — sandboxed injection",
     description:
       "Phase 5 Tier 4: write a Python `policy(state, observation)` function, the backend AST-validates and runs it in a numpy+math-only sandbox with a 50 ms wall-clock budget. Use it to test attack policies (adversarial, byzantine, reward-poisoning) against the live arena without rebuilding the server.",
+    cli: 'curl -X POST http://localhost:8000/attacker/policy -d \'{"name":"x","code":"def policy(s,o): return 0","scope":"all"}\'',
   },
   ctf: {
     label: "Capture-the-Flag — privacy + crypto challenges",
     description:
       "Phase 5 Tier 4: 5 starter YAML challenges (DP reconstruction, linkability, replay, byzantine equivocation, SNARK forge). Pick a challenge, read its setup + acceptance criteria, build the attack offline, submit the flag for a per-challenge leaderboard slot.",
+    cli: "curl -s http://localhost:8000/ctf/challenges | jq",
   },
   story_mode: {
     label: "Story Mode — cross-pillar attack chains",
     description:
       "Phase 5 Tier 5: 8 narrative `psh lesson` tutorials that thread an attack across logistics, statistics, NN, RL, and crypto pillars. Filter by difficulty or pillar; pick a story to copy the launch command for the embedded terminal.",
+    cli: "psh lessons && psh lesson story_bullwhip_leak",
   },
   world_branches: {
     label: "World branches — pickle-clone & compare",
     description:
       "Phase 5 Tier 4: snapshot the live simulation into N in-memory branches via pickle round-trip. Advance any branch independently for K ticks and compare positions + wealth + tick counter side-by-side. Branches are intentionally non-persistent — process-local what-if explorations.",
+    cli: "pna world save baseline && pna world load baseline",
   },
 };
 
@@ -761,6 +791,9 @@ export function DetailModal({
   inflation,
   wealth,
 }: Props) {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  useFocusTrap(dialogRef, open && metric !== null);
+
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
@@ -1047,13 +1080,16 @@ export function DetailModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6">
-      <button
-        type="button"
-        aria-label="dismiss detail"
+      {/* Backdrop: clickable to dismiss, but hidden from screen readers so the */}
+      {/* dialog content is announced first; the explicit "Close" button is the */}
+      {/* SR-discoverable dismiss. Esc also dismisses via the effect above. */}
+      <div
+        aria-hidden="true"
         onClick={onClose}
         className="absolute inset-0 cursor-default bg-transparent"
       />
       <div
+        ref={dialogRef}
         className="relative w-full max-w-2xl border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-panel)] p-5 shadow-2xl"
         role="dialog"
         aria-modal="true"
@@ -1065,15 +1101,26 @@ export function DetailModal({
           </div>
           <button
             type="button"
+            aria-label="Close"
             onClick={onClose}
-            className="text-[11px] text-[color:var(--color-penumbra-muted)] hover:text-[color:var(--color-penumbra-text)]"
+            className="text-[14px] leading-none text-[color:var(--color-penumbra-muted)] hover:text-[color:var(--color-penumbra-text)]"
           >
-            esc
+            {"×"}
           </button>
         </div>
         <p className="mb-4 text-[11px] leading-relaxed text-[color:var(--color-penumbra-muted)]">
           {meta.description}
         </p>
+        {meta.cli && (
+          <div className="mb-4 border-l-2 border-[color:var(--color-penumbra-cyan)] bg-[color:var(--color-penumbra-bg)] px-3 py-2">
+            <div className="mb-1 text-[10px] uppercase tracking-[0.2em] text-[color:var(--color-penumbra-muted)]">
+              try it in your shell
+            </div>
+            <code className="block whitespace-pre-wrap break-all font-mono text-[11px] text-[color:var(--color-penumbra-cyan)]">
+              {meta.cli}
+            </code>
+          </div>
+        )}
         <div className="border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] p-3">
           {body}
         </div>

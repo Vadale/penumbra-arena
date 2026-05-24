@@ -23,6 +23,18 @@ interface RegisterResult {
   try?: { ok?: boolean; result?: string; error?: string };
 }
 
+function firstLine(text: string): string {
+  const stripped = text.trim();
+  if (stripped.length === 0) return "policy rejected";
+  for (const line of stripped.split("\n").reverse()) {
+    const candidate = line.trim();
+    if (candidate.length > 0 && !candidate.startsWith("File ") && !candidate.startsWith("at ")) {
+      return candidate;
+    }
+  }
+  return stripped.split("\n")[0] ?? stripped;
+}
+
 const DEFAULT_SOURCE = `def policy(state, observation):
     # whitelisted: np, math, builtin numerics.
     # state and observation are dicts at try time (empty for the smoke run).
@@ -136,26 +148,48 @@ export function CustomPolicyChart() {
       </div>
 
       {errorMsg && (
-        <div className="border border-[color:var(--color-penumbra-ember)] bg-[color:var(--color-penumbra-ember-bg)] px-2 py-1 text-[10px] text-[color:var(--color-penumbra-ember)]">
-          {errorMsg}
+        <div className="border border-[color:var(--color-penumbra-ember)] bg-[color:var(--color-penumbra-ember-bg)] px-2 py-2 text-[10px] text-[color:var(--color-penumbra-ember)]">
+          <div className="font-semibold uppercase tracking-wider">policy rejected</div>
+          <div className="mt-1 text-[11px] text-[color:var(--color-penumbra-text)]">
+            {firstLine(errorMsg)}
+          </div>
+          <details className="mt-1 text-[10px] text-[color:var(--color-penumbra-muted)]">
+            <summary className="cursor-pointer">full traceback</summary>
+            <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-[10px] text-[color:var(--color-penumbra-muted)]">
+              {errorMsg}
+            </pre>
+          </details>
         </div>
       )}
 
       {lastResult && (
-        <div className="grid grid-cols-3 gap-2 text-[10px]">
-          <Stat label="registered" value={lastResult.name ?? "—"} accent />
-          <Stat label="scope" value={lastResult.scope ?? "—"} />
-          <Stat label="src chars" value={lastResult.source_chars ?? 0} digits={0} />
-          <Stat
-            label="try.ok"
-            value={lastResult.try?.ok ? "yes" : "no"}
-            accent={lastResult.try?.ok}
-            ember={!lastResult.try?.ok}
-          />
-          <Stat
-            label="try.result / err"
-            value={lastResult.try?.result ?? lastResult.try?.error ?? "—"}
-          />
+        <div className="space-y-2">
+          <div className="grid grid-cols-3 gap-2 text-[10px]">
+            <Stat label="registered" value={lastResult.name ?? "—"} accent />
+            <Stat label="scope" value={lastResult.scope ?? "—"} />
+            <Stat label="src chars" value={lastResult.source_chars ?? 0} digits={0} />
+            <Stat
+              label="try.ok"
+              value={lastResult.try?.ok ? "yes" : "no"}
+              accent={lastResult.try?.ok}
+              ember={!lastResult.try?.ok}
+            />
+            <Stat label="try.result" value={lastResult.try?.result ?? "—"} />
+          </div>
+          {lastResult.try?.error && (
+            <div className="border border-[color:var(--color-penumbra-ember)] bg-[color:var(--color-penumbra-ember-bg)] px-2 py-2 text-[10px] text-[color:var(--color-penumbra-ember)]">
+              <div className="font-semibold uppercase tracking-wider">smoke run failed</div>
+              <div className="mt-1 text-[11px] text-[color:var(--color-penumbra-text)]">
+                {firstLine(lastResult.try.error)}
+              </div>
+              <details className="mt-1 text-[10px] text-[color:var(--color-penumbra-muted)]">
+                <summary className="cursor-pointer">full traceback</summary>
+                <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-[10px] text-[color:var(--color-penumbra-muted)]">
+                  {lastResult.try.error}
+                </pre>
+              </details>
+            </div>
+          )}
         </div>
       )}
 

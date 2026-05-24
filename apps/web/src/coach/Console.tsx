@@ -110,7 +110,7 @@ export function CoachConsole() {
     <div className="space-y-2">
       {presets && (
         <div className="space-y-1">
-          <div className="text-[10px] uppercase tracking-wider text-slate-500">attacker</div>
+          <div className="text-xs uppercase tracking-wider text-slate-500">attacker</div>
           <div className="flex flex-wrap gap-1">
             {presets.attacker.map((p) => (
               <button
@@ -118,13 +118,13 @@ export function CoachConsole() {
                 type="button"
                 onClick={() => void runCommand(p.command)}
                 disabled={running}
-                className="rounded bg-rose-900/40 px-2 py-0.5 text-[11px] text-rose-100 hover:bg-rose-900/70 disabled:opacity-40"
+                className="rounded bg-rose-900/40 px-2 py-0.5 text-xs text-rose-100 hover:bg-rose-900/70 disabled:opacity-40"
               >
                 {p.label}
               </button>
             ))}
           </div>
-          <div className="text-[10px] uppercase tracking-wider text-slate-500">shell coach</div>
+          <div className="text-xs uppercase tracking-wider text-slate-500">shell coach</div>
           <div className="flex flex-wrap gap-1">
             {presets.shell.map((p) => (
               <button
@@ -132,7 +132,7 @@ export function CoachConsole() {
                 type="button"
                 onClick={() => void runCommand(p.command)}
                 disabled={running}
-                className="rounded bg-sky-900/40 px-2 py-0.5 text-[11px] text-sky-100 hover:bg-sky-900/70 disabled:opacity-40"
+                className="rounded bg-sky-900/40 px-2 py-0.5 text-xs text-sky-100 hover:bg-sky-900/70 disabled:opacity-40"
               >
                 {p.label}
               </button>
@@ -153,18 +153,18 @@ export function CoachConsole() {
           onChange={(event) => setInput(event.target.value)}
           disabled={running}
           placeholder="pna … or psh …"
-          className="flex-1 rounded border border-slate-700 bg-slate-950 px-2 py-1 font-mono text-[11px] text-slate-100 placeholder:text-slate-600 focus:border-sky-600 focus:outline-none disabled:opacity-50"
+          className="flex-1 rounded border border-slate-700 bg-slate-950 px-2 py-1 font-mono text-xs text-slate-100 placeholder:text-slate-600 focus:border-sky-600 focus:outline-none disabled:opacity-50"
         />
         <button
           type="submit"
           disabled={running}
-          className="rounded bg-slate-700 px-3 py-1 text-[11px] text-slate-100 hover:bg-slate-600 disabled:opacity-40"
+          className="rounded bg-slate-700 px-3 py-1 text-xs text-slate-100 hover:bg-slate-600 disabled:opacity-40"
         >
           run
         </button>
       </form>
 
-      <div className="space-y-1 text-[11px]">
+      <div className="space-y-1 text-xs">
         {history.length === 0 ? (
           <div className="text-slate-500">
             No commands yet — click a preset or type `psh lessons`.
@@ -180,12 +180,12 @@ export function CoachConsole() {
                 </span>
               </div>
               {entry.stdout && (
-                <pre className="mt-1 overflow-x-auto whitespace-pre-wrap font-mono text-[10px] text-slate-200">
+                <pre className="mt-1 overflow-x-auto whitespace-pre-wrap font-mono text-xs text-slate-200">
                   {entry.stdout.slice(0, 1500)}
                 </pre>
               )}
               {entry.stderr && (
-                <pre className="mt-1 overflow-x-auto whitespace-pre-wrap font-mono text-[10px] text-rose-300">
+                <pre className="mt-1 overflow-x-auto whitespace-pre-wrap font-mono text-xs text-rose-300">
                   {entry.stderr.slice(0, 800)}
                 </pre>
               )}

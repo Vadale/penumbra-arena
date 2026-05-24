@@ -9,6 +9,23 @@
  * Plus two muted greys for "interactive" hover states. The CSS-variable
  * names below feed into tailwind utilities via `bg-penumbra-*` /
  * `text-penumbra-*` / `border-penumbra-*`.
+ *
+ * Dark-only on purpose: Penumbra targets the researcher / operator
+ * audience — a high-density "terminal" aesthetic where a light mode
+ * would actively work against the legibility of cyan/ember accents on
+ * a near-black panel. No light-mode plans.
+ *
+ * Font scale (3 steps, defined as --text-xs / --text-sm / --text-base
+ * below). Sweeping ~570 callsites of `text-[Npx]` to these tokens is
+ * deferred — partial sweep landed in this PR (index.css + 5 noisy
+ * non-chart files: routes/Dashboard.tsx, coach/Console.tsx,
+ * chain/Explorer.tsx, shell/StatusBar.tsx, shell/HelpOverlay.tsx).
+ * Migration map for follow-up PRs:
+ *   text-[8px]  -> text-[8px]   (kept as-is: 4 sites, too dense for the scale)
+ *   text-[9px]  -> text-xs      (10px)
+ *   text-[10px] -> text-xs      (10px)
+ *   text-[11px] -> text-xs      (10px) or text-sm (12px) depending on density
+ *   text-[13px] -> text-sm      (12px)
  */
 @theme {
   /* Base + chrome */
@@ -29,6 +46,15 @@
   /* DF-inspired monospace stack */
   --font-mono: "JetBrains Mono", "Berkeley Mono", "SF Mono", "Menlo",
     "Consolas", ui-monospace, monospace;
+
+  /* Font scale (3 steps). Override Tailwind defaults so the names match
+   * the density we use. Use `text-xs` / `text-sm` / `text-base`. */
+  --text-xs: 10px;
+  --text-xs--line-height: 14px;
+  --text-sm: 12px;
+  --text-sm--line-height: 16px;
+  --text-base: 14px;
+  --text-base--line-height: 18px;
 }
 
 html,
@@ -43,6 +69,21 @@ body {
   font-feature-settings: "calt" 0, "liga" 0; /* disable contextual ligatures for terminal-like rendering */
   background-color: var(--color-penumbra-bg);
   color: var(--color-penumbra-text);
+}
+
+/* Mobile / narrow-viewport guard.
+ *
+ * Penumbra targets desktop researchers (≥ 1100 px). A real responsive
+ * pass is out of scope (CLAUDE.md). This rule guarantees the layout
+ * scrolls horizontally cleanly below 1100 px instead of clipping the
+ * chain panel or breaking the analytics grid. The in-app banner
+ * (NarrowViewportBanner) tells the user the dashboard is desktop-only.
+ */
+@layer base {
+  body {
+    min-width: 1100px;
+    overflow-x: auto;
+  }
 }
 
 /* Tighter line-height + letter-spacing for terminal density */

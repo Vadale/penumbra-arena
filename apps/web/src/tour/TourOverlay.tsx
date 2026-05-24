@@ -4,9 +4,14 @@
  * Walks the user through the four panels of the dashboard once. The
  * "seen" flag is persisted in localStorage so subsequent visits skip
  * it. Pressing Esc or clicking the backdrop also dismisses.
+ *
+ * Accessibility: focus is trapped inside the dialog while visible and
+ * restored on close; the backdrop is `aria-hidden` so screen readers
+ * announce the dialog content first.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useFocusTrap } from "../hooks/useFocusTrap";
 
 const STORAGE_KEY = "penumbra.tour.seen";
 
@@ -52,12 +57,21 @@ const STEPS: Step[] = [
 export function TourOverlay() {
   const [visible, setVisible] = useState(false);
   const [step, setStep] = useState(0);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  useFocusTrap(dialogRef, visible);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const seen = window.localStorage.getItem(STORAGE_KEY) === "true";
     if (!seen) setVisible(true);
   }, []);
+
+  const dismiss = () => {
+    setVisible(false);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(STORAGE_KEY, "true");
+    }
+  };
 
   useEffect(() => {
     if (!visible) return;
@@ -68,14 +82,7 @@ export function TourOverlay() {
     return () => {
       window.removeEventListener("keydown", onKey);
     };
-  });
-
-  const dismiss = () => {
-    setVisible(false);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(STORAGE_KEY, "true");
-    }
-  };
+  }, [visible]);
 
   const next = () => {
     if (step >= STEPS.length - 1) {
@@ -91,18 +98,32 @@ export function TourOverlay() {
   if (!current) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-6">
-      <button
-        type="button"
-        aria-label="dismiss tour"
+      {/* Backdrop: clickable to dismiss, hidden from screen readers so the */}
+      {/* dialog content is announced first; the explicit "Close" button is */}
+      {/* the SR-discoverable dismiss. Esc also dismisses via the effect above. */}
+      <div
+        aria-hidden="true"
         onClick={dismiss}
         className="absolute inset-0 cursor-default bg-transparent"
       />
       <div
+        ref={dialogRef}
         className="relative w-full max-w-xl rounded-lg border border-slate-700 bg-slate-900 p-5 shadow-2xl"
         role="dialog"
         aria-modal="true"
+        aria-label="Penumbra first-run tour"
       >
-        <div className="mb-1 text-xs uppercase tracking-wider text-slate-500">{current.title}</div>
+        <div className="mb-1 flex items-start justify-between">
+          <div className="text-xs uppercase tracking-wider text-slate-500">{current.title}</div>
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={dismiss}
+            className="text-[14px] leading-none text-slate-500 hover:text-slate-200"
+          >
+            {"×"}
+          </button>
+        </div>
         <p className="mb-4 text-sm leading-relaxed text-slate-200">{current.body}</p>
         <div className="flex items-center justify-between">
           <button

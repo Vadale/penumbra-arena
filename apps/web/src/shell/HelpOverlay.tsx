@@ -4,9 +4,15 @@
  * Renders a centered modal that the user can dismiss with Escape,
  * backdrop click, or pressing `?` again. The shortcut list mirrors
  * what `useKeyboardShortcuts` actually wires up.
+ *
+ * Accessibility: focus is trapped inside the dialog while open and
+ * restored to the previously-focused element on close. The backdrop
+ * is `aria-hidden` so screen readers announce the dialog content
+ * first; the visible "Close" button is the SR-discoverable dismiss.
  */
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { useFocusTrap } from "../hooks/useFocusTrap";
 
 interface Shortcut {
   keys: string;
@@ -26,6 +32,9 @@ const SHORTCUTS: Shortcut[] = [
 ];
 
 export function HelpOverlay({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  useFocusTrap(dialogRef, open);
+
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
@@ -40,13 +49,16 @@ export function HelpOverlay({ open, onClose }: { open: boolean; onClose: () => v
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6">
-      <button
-        type="button"
-        aria-label="dismiss help"
+      {/* Backdrop: clickable to dismiss, hidden from screen readers so the */}
+      {/* dialog content is announced first; the explicit "Close" button is */}
+      {/* the SR-discoverable dismiss. Esc also dismisses via the effect above. */}
+      <div
+        aria-hidden="true"
         onClick={onClose}
         className="absolute inset-0 cursor-default bg-transparent"
       />
       <div
+        ref={dialogRef}
         className="relative w-full max-w-md border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-panel)] p-5 shadow-2xl"
         role="dialog"
         aria-modal="true"
@@ -58,13 +70,14 @@ export function HelpOverlay({ open, onClose }: { open: boolean; onClose: () => v
           </div>
           <button
             type="button"
+            aria-label="Close"
             onClick={onClose}
-            className="text-[11px] text-[color:var(--color-penumbra-muted)] hover:text-[color:var(--color-penumbra-text)]"
+            className="text-base leading-none text-[color:var(--color-penumbra-muted)] hover:text-[color:var(--color-penumbra-text)]"
           >
-            esc
+            {"×"}
           </button>
         </div>
-        <table className="w-full font-mono text-[11px]">
+        <table className="w-full font-mono text-xs">
           <tbody>
             {SHORTCUTS.map((s) => (
               <tr
@@ -79,7 +92,7 @@ export function HelpOverlay({ open, onClose }: { open: boolean; onClose: () => v
             ))}
           </tbody>
         </table>
-        <div className="mt-3 text-[9px] uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
+        <div className="mt-3 text-xs uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
           shortcuts ignore typing inside text fields
         </div>
       </div>

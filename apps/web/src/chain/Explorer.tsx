@@ -20,11 +20,11 @@ function BlockRow({ block }: { block: BlockView }) {
         <span className="text-[color:var(--color-penumbra-cyan)] tabular-nums">
           #{block.height}
         </span>
-        <span className="font-mono text-[10px] text-[color:var(--color-penumbra-muted)]">
+        <span className="font-mono text-xs text-[color:var(--color-penumbra-muted)]">
           {hashPrefix(block.hash)}
         </span>
       </div>
-      <div className="mt-0.5 text-[10px] text-[color:var(--color-penumbra-dim)]">
+      <div className="mt-0.5 text-xs text-[color:var(--color-penumbra-dim)]">
         prop{" "}
         <span className="font-mono text-[color:var(--color-penumbra-muted)]">
           {hashPrefix(block.proposer_pubkey, 8)}
@@ -40,7 +40,7 @@ function BlockRow({ block }: { block: BlockView }) {
         )}
       </div>
       {block.outcomes.length > 0 && (
-        <ul className="mt-1 space-y-0 text-[10px]">
+        <ul className="mt-1 space-y-0 text-xs">
           {block.outcomes.slice(0, 3).map((o) => (
             <li
               key={o.match_id}
@@ -59,7 +59,7 @@ function BlockRow({ block }: { block: BlockView }) {
         </ul>
       )}
       {block.slashings && block.slashings.length > 0 && (
-        <ul className="mt-1 space-y-0 text-[10px]">
+        <ul className="mt-1 space-y-0 text-xs">
           {block.slashings.map((s) => (
             <li
               key={s.offender_pubkey}
@@ -80,21 +80,21 @@ export function ChainExplorer() {
 
   if (latest === null) {
     return (
-      <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-muted)]">
+      <div className="text-xs uppercase tracking-wider text-[color:var(--color-penumbra-muted)]">
         chain explorer connecting<span className="animate-pulse">…</span>
       </div>
     );
   }
   if (latest.height === 0) {
     return (
-      <div className="text-[10px] text-[color:var(--color-penumbra-muted)]">
+      <div className="text-xs text-[color:var(--color-penumbra-muted)]">
         chain height 0 — waiting for first finalised block
       </div>
     );
   }
   return (
     <div className="space-y-1">
-      <div className="flex items-baseline justify-between text-[10px]">
+      <div className="flex items-baseline justify-between text-xs">
         <span className="uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
           height
         </span>

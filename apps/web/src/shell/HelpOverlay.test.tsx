@@ -17,11 +17,32 @@ describe("HelpOverlay", () => {
     expect(screen.getByText("Esc")).toBeInTheDocument();
   });
 
-  it("calls onClose on dismiss-backdrop click", () => {
+  it("calls onClose when the visible Close button is clicked", () => {
     const onClose = vi.fn();
     render(<HelpOverlay open onClose={onClose} />);
-    fireEvent.click(screen.getByLabelText("dismiss help"));
+    fireEvent.click(screen.getByLabelText("Close"));
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("calls onClose when the aria-hidden backdrop is clicked", () => {
+    const onClose = vi.fn();
+    render(<HelpOverlay open onClose={onClose} />);
+    const backdrops = document.querySelectorAll<HTMLElement>(
+      'div[aria-hidden="true"].absolute.inset-0',
+    );
+    expect(backdrops).toHaveLength(1);
+    const backdrop = backdrops[0];
+    if (!backdrop) return;
+    fireEvent.click(backdrop);
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("does NOT call onClose when a click happens inside the dialog content", () => {
+    const onClose = vi.fn();
+    render(<HelpOverlay open onClose={onClose} />);
+    // Click on the heading text, which is inside the dialog, not the backdrop.
+    fireEvent.click(screen.getByText(/keyboard shortcuts/i));
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("calls onClose on Escape keydown", () => {

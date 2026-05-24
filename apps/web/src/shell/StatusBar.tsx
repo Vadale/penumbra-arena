@@ -78,7 +78,7 @@ export function StatusBar({
   }, []);
 
   return (
-    <footer className="flex items-center gap-4 border-t border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-4 py-1 text-[11px] text-[color:var(--color-penumbra-muted)]">
+    <footer className="flex items-center gap-4 border-t border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-4 py-1 text-xs text-[color:var(--color-penumbra-muted)]">
       <StatusCell label="tick" value={lastFrame?.tick ?? "—"} accent />
       <StatusCell label="match" value={lastFrame?.match_id ?? "—"} />
       <StatusCell label="status" value={lastFrame?.match_status ?? "—"} />
@@ -130,12 +130,12 @@ export function StatusBar({
       <button
         type="button"
         onClick={onHelp}
-        className="ml-auto text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-muted)] hover:text-[color:var(--color-penumbra-text)]"
+        className="ml-auto text-xs uppercase tracking-wider text-[color:var(--color-penumbra-muted)] hover:text-[color:var(--color-penumbra-text)]"
         title="keyboard shortcuts"
       >
         ?
       </button>
-      <div className="text-[10px] uppercase tracking-wider">
+      <div className="text-xs uppercase tracking-wider">
         {connected ? (
           <span className="text-[color:var(--color-penumbra-cyan)]">linked</span>
         ) : (
@@ -216,8 +216,8 @@ function MappoControls() {
         onClick={onToggle}
         className={
           runtime.enabled
-            ? "border border-[color:var(--color-penumbra-cyan)] bg-[color:var(--color-penumbra-cyan-bg)] px-2 py-0.5 text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-cyan)]"
-            : "border border-[color:var(--color-penumbra-ember)] bg-[color:var(--color-penumbra-ember-bg)] px-2 py-0.5 text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-ember)]"
+            ? "border border-[color:var(--color-penumbra-cyan)] bg-[color:var(--color-penumbra-cyan-bg)] px-2 py-0.5 text-xs uppercase tracking-wider text-[color:var(--color-penumbra-cyan)]"
+            : "border border-[color:var(--color-penumbra-ember)] bg-[color:var(--color-penumbra-ember-bg)] px-2 py-0.5 text-xs uppercase tracking-wider text-[color:var(--color-penumbra-ember)]"
         }
         title="toggle MAPPO ↔ random walk"
       >

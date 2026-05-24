@@ -80,6 +80,9 @@ export function Terminal() {
 
     ws.onopen = () => {
       sendResize();
+      term.writeln(
+        "\x1b[36m==> penumbra-shell\x1b[0m  type `psh lessons` to start tutorials, `pna --help` for attacks, `pno --help` for the operator console",
+      );
     };
     ws.onmessage = (event) => {
       if (event.data instanceof ArrayBuffer) {

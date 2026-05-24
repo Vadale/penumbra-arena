@@ -16,6 +16,13 @@ interface Challenge {
   solvers: number;
 }
 
+function extractHint(acceptance: Record<string, unknown>): string | null {
+  const raw = acceptance.hint;
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 interface SubmitResult {
   correct: boolean;
   expected_flag_prefix?: string;
@@ -152,6 +159,20 @@ export function CTFChart() {
           <pre className="whitespace-pre-wrap break-words text-[10px] text-[color:var(--color-penumbra-muted)]">
             acceptance: {JSON.stringify(current.acceptance, null, 2)}
           </pre>
+        </div>
+      )}
+
+      {current && extractHint(current.acceptance) && (
+        <div className="border-l-2 border-[color:var(--color-penumbra-cyan)] bg-[color:var(--color-penumbra-bg)] px-2 py-1 text-[10px]">
+          <div className="mb-1 uppercase tracking-wider text-[color:var(--color-penumbra-dim)]">
+            how to obtain this flag
+          </div>
+          <div className="whitespace-pre-wrap text-[color:var(--color-penumbra-text)]">
+            {extractHint(current.acceptance)}
+          </div>
+          <div className="mt-1 text-[9px] text-[color:var(--color-penumbra-dim)]">
+            full spec: packages/ctf/challenges/{current.id}.yaml
+          </div>
         </div>
       )}
 
