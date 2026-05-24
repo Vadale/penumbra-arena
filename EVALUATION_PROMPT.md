@@ -1,9 +1,20 @@
 # Penumbra — Independent Evaluation Prompt
 
 Copy everything below this line into a fresh chat with a frontier
-model (Claude Opus / GPT-5 / Gemini 2.5 / etc.). Attach or paste the
-contents of `README.md`, `USAGE.md`, `ROADMAP.md`, and `CLAUDE.md`
-from the repo. Then send the prompt.
+model (Claude Opus / GPT-5 / Gemini 2.5 / etc.). Attach or paste these
+6 files from the repo (in this order):
+
+1. `README.md` — landing-page positioning + status line
+2. `USAGE.md` — what the user actually does with it (hands-on)
+3. `BUILDING_GUIDE.md` — the 10-phase pedagogical re-build doc (shows
+   the technical breadth)
+4. `ROADMAP.md` — build history phase by phase + current counts
+5. `CLAUDE.md` — architecture + conventions + the "session state at
+   handoff" section at the top (crucial for context)
+6. `USER_TODO.md` — what manual work is still pending after the public
+   launch
+
+Then send the prompt.
 
 The goal is a brutally honest, **independent** second opinion — the
 author of this software is wondering if it's actually valuable and
@@ -49,8 +60,13 @@ If the docs don't tell you something, ASK. Don't invent.
   CC-BY-4.0 dataset on Hugging Face Hub + an arXiv preprint, then
   layer B2B education on top **only if** OSS validates demand
   (gate: 500+ GitHub stars OR 10+ bench submissions in 6 months).
-- The author has NOT YET launched publicly. The repo is private. No
-  arXiv preprint submitted. No HF dataset uploaded. No social posts.
+- Repo went **public on 2026-05-24** at
+  <https://github.com/Vadale/penumbra-arena>. NOT YET done: HF
+  dataset upload, arXiv submission, demo video, HN/Reddit/LinkedIn/X
+  posts, bench-submissions companion repo. All 5 have drafts
+  pre-fabricated in a local-only `launch_assets/` folder; the author
+  has the materials and is now deciding whether to actually launch
+  or pivot.
 - The author's primary career interest: being interesting/employable
   to top AI labs OR top quant/fintech firms OR doing a PhD in
   privacy-preserving ML.
@@ -139,9 +155,16 @@ for the honesty, not for the praise.
    variant available.
 2. Paste the prompt above (everything between `# PROMPT` and the
    horizontal rule).
-3. Attach (or paste, in this order): `README.md`, `USAGE.md`,
-   `ROADMAP.md`, `CLAUDE.md`. If your model has a code-attachment
-   feature, attach the full repo and tell it to start with those 4.
+3. Attach (or paste, in this order):
+   - `README.md` (landing page)
+   - `USAGE.md` (what the user does with it)
+   - `BUILDING_GUIDE.md` (technical breadth — 10-phase tutorial)
+   - `ROADMAP.md` (build history + current counts)
+   - `CLAUDE.md` (architecture + the "Session state at handoff"
+     section at the top is critical context)
+   - `USER_TODO.md` (manual launch work still pending)
+   If your model has a code-attachment / repo-clone feature, attach
+   the public repo URL and tell it to start with those 6 files.
 4. Read the verdict carefully. If the model hedges, push back: "give
    me a sharper, less hedged version. I want the worst-case honest
    assessment."

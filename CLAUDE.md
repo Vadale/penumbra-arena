@@ -17,6 +17,64 @@ The codebase exists to teach. Every package directory is an entry point for
 later "explain this" sessions with the user. Code quality matters as much as
 feature count.
 
+## Session state at handoff (2026-05-24, last updated by Claude Opus 4.7)
+
+**Stage**: post-interactive-lab, post-launch-prep. The code is v3.0-ready,
+the repo is PUBLIC on GitHub, all 5 audit-finding fixes shipped, the UX +
+interactivity waves shipped, USAGE + BUILDING_GUIDE docs shipped.
+
+**Where the user is in their journey**:
+
+- Repo `Vadale/penumbra-arena` flipped to **PUBLIC** today (2026-05-24).
+  15 topics added. README has `![hero]` banner; `index.html` has full
+  og:image meta tags.
+- Email `lemostream@proton.me` is the canonical contact (in SECURITY.md,
+  CODE_OF_CONDUCT.md, USAGE.md, dataset card).
+- Hero (`docs/hero.png`, 258 KB) + OG image (`docs/og.png`, 218 KB) both
+  in `docs/`, committed + pushed.
+- Local-only **`launch_assets/`** folder (gitignored) contains 14
+  pre-fabricated drafts for the manual launch steps:
+  - `hf_dataset_card/README.md` + `upload.sh` for Hugging Face Hub
+  - `bench_submissions_repo/` skeleton (README + SUBMISSION_GUIDE + validate.yml)
+  - `hn_reddit_drafts/` (HN Show + r/ML + r/cryptography + LinkedIn + X
+    thread)
+  - `demo_video/` (3-min script + OBS setup notes)
+  - `arxiv/conversion_notes.md` (pandoc + bibliography roadmap)
+- The user has NOT YET: uploaded the HF dataset; created the bench-
+  submissions companion repo; recorded the demo video; submitted to
+  arXiv; posted on HN/Reddit/LinkedIn/X.
+
+**The user is moving to another model** (possibly different vendor, or a
+fresh Claude Code session) to:
+- Get a second-opinion verdict on whether Penumbra has actual value
+  (see `EVALUATION_PROMPT.md` — the prompt is designed to elicit honest
+  unfavourable verdicts, not flattery)
+- Possibly continue the launch sequence (HF / bench repo / demo / arXiv /
+  social posts) based on that verdict.
+
+**What the next model should do FIRST**:
+
+1. Read `EVALUATION_PROMPT.md` if the user asks for value assessment.
+2. Read `USAGE.md` + `BUILDING_GUIDE.md` to understand what the project
+   IS before commenting on it.
+3. Read `USER_TODO.md` (top "REPO VISIBILITY GATE" + P0/P1/P2 sections)
+   to understand the launch state.
+4. Read `launch_assets/README.md` (local-only) for the manual launch
+   workflow Claude already pre-fabricated.
+5. Honor [[project-penumbra-visibility-gate]] — the repo is already
+   public; don't undo it.
+
+**Important guardrails**:
+- **Do NOT** suggest "rewrite in X language" or "add more features" —
+  the project is intentionally broad and the author is now in
+  positioning / launch mode, not building mode.
+- **Do NOT** flatter ("this is impressive!" / "great engineering!") —
+  the author has heard enough; the value question is what matters.
+- **Do NOT** make the repo private again, force-push main, delete
+  branches, or upload to HF without explicit user permission for the
+  specific action — these are all hard-to-undo (see repo-visibility-
+  gate memory).
+
 ## Architecture map
 
 Hexagonal (ports & adapters). Pure domain in `packages/core/`; adapters elsewhere.
