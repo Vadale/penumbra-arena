@@ -57,6 +57,7 @@ function Cell({
       onClick={onClick}
       className="group w-full border border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-bg)] px-2 py-1 text-left hover:border-[color:var(--color-penumbra-cyan)]"
       title={onClick ? "click for detail chart" : undefined}
+      aria-label={onClick ? `${label}: ${value}. Open detail chart.` : `${label}: ${value}`}
     >
       <div className="flex items-start justify-between">
         <div>

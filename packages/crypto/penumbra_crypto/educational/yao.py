@@ -224,9 +224,9 @@ def compare_millionaires(a: int, b: int, *, bits: int = 16) -> dict[str, int | b
     of constant-wire reuse, which is a separate optimisation.
     """
     if a < 0 or b < 0:
-        raise ValueError("inputs must be non-negative")
+        raise ValueError(f"inputs must be non-negative (got a={a}, b={b})")
     if a >= 2**bits or b >= 2**bits:
-        raise ValueError(f"inputs must fit in {bits} bits")
+        raise ValueError(f"inputs must fit in {bits} bits (got a={a}, b={b})")
     a_bits = [(a >> i) & 1 for i in range(bits)]
     b_bits = [(b >> i) & 1 for i in range(bits)]
 
