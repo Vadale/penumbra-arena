@@ -34,6 +34,10 @@ class Lesson:
     id: str
     title: str
     steps: tuple[Step, ...]
+    narrative: str = ""
+    prereqs: tuple[str, ...] = ()
+    pillars_touched: tuple[str, ...] = ()
+    difficulty: str = ""
 
 
 def list_lessons() -> list[Lesson]:
@@ -72,6 +76,10 @@ def _load_lesson(path: object) -> Lesson:
             )
             for step in data["steps"]
         ),
+        narrative=str(data.get("narrative", "")),
+        prereqs=tuple(str(p) for p in data.get("prereqs", []) or []),
+        pillars_touched=tuple(str(p) for p in data.get("pillars_touched", []) or []),
+        difficulty=str(data.get("difficulty", "")),
     )
 
 

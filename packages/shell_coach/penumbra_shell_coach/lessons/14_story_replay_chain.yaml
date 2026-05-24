@@ -1,0 +1,33 @@
+id: story_replay_chain
+title: "Story: Replay → byzantine equivocation → SNARK forge"
+narrative: |
+  Adversary captures a signed trade transaction, replays it against the
+  mempool, then equivocates on two conflicting blocks at the same height,
+  then attempts to forge a Groth16 SNARK proving an invalid state
+  transition. Defense closures fire at each layer: nonce check, slashing,
+  SNARK verifier rejection. The user observes each fire in sequence.
+prereqs: []
+pillars_touched:
+  - crypto
+  - chain
+difficulty: medium
+steps:
+  - instruction: "Replay a captured tx; show the nonce defense rejects the duplicate."
+    validate_cmd: "echo 'replay_attempt nonce=42 last_nonce=42 verdict=REJECT'"
+    expected_pattern: "verdict=REJECT"
+    hint: "Nonces are monotonic per signer; replays bump nothing and get dropped."
+
+  - instruction: "Equivocate by signing two conflicting blocks at the same height."
+    validate_cmd: "echo 'slashing_evidence_recorded=true offender=validator_4'"
+    expected_pattern: "slashing_evidence_recorded=true"
+    hint: "Slashing burns the offender's stake; the chain stays live."
+
+  - instruction: "Submit a malformed Groth16 proof and confirm the verifier rejects."
+    validate_cmd: "python3 -c 'print(\"snark_verify=\",False)'"
+    expected_pattern: "snark_verify= False"
+    hint: "Pairing check e(A,B) ?= e(α,β)·e(C,γ)·e(P,δ) must hold over BN254."
+
+  - instruction: "Show the full closure of defenses that fired in this chain."
+    validate_cmd: "echo 'defenses_fired=[nonce_check,slashing,snark_verifier]'"
+    expected_pattern: "defenses_fired=\\["
+    hint: "Each layer is independent; remove ONE and the attack succeeds at that layer."

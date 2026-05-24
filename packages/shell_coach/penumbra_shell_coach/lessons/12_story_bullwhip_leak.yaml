@@ -1,0 +1,43 @@
+id: story_bullwhip_leak
+title: "Story: The bullwhip leak — supplier → carrier → MAPPO → wealth"
+narrative: |
+  An upstream supplier passively observes aggregated downstream demand on the
+  multi-echelon logistics graph. The amplified "bullwhip" signal lets them
+  fingerprint which carrier was dispatched, link that carrier to an agent id
+  via the dispatch KPI, query the shared MAPPO actor with membership-inference
+  to recover that agent's recent trajectory, predict its next trade, then
+  inject a poisoning trade that corrupts GARCH volatility — cascading into a
+  measurable wealth shift. ONE STORY THAT TOUCHES EVERY PILLAR.
+prereqs: []
+pillars_touched:
+  - logistics
+  - statistics
+  - neural_networks
+  - rl
+  - crypto
+difficulty: hard
+steps:
+  - instruction: "Print the amplified demand variance an upstream tier sees (toy bullwhip ratio > 1)."
+    validate_cmd: "printf 'sigma_upstream/sigma_downstream = %.2f\\n' 2.7"
+    expected_pattern: "sigma_upstream"
+    hint: "Bullwhip amplifies variance upstream. Defense: k-anonymity on demand release."
+
+  - instruction: "Fingerprint a carrier by its dispatch KPI signature (toy: pick top earner)."
+    validate_cmd: "printf 'top_earner=carrier_%d wealth=%d\\n' 7 1240"
+    expected_pattern: "top_earner=carrier_"
+    hint: "DP-noised wealth or mix-net routing breaks this link."
+
+  - instruction: "Run a membership-inference query against the shared MAPPO policy (toy AUC)."
+    validate_cmd: "python3 -c 'auc=0.78; print(f\"mi_auc={auc}\")'"
+    expected_pattern: "mi_auc=0\\.[5-9]"
+    hint: "AUC > 0.5 means the policy leaks training-set membership. DP-SGD lowers it."
+
+  - instruction: "Predict the next trade and inject the poisoning order."
+    validate_cmd: "echo 'predicted=BUY,poison=SELL@-3sigma'"
+    expected_pattern: "poison=SELL"
+    hint: "GARCH is sensitive to outliers; Huber/MAD estimators are the robust fix."
+
+  - instruction: "Measure the resulting wealth-shift on the victim agent."
+    validate_cmd: "printf 'delta_wealth=%+d\\n' -187"
+    expected_pattern: "delta_wealth=-"
+    hint: "Stacking mix-net + DP candles + Krum reduces the cascade to ~0."

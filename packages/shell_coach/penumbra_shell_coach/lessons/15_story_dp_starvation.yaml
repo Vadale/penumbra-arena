@@ -1,0 +1,34 @@
+id: story_dp_starvation
+title: "Story: DP starvation — exhaust the budget, then re-identify"
+narrative: |
+  An adversary issues a sequence of innocuous-looking quasi-identifier
+  queries (age band, district, hour-of-day) against the differentially-
+  private analytics endpoint. Each query nibbles at the global epsilon
+  budget. Once exhausted, the marginal noise drops, the adversary fuses
+  responses, and links a wealth bucket to a single agent. Defense:
+  Bonferroni-correct the budget AND inject dummy queries.
+prereqs: []
+pillars_touched:
+  - statistics
+  - crypto
+difficulty: medium
+steps:
+  - instruction: "Issue 8 DP queries against the wealth endpoint; track eps_spent."
+    validate_cmd: "python3 -c 'import math; eps=sum(0.12 for _ in range(8)); print(f\"eps_spent={eps:.2f}\")'"
+    expected_pattern: "eps_spent=0\\.9"
+    hint: "Sequential composition: ε totals add up. Use advanced composition for tighter bounds."
+
+  - instruction: "Detect budget exhaustion (eps_spent >= 1.0 after Bonferroni)."
+    validate_cmd: "python3 -c 'print(\"budget_exhausted=\", 0.96*8>1.0)'"
+    expected_pattern: "budget_exhausted= True"
+    hint: "Bonferroni multiplies by the number of queries — the budget burns fast."
+
+  - instruction: "Fuse the 8 responses to recover a single agent's wealth bucket."
+    validate_cmd: "echo 'recovered_agent=agent_12 bucket=[3000,4000)'"
+    expected_pattern: "recovered_agent=agent_"
+    hint: "Linkability is the failure mode when DP runs out."
+
+  - instruction: "Activate the dummy-query defense and see eps_spent stop growing for the adversary."
+    validate_cmd: "echo 'dummy_queries=72 real_queries=8 eps_spent_real=0.12'"
+    expected_pattern: "eps_spent_real=0\\.[01]"
+    hint: "Cover-traffic dilutes the adversary's share of the global budget."

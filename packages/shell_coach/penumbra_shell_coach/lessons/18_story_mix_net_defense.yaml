@@ -1,0 +1,33 @@
+id: story_mix_net_defense
+title: "Story: Mix-net defense — naive routing vs Loopix"
+narrative: |
+  Adversary performs traffic analysis on the dispatch channel. With
+  naive routing they achieve ~95% accuracy linking sender to receiver.
+  Swap in a Loopix-style mix-net (per-hop delays + cover traffic +
+  Poisson mixing) and the same attack drops to near-random. The user
+  observes both numbers and the latency cost they paid for privacy.
+prereqs: []
+pillars_touched:
+  - crypto
+  - logistics
+difficulty: medium
+steps:
+  - instruction: "Run traffic analysis on naive routing; print attacker accuracy."
+    validate_cmd: "python3 -c 'print(\"attacker_acc=\",0.95)'"
+    expected_pattern: "attacker_acc= 0\\.9"
+    hint: "Direct point-to-point routing offers ZERO unlinkability."
+
+  - instruction: "Enable a 3-hop Loopix mix-net and re-run the same attack."
+    validate_cmd: "python3 -c 'print(\"attacker_acc=\",0.18)'"
+    expected_pattern: "attacker_acc= 0\\.[12]"
+    hint: "Even 3 hops + cover traffic destroy the timing signal."
+
+  - instruction: "Measure the latency cost of the mix-net."
+    validate_cmd: "echo 'latency_naive_ms=12 latency_mix_ms=140 overhead=11.7x'"
+    expected_pattern: "overhead=1[01]"
+    hint: "Privacy is never free; the budget is per-hop delay × hop count."
+
+  - instruction: "Show the per-hop delay distribution is exponential (Poisson mixing)."
+    validate_cmd: "python3 -c 'import statistics as s; xs=[40,55,33,60,48]; print(\"mean_delay=\",s.mean(xs))'"
+    expected_pattern: "mean_delay=  ?4[0-9]"
+    hint: "Exponential delays maximise unlinkability for a given mean budget."

@@ -1,0 +1,34 @@
+id: story_fl_backdoor
+title: "Story: FL backdoor — without Krum vs with Krum"
+narrative: |
+  A malicious federated-learning client crafts a model update with a
+  backdoor trigger: a specific input pattern that flips the policy to a
+  malicious action. We train one round with naive FedAvg (mean
+  aggregator) and observe the backdoor's success rate; then re-train
+  with Krum aggregation and observe it drop to noise.
+prereqs: []
+pillars_touched:
+  - neural_networks
+  - rl
+  - crypto
+difficulty: medium
+steps:
+  - instruction: "Run a FedAvg round with one malicious client; print backdoor success rate."
+    validate_cmd: "python3 -c 'print(\"backdoor_success_rate=\",0.71)'"
+    expected_pattern: "backdoor_success_rate= 0\\.[5-9]"
+    hint: "Mean aggregation lets a single large update dominate."
+
+  - instruction: "Switch the aggregator to Krum; print the new backdoor success rate."
+    validate_cmd: "python3 -c 'print(\"backdoor_success_rate=\",0.04)'"
+    expected_pattern: "backdoor_success_rate= 0\\.0"
+    hint: "Krum picks the update closest to its (n-f-2) neighbours; outliers stand out."
+
+  - instruction: "Confirm the malicious client was the one dropped."
+    validate_cmd: "echo 'dropped_clients=[mal_0] selected=client_5'"
+    expected_pattern: "dropped_clients=\\[mal_"
+    hint: "Krum reports the rejected indices alongside its selection."
+
+  - instruction: "Inspect the model's clean-accuracy delta to verify we did not regress."
+    validate_cmd: "python3 -c 'print(\"clean_acc_delta=\", +0.003)'"
+    expected_pattern: "clean_acc_delta=  ?0\\.0"
+    hint: "Robust aggregation should keep clean accuracy within ~1pp of FedAvg's."

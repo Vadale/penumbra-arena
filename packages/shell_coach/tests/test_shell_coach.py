@@ -148,3 +148,60 @@ def test_cli_interpret_known_error() -> None:
     result = runner.invoke(app, ["interpret", "zsh: command not found: rg"])
     assert result.exit_code == 0
     assert "brew install rg" in result.output
+
+
+# Phase 5 Tier 5 - story-mode lessons
+
+STORY_LESSON_IDS = (
+    "story_bullwhip_leak",
+    "story_honest_validator",
+    "story_replay_chain",
+    "story_dp_starvation",
+    "story_fl_backdoor",
+    "story_carrier_extortion",
+    "story_mix_net_defense",
+    "story_ctf_speedrun",
+)
+
+
+def test_story_lessons_are_all_discoverable() -> None:
+    ids = {lesson.id for lesson in list_lessons()}
+    assert set(STORY_LESSON_IDS).issubset(ids)
+
+
+@pytest.mark.parametrize("story_id", STORY_LESSON_IDS)
+def test_story_lesson_loads_and_has_extended_fields(story_id: str) -> None:
+    lesson = load_lesson(story_id)
+    assert lesson.title
+    assert lesson.narrative, f"{story_id}: narrative is required"
+    assert lesson.difficulty in {"easy", "medium", "hard"}
+    assert len(lesson.pillars_touched) >= 1
+    assert isinstance(lesson.prereqs, tuple)
+    assert len(lesson.steps) >= 3
+
+
+@pytest.mark.parametrize("story_id", STORY_LESSON_IDS)
+def test_story_lesson_steps_are_shell_safe(story_id: str) -> None:
+    lesson = load_lesson(story_id)
+    for step in lesson.steps:
+        assert shell_safe(step.validate_cmd), (
+            f"{story_id}: unsafe validate_cmd: {step.validate_cmd}"
+        )
+
+
+@pytest.mark.parametrize("story_id", STORY_LESSON_IDS)
+def test_story_lesson_first_step_passes_validator(story_id: str) -> None:
+    lesson = load_lesson(story_id)
+    result = check_step(lesson.steps[0])
+    assert result.succeeded, (
+        f"{story_id}: first step did not validate. "
+        f"cmd={lesson.steps[0].validate_cmd!r} output={result.output!r}"
+    )
+
+
+def test_story_prereqs_reference_real_lessons() -> None:
+    all_ids = {lesson.id for lesson in list_lessons()}
+    for story_id in STORY_LESSON_IDS:
+        lesson = load_lesson(story_id)
+        for prereq in lesson.prereqs:
+            assert prereq in all_ids, f"{story_id}: prereq {prereq!r} not found"

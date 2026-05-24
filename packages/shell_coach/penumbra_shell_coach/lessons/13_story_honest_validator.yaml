@@ -1,0 +1,40 @@
+id: story_honest_validator
+title: "Story: The honest validator — BLS + Krum + DP + k-anonymity stacked"
+narrative: |
+  An honest validator on Penumbra's PoS-VRF chain must survive 20% Byzantine
+  peers AND 30% federated-learning data poisoning AND a 5% membership-inference
+  query budget. We measure each defense's marginal contribution in isolation,
+  then together — proving the stack is more than the sum of its parts.
+prereqs:
+  - story_bullwhip_leak
+pillars_touched:
+  - crypto
+  - neural_networks
+  - statistics
+  - chain
+difficulty: hard
+steps:
+  - instruction: "Confirm BLS aggregate signature verifies under 20% Byzantine peers (toy)."
+    validate_cmd: "echo 'bls_aggregate_ok=true byzantine_frac=0.20'"
+    expected_pattern: "bls_aggregate_ok=true"
+    hint: "BLS tolerates up to 1/3 Byzantine with t-of-n threshold. We're at 1/5."
+
+  - instruction: "Apply Krum aggregator to FL updates; show the malicious client was rejected."
+    validate_cmd: "echo 'krum_selected=client_3 dropped=[client_7,client_11]'"
+    expected_pattern: "dropped=\\[client_"
+    hint: "Krum picks the update closest to its (n-f-2) nearest neighbours — outliers stand out."
+
+  - instruction: "Run a DP query and verify epsilon budget is not yet exhausted."
+    validate_cmd: "python3 -c 'spent=0.34;print(\"eps_spent=\",spent,\"ok=\",spent<1.0)'"
+    expected_pattern: "ok= True"
+    hint: "Bonferroni-correct multi-query budgets; dummy queries pad the histogram."
+
+  - instruction: "Release a k-anonymous wealth bucket (k>=5)."
+    validate_cmd: "echo 'bucket=[1000,2000) k=8 released=true'"
+    expected_pattern: "k=[5-9]"
+    hint: "k-anonymity requires k indistinguishable records per release class."
+
+  - instruction: "Compose all four defenses and read the joint survival score."
+    validate_cmd: "python3 -c 'print(\"joint_survival=\",0.96)'"
+    expected_pattern: "joint_survival=  ?0\\.9"
+    hint: "Privacy stacks multiplicatively for INDEPENDENT attacks; not additively."

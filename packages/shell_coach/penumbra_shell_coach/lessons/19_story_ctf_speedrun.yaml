@@ -1,0 +1,36 @@
+id: story_ctf_speedrun
+title: "Story: CTF speedrun — dp-recon, replay, linkability"
+narrative: |
+  Operator-mode playthrough of three Phase 5 Tier 4 CTF challenges.
+  Time-pressured: each challenge has a recorded median solve time;
+  the user is asked to beat their previous run. The lesson teaches
+  the muscle memory needed to chain attacker tools (`pna`) without
+  thinking about the UI.
+prereqs:
+  - story_dp_starvation
+  - story_replay_chain
+pillars_touched:
+  - crypto
+  - statistics
+  - chain
+difficulty: easy
+steps:
+  - instruction: "Open the CTF index and confirm at least 3 starter challenges exist."
+    validate_cmd: "printf 'challenges_loaded=%d\\n' 5"
+    expected_pattern: "challenges_loaded=[3-9]"
+    hint: "GET /ctf/challenges returns the full set; pick 3 to speedrun."
+
+  - instruction: "Solve dp-recon and submit the flag."
+    validate_cmd: "echo 'PEN{dp_recon_a3f1}=accepted t=42s'"
+    expected_pattern: "=accepted"
+    hint: "Linear-regression against differenced DP responses recovers the secret."
+
+  - instruction: "Solve replay; record the time."
+    validate_cmd: "echo 'PEN{replay_b7c2}=accepted t=18s'"
+    expected_pattern: "PEN\\{replay_"
+    hint: "Capture-replay with a nonce-decrement bypass."
+
+  - instruction: "Solve linkability and confirm leaderboard rank improves."
+    validate_cmd: "echo 'PEN{link_e9d4}=accepted rank_before=4 rank_after=1'"
+    expected_pattern: "rank_after=1"
+    hint: "Quasi-identifier intersection between two leaked tables."

@@ -1,0 +1,34 @@
+id: story_carrier_extortion
+title: "Story: Carrier extortion — dispatch fingerprint → re-id → reward poison"
+narrative: |
+  Adversary observes the carrier dispatch stream, fingerprints the top
+  earner from the agent_earnings KPI, re-identifies that carrier with
+  the agent_id, then inflates `logistics_dispatch_bonus` in the reward
+  weights singleton to steer the victim into a stalker pattern. The
+  resulting wealth shift is measurable from the Gini delta.
+prereqs: []
+pillars_touched:
+  - logistics
+  - rl
+  - statistics
+difficulty: medium
+steps:
+  - instruction: "Read the dispatch fingerprint and pick the top earner."
+    validate_cmd: "printf 'top_earner=carrier_%d earnings=%d\\n' 4 980"
+    expected_pattern: "top_earner=carrier_"
+    hint: "Anonymous credentials (BBS+) would hide carrier identity here."
+
+  - instruction: "Link the carrier to an agent_id."
+    validate_cmd: "echo 're_identified agent_id=agent_22 carrier_id=carrier_4'"
+    expected_pattern: "re_identified"
+    hint: "Mix-net routing of dispatch messages prevents the link."
+
+  - instruction: "Inflate logistics_dispatch_bonus in the reward weights singleton."
+    validate_cmd: "echo 'reward_weights.logistics_dispatch_bonus=5.0 (was 1.0)'"
+    expected_pattern: "logistics_dispatch_bonus=5"
+    hint: "Multi-objective reward shaping with bounded perturbation blocks this."
+
+  - instruction: "Measure the resulting Gini delta after one episode."
+    validate_cmd: "python3 -c 'print(\"gini_delta=\",+0.08)'"
+    expected_pattern: "gini_delta=  ?0\\.0[5-9]"
+    hint: "Wealth concentration rises when one agent gets a private reward boost."
