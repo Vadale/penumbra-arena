@@ -63,6 +63,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Key zeroization helper + applied where secret keys leave scope.
 - VRF + timing-sidechannel: `==` → `hmac.compare_digest`.
 
+#### Operator Save & Resume (videogame-style)
+- `packages/operator/penumbra_operator/save_resume.py` — save / load /
+  discard helpers + `ActiveSave` pointer record. Persists ScenarioRunner
+  state + full world snapshot under
+  `state/operator_sessions/<session_id>/`. Pointer at
+  `state/operator_sessions/active.json`.
+- `packages/core/penumbra_core/persistence.py` — new shared
+  `atomic_write(path, data, mode=0o644)` (tmp + os.replace);
+  `save_simulation` now routes through it.
+- `packages/transport/penumbra_transport/api.py` — 3 endpoints:
+  `GET /operator/sessions/resumable`, `POST /operator/sessions/resume`,
+  `POST /operator/sessions/discard`. Save hooks on scenario start,
+  per-action drain, status (terminal), abandon.
+- `apps/web/src/pages/Operator.tsx` — resume banner with `[Resume]` /
+  `[Discard]` buttons; probes `/operator/sessions/resumable` on mount.
+- Time semantics: sim-tick based (not wall-clock). The clock pauses
+  while the player is away; failure clauses resume from the saved
+  tick. All 12 starter scenarios already use elapsed-tick predicates;
+  a parametrised test asserts no wall-clock predicate sneaks in.
+- 9 backend tests + 19 endpoint tests + 2 vitests, all green.
+
+#### Post-audit visibility + organicity fixes
+- Wired 8 Phase 5 crypto tiles into `AnalyticsPanel.tsx` (FROST,
+  SPHINCS+, Verkle, BBS+, threshold ECDSA, Yao, PSI, mix-net) —
+  endpoints + charts + DetailModal entries had shipped but no
+  `<Cell>` existed; from a user POV these 8 features were invisible.
+- `apps/web/vite.config.ts` — `/ctf` and `/attacker` added to dev
+  proxy (CTFChart + CustomPolicyChart no longer 404 in `pnpm dev`).
+- `dashboard_pipeline.py` — `cpi.shock` event now actually emits
+  (was a dormant subscriber). Mirrors the `garch.spike` pattern;
+  EMA baseline + 30% threshold; 4 emit-tests.
+- Doc count refresh: 91 clickable tiles / 96 chart components
+  (was claimed "~98"); 832 backend tests (was claimed "~786").
+
 ### Added — earlier this release
 
 #### Logistics layer (Tier 1 + 2)

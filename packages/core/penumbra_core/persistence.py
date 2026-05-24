@@ -20,10 +20,19 @@ Two things are deliberately *not* captured:
 We persist as a pickled dict for fidelity. NetworkX graphs are pickle-
 friendly out of the box. Files end up at
 `state/snapshots/<name>/simulation.pkl`.
+
+Shared atomic-write helper: :func:`atomic_write` mirrors the
+``_atomic_owner_only_write`` idiom from
+``penumbra_chain.persistence`` (tmp file + fsync + os.replace), but
+defaults to mode ``0o644`` so non-secret operator-save payloads
+(session metadata, world snapshots) re-use the crash-safe primitive
+without forcing owner-only perms across the codebase. Secret-bearing
+chain writes keep their bespoke ``0o600`` helper.
 """
 
 from __future__ import annotations
 
+import os
 import pickle
 from collections.abc import Callable
 from dataclasses import asdict
@@ -37,6 +46,25 @@ from penumbra_core.arena import Arena, NodeId
 from penumbra_core.match import Match
 from penumbra_core.rng import bootstrap
 from penumbra_core.simulation import Simulation, SimulationConfig
+
+
+def atomic_write(path: Path, data: bytes, *, mode: int = 0o644) -> None:
+    """Crash-safe write: tmp + fsync + ``os.replace`` onto ``path``.
+
+    Shared utility re-used by the operator save-resume layer (and any
+    other caller that needs a torn-write-free dump). Defaults to
+    ``0o644``; pass ``mode=0o600`` for secret material to match the
+    chain's per-validator-secrets helper.
+    """
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    fd = os.open(str(tmp), flags, mode)
+    try:
+        os.write(fd, data)
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    os.replace(str(tmp), str(path))
 
 
 def save_simulation(sim: Simulation, path: Path) -> None:
@@ -71,7 +99,7 @@ def save_simulation(sim: Simulation, path: Path) -> None:
         "tick_counter": sim.tick_counter,
         "state": sim.state.value,
     }
-    path.write_bytes(pickle.dumps(state))
+    atomic_write(path, pickle.dumps(state))
 
 
 def load_simulation(

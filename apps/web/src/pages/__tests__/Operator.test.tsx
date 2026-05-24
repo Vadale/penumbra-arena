@@ -123,6 +123,68 @@ describe("Operator console", () => {
     });
   });
 
+  it("renders the resume banner when /operator/sessions/resumable says available", async () => {
+    const resumablePayload = {
+      available: true,
+      session_id: "1779608000-abc",
+      scenario_id: "scn-009-trade-bot-market-maker",
+      scenario_label: "Trade-bot market maker",
+      saved_at_tick: 1234,
+      saved_at_wall_iso: "2026-05-24T12:00:00Z",
+    };
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(((
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "/operator/sessions/resumable")
+        return Promise.resolve(jsonResponse(resumablePayload));
+      if (url === "/operator/sessions/resume" && init?.method === "POST") {
+        return Promise.resolve(jsonResponse({ resumed: true }));
+      }
+      if (url === "/operator/status") return Promise.resolve(jsonResponse(ENABLED_STATUS));
+      return Promise.resolve(jsonResponse({ enabled: true }));
+    }) as unknown as typeof fetch);
+
+    render(<Operator />);
+
+    const banner = await screen.findByRole("alert", { name: /resume your last session/i });
+    expect(banner).toBeInTheDocument();
+    expect(screen.getByText(/Trade-bot market maker/)).toBeInTheDocument();
+    expect(screen.getByText(/tick 1234/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^resume$/i }));
+    await waitFor(() => {
+      const resumeCall = fetchSpy.mock.calls.find(
+        ([url, init]) =>
+          url === "/operator/sessions/resume" &&
+          typeof init === "object" &&
+          init !== null &&
+          (init as RequestInit).method === "POST",
+      );
+      expect(resumeCall).toBeDefined();
+    });
+  });
+
+  it("hides the banner when /operator/sessions/resumable says unavailable", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "/operator/sessions/resumable")
+        return Promise.resolve(jsonResponse({ available: false }));
+      if (url === "/operator/status") return Promise.resolve(jsonResponse(ENABLED_STATUS));
+      return Promise.resolve(jsonResponse({}));
+    }) as unknown as typeof fetch);
+
+    render(<Operator />);
+
+    // Wait a tick so the banner probe resolves and any banner would have
+    // rendered already.
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: /operator status/i })).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("alert", { name: /resume your last session/i })).toBeNull();
+  });
+
   it("re-polls /operator/status on the 1 s interval", async () => {
     vi.useFakeTimers();
     try {

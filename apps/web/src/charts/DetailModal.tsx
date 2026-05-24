@@ -705,7 +705,7 @@ const META: Record<MetricKind, { label: string; description: string; yUnit?: str
   operator_scenarios: {
     label: "Operator — scenario engine (12 starter drills)",
     description:
-      "Phase 6b Tier 5: pick one of 12 starter scenarios (defense, attack, chain, FL, logistics, sandbox) and the runner snapshots the operator's start state then evaluates victory + failure clauses against live state at 1 Hz. Each scenario declares its preconditions, opening event, and per-axis scorecard weights so the composite is comparable across runs.",
+      "Phase 6b Tier 5: pick one of 12 starter scenarios (defense, attack, chain, FL, logistics, sandbox) and the runner snapshots the operator's start state then evaluates victory + failure clauses against live state — at 1 Hz while the Operator panel is open, and at every action via the save-resume hook so a closed tab can be reopened (or the server restarted) and the session resumes from the saved sim-tick. Each scenario declares its preconditions, opening event, and per-axis scorecard weights so the composite is comparable across runs.",
   },
   custom_policy: {
     label: "Custom Agent Policy — sandboxed injection",

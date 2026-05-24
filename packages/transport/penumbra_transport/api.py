@@ -160,6 +160,31 @@ def build_app(
             mappo_runtime=mappo_runtime,
             live_trainer=live_trainer,
         )
+        # Save-resume: surface (but do NOT auto-load) a resumable
+        # session if one is on disk. The player chooses via the banner.
+        try:
+            import os as _os
+            from pathlib import Path as _Path
+
+            from penumbra_operator.save_resume import load_active
+
+            _override = getattr(app.state, "operator_save_dir", None)
+            _env_dir = _os.environ.get("PENUMBRA_OPERATOR_SAVE_DIR")
+            _save_dir: object | None = None
+            if _override is not None:
+                _save_dir = _Path(str(_override))
+            elif _env_dir:
+                _save_dir = _Path(_env_dir)
+            _resumable = load_active(_save_dir)  # type: ignore[arg-type]
+            if _resumable is not None:
+                logger.info(
+                    "resumable session found: %s (scenario=%s, saved_at_tick=%d)",
+                    _resumable.session_id,
+                    _resumable.scenario_id,
+                    _resumable.saved_at_tick,
+                )
+        except Exception:  # pragma: no cover - defensive
+            logger.exception("failed to probe for resumable operator session")
         try:
             yield
         finally:
@@ -2992,6 +3017,11 @@ def build_app(
                     session_logger.record(session_id, due_action, result)
         if len(orch.operator_recent_results) > 200:  # type: ignore[attr-defined]
             del orch.operator_recent_results[: len(orch.operator_recent_results) - 200]  # type: ignore[attr-defined]
+        # Save-resume: snapshot AFTER the action drained so the save
+        # reflects post-action wallet / inventory / arena state. Best-
+        # effort — _save_current_scenario_state is a no-op when no
+        # scenario is live.
+        _save_current_scenario_state()
         # Return the result that matches our action kind, falling back
         # to the last result if coalescing dropped ours (e.g. earlier
         # move overwritten by a later one in the same tick).
@@ -3270,6 +3300,68 @@ def build_app(
             app.state.scenario_runner = runner
         return runner
 
+    # Save-resume: per-app override path lets tests pin save_root to a
+    # tmp_path without touching the global env. Falls back to the
+    # ``PENUMBRA_OPERATOR_SAVE_DIR`` env var so the operator CLI / docker
+    # compose stack can repoint storage too.
+    def _save_resume_dir() -> object:
+        import os as _os
+        from pathlib import Path as _Path
+
+        override = getattr(app.state, "operator_save_dir", None)
+        if override is not None:
+            return _Path(str(override))
+        env = _os.environ.get("PENUMBRA_OPERATOR_SAVE_DIR")
+        if env:
+            return _Path(env)
+        return None
+
+    def _active_save_session_id(runner: object) -> tuple[str, object] | None:
+        """Return (scenario_id, ScenarioSession) for the (single) live scenario, if any."""
+        sessions = getattr(runner, "_sessions", {})  # type: ignore[attr-defined]
+        if not sessions:
+            return None
+        # The runner only carries one active session per scenario id;
+        # the dashboard happens to drive one scenario at a time, so we
+        # take the most-recently-started entry by start_tick.
+        items = list(sessions.items())
+        items.sort(key=lambda kv: int(getattr(kv[1], "start_tick", 0)))
+        scenario_id, session = items[-1]
+        return str(scenario_id), session
+
+    def _save_current_scenario_state() -> None:
+        """Best-effort: snapshot world + scenario session if a scenario is live.
+
+        Wired into start / per-action drain / status (on victory or
+        failure). Swallows save errors so a transient FS hiccup never
+        bricks the running orchestrator — the log line is the only
+        observable trace.
+        """
+        try:
+            orch = app.state.penumbra.orchestrator
+            runner = getattr(app.state, "scenario_runner", None)
+            if runner is None:
+                return
+            active = _active_save_session_id(runner)
+            if active is None:
+                return
+            scenario_id, scn_session = active
+            scenario = runner.get(scenario_id)  # type: ignore[attr-defined]
+            session_id = getattr(orch, "operator_session_id", None) or scenario_id
+            from penumbra_operator.save_resume import save_session
+
+            save_session(
+                session_id=str(session_id),
+                scenario_id=scenario_id,
+                scenario_label=str(getattr(scenario, "title", scenario_id)),
+                scenario_session=scn_session,  # type: ignore[arg-type]
+                simulation=orch.simulation,  # type: ignore[arg-type]
+                node=orch.node,  # type: ignore[arg-type]
+                directory=_save_resume_dir(),  # type: ignore[arg-type]
+            )
+        except Exception:  # pragma: no cover - defensive
+            logger.exception("operator save-resume snapshot failed")
+
     @app.get("/operator/scenarios")
     async def operator_scenarios_list() -> dict[str, object]:
         runner = _get_scenario_runner()
@@ -3308,12 +3400,32 @@ def build_app(
                 payload=opening_payload,
             )
         )
+        # Save-resume Tier 1 trigger: snapshot the just-started scenario
+        # so closing the browser before any action still surfaces a
+        # banner on next boot.
+        _save_current_scenario_state()
         return info
 
     @app.post("/operator/scenarios/{scenario_id}/abandon")
     async def operator_scenarios_abandon(scenario_id: str) -> dict[str, object]:
         runner = _get_scenario_runner()
-        return runner.abandon(scenario_id)  # type: ignore[attr-defined]
+        result = runner.abandon(scenario_id)  # type: ignore[attr-defined]
+        # Save-resume cleanup: drop active.json + the per-session
+        # snapshot dir so a future "Resume?" banner doesn't offer an
+        # abandoned scenario back to the player.
+        try:
+            from penumbra_operator.save_resume import discard_active
+
+            orch = app.state.penumbra.orchestrator
+            session_id = getattr(orch, "operator_session_id", None) or scenario_id
+            discard_active(
+                _save_resume_dir(),  # type: ignore[arg-type]
+                session_id=str(session_id),
+                drop_snapshot_dir=True,
+            )
+        except Exception:  # pragma: no cover - defensive
+            logger.exception("save-resume discard on abandon failed")
+        return result
 
     @app.get("/operator/scenarios/{scenario_id}/status")
     async def operator_scenarios_status(scenario_id: str) -> dict[str, object]:
@@ -3322,9 +3434,136 @@ def build_app(
         runner = _get_scenario_runner()
         _orch, _queue, ctx = _require_operator()
         try:
-            return runner.check_status(scenario_id, ctx)  # type: ignore[attr-defined]
+            status = runner.check_status(scenario_id, ctx)  # type: ignore[attr-defined]
         except ScenarioError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        # Save-resume: when the runner detects victory or failure on
+        # this poll, drop the active.json so the banner stops offering
+        # a finished session. The per-session snapshot dir stays for
+        # post-mortem inspection.
+        if status.get("victory_met") or status.get("failure_met"):
+            try:
+                from penumbra_operator.save_resume import discard_active
+
+                discard_active(_save_resume_dir())  # type: ignore[arg-type]
+            except Exception:  # pragma: no cover - defensive
+                logger.exception("save-resume discard on terminal status failed")
+        return status
+
+    # ── Save-resume: banner / resume / discard endpoints ──────────
+    #
+    # NOTE registration order: these three sit BEFORE the Tier 6
+    # ``/operator/sessions/{session_id}/replay`` block so the static
+    # ``/resumable`` / ``/resume`` / ``/discard`` paths are matched
+    # ahead of the parametric ``{session_id}`` slot.
+
+    @app.get("/operator/sessions/resumable")
+    async def operator_sessions_resumable() -> dict[str, object]:
+        """Banner metadata for the Resume-Your-Last-Session UI."""
+        from penumbra_operator.save_resume import SaveResumeError, load_active
+
+        try:
+            active = load_active(_save_resume_dir())  # type: ignore[arg-type]
+        except SaveResumeError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        if active is None:
+            return {"available": False}
+        return {
+            "available": True,
+            "session_id": active.session_id,
+            "scenario_id": active.scenario_id,
+            "scenario_label": active.scenario_label,
+            "saved_at_tick": active.saved_at_tick,
+            "saved_at_wall_iso": active.saved_at_wall_iso,
+        }
+
+    @app.post("/operator/sessions/resume")
+    async def operator_sessions_resume() -> dict[str, object]:
+        """Hot-swap the orchestrator's chain + simulation from active.json.
+
+        Mirrors the ``/world/load`` hot-swap policy: the chain has no
+        in-flight state so a swap is safe; the simulation snapshot is
+        loaded into the live orchestrator and the operator slot + the
+        scenario runner are re-seeded so the player picks up exactly
+        where they left off. The clock effectively pauses while the
+        player was away — the sim resumes from the saved tick, not
+        from wall-clock-now.
+        """
+        from penumbra_operator.save_resume import (
+            SaveResumeError,
+            load_active,
+            load_scenario_session,
+            load_world_for_session,
+        )
+
+        directory = _save_resume_dir()
+        try:
+            active = load_active(directory)  # type: ignore[arg-type]
+        except SaveResumeError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        if active is None:
+            raise HTTPException(status_code=404, detail="no resumable session on disk")
+        try:
+            node, simulation = load_world_for_session(
+                active.session_id,
+                directory,  # type: ignore[arg-type]
+            )
+            scn_session = load_scenario_session(
+                active.session_id,
+                directory,  # type: ignore[arg-type]
+            )
+        except SaveResumeError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+        state: AppState = app.state.penumbra
+        orch = state.orchestrator
+        # Hot-swap the chain + simulation references on the orchestrator.
+        orch.node = node
+        orch.simulation = simulation
+        state.simulation = simulation
+        # Rebuild the operator scenario runner so the runner's session
+        # table contains the restored ScenarioSession (start_tick +
+        # coins_start + custom counters); the dashboard's status poll
+        # will then evaluate the victory / failure clauses against the
+        # restored sim instead of an empty one.
+        from penumbra_operator.scenarios import ScenarioRunner
+
+        existing_runner = getattr(app.state, "scenario_runner", None)
+        if existing_runner is None:
+            existing_runner = ScenarioRunner.from_directory()
+            app.state.scenario_runner = existing_runner
+        existing_runner._sessions[active.scenario_id] = scn_session  # type: ignore[attr-defined]
+        # Restore the orchestrator's session id so subsequent saves
+        # land under the same per-session directory rather than minting
+        # a fresh one (and orphaning the just-restored save).
+        orch.operator_session_id = active.session_id
+        return {
+            "resumed": True,
+            "session_id": active.session_id,
+            "scenario_id": active.scenario_id,
+            "scenario_label": active.scenario_label,
+            "tick": int(simulation.tick_counter),
+            "chain_height": int(node.height),
+        }
+
+    @app.post("/operator/sessions/discard")
+    async def operator_sessions_discard() -> dict[str, object]:
+        """Drop ``active.json`` so the banner stops surfacing the save."""
+        from penumbra_operator.save_resume import discard_active, load_active
+
+        directory = _save_resume_dir()
+        active = None
+        try:
+            active = load_active(directory)  # type: ignore[arg-type]
+        except Exception:  # pragma: no cover - defensive
+            active = None
+        session_id = active.session_id if active is not None else None
+        result = discard_active(
+            directory,  # type: ignore[arg-type]
+            session_id=session_id,
+            drop_snapshot_dir=True,
+        )
+        return {"discarded": True, **result}
 
     # ── Phase 6b Tier 6 — session replay + leaderboard ────────────
 

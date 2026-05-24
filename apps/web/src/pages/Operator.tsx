@@ -123,6 +123,15 @@ function coercePayload(kind: ActionKind, raw: Record<string, string>): Record<st
   return out;
 }
 
+interface ResumableSession {
+  available: boolean;
+  session_id?: string;
+  scenario_id?: string;
+  scenario_label?: string;
+  saved_at_tick?: number;
+  saved_at_wall_iso?: string;
+}
+
 export function Operator() {
   const [status, setStatus] = useState<OperatorStatus | null>(null);
   const [log, setLog] = useState<LogEntry[]>([]);
@@ -131,6 +140,9 @@ export function Operator() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [logCounter, setLogCounter] = useState(0);
+  const [resumable, setResumable] = useState<ResumableSession | null>(null);
+  const [resumeBusy, setResumeBusy] = useState(false);
+  const [resumeError, setResumeError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -155,6 +167,52 @@ export function Operator() {
   useEffect(() => {
     setPayload(emptyPayloadFor(kind));
   }, [kind]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const probe = async () => {
+      try {
+        const res = await fetch("/operator/sessions/resumable");
+        if (!res.ok) return;
+        const body = (await res.json()) as ResumableSession;
+        if (!cancelled) setResumable(body);
+      } catch {
+        // no banner if the probe fails — next mount can retry
+      }
+    };
+    void probe();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const onResume = async () => {
+    setResumeError(null);
+    setResumeBusy(true);
+    try {
+      const res = await fetch("/operator/sessions/resume", { method: "POST" });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { detail?: string };
+        setResumeError(body.detail ?? `resume failed: ${res.status}`);
+        return;
+      }
+      setResumable({ available: false });
+    } catch (exc) {
+      setResumeError(exc instanceof Error ? exc.message : "resume failed");
+    } finally {
+      setResumeBusy(false);
+    }
+  };
+
+  const onDiscard = async () => {
+    setResumeError(null);
+    try {
+      await fetch("/operator/sessions/discard", { method: "POST" });
+    } catch {
+      // best-effort: hide the banner regardless so the user is unblocked
+    }
+    setResumable({ available: false });
+  };
 
   const onField = (field: string) => (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const value = event.target.value;
@@ -273,6 +331,46 @@ export function Operator() {
           </a>
         </nav>
       </header>
+
+      {resumable?.available && (
+        <div
+          role="alert"
+          aria-label="Resume your last session"
+          className="flex items-center justify-between gap-3 border-b border-[color:var(--color-penumbra-cyan)] bg-[color:var(--color-penumbra-cyan-bg)] px-4 py-2 font-mono text-[11px] text-[color:var(--color-penumbra-text)]"
+        >
+          <div className="flex flex-col">
+            <span className="text-[10px] uppercase tracking-[0.2em] text-[color:var(--color-penumbra-cyan)]">
+              resume your last session
+            </span>
+            <span>
+              {`${resumable.scenario_label ?? resumable.scenario_id ?? "scenario"} — saved at tick ${resumable.saved_at_tick ?? 0}`}
+              {resumable.saved_at_wall_iso ? ` (${resumable.saved_at_wall_iso})` : ""}
+            </span>
+            {resumeError && (
+              <span className="text-[10px] text-[color:var(--color-penumbra-ember)]">
+                {resumeError}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void onResume()}
+              disabled={resumeBusy}
+              className="rounded-sm border border-[color:var(--color-penumbra-cyan)] px-2 py-0.5 text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-cyan)] hover:bg-[color:var(--color-penumbra-cyan-bg)] disabled:opacity-40"
+            >
+              {resumeBusy ? "resuming…" : "resume"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void onDiscard()}
+              className="rounded-sm border border-[color:var(--color-penumbra-ember)] px-2 py-0.5 text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-ember)] hover:bg-[color:var(--color-penumbra-ember-bg)]"
+            >
+              discard
+            </button>
+          </div>
+        </div>
+      )}
 
       <main className="grid flex-1 grid-cols-3 gap-3 overflow-hidden p-3 font-mono text-[11px]">
         <section

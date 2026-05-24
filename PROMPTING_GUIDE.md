@@ -796,6 +796,21 @@ the main CLAUDE.md applies; the `/bench` page is a separate route in
 - `GET /operator/scenarios/{id}/status` — live progress vs clauses.
 - `GET /operator/sessions` — list session metadata.
 - `GET /operator/sessions/{id}/replay` — replay diff.
+- `GET /operator/sessions/resumable` — videogame-style save:
+  returns the active scenario session (if any) so the `/operator`
+  page can offer a "Resume" banner after a browser close or server
+  restart. Pointer at `state/operator_sessions/active.json` +
+  per-session world snapshot in
+  `state/operator_sessions/<session_id>/`.
+- `POST /operator/sessions/resume` — restore the saved simulation
+  state + ScenarioRunner from disk; the scenario resumes from the
+  saved sim-tick (clock effectively pauses while the player is away).
+- `POST /operator/sessions/discard` — clear the resumable pointer
+  without touching the saved snapshot directory.
+
+Save trigger points: scenario `start`, per-operator-action `drain`,
+status `check` when terminal (victory or failure), and `abandon`.
+Atomic writes via `penumbra_core.persistence.atomic_write`.
 
 ### How to drive them from the dashboard
 
