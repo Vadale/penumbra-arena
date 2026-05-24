@@ -257,9 +257,9 @@ description + live interaction.
 
 - **40+ tags** on GitHub, every one a runnable repo state.
 - **75+ commits**.
-- **~786 backend tests** + **~30 vitest** = **800+ total**, all green.
+- **832 backend tests** + **~30 vitest** = **860+ total**, all green.
 - **CI**: green (Python + Web workflows in `.github/workflows/ci.yml`).
-- **~98 dashboard chart tiles** (was ~57 pre-Phase-2.5).
+- **91 clickable dashboard tiles / 96 chart components** (was ~57 pre-Phase-2.5).
 - **3 React routes**: `/` (dashboard), `/bench` (leaderboard), `/operator`
   (cyber range Console).
 - **11 packages**: core, crypto, chain, learning, analytics, attacker,

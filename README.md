@@ -10,7 +10,7 @@
 > **synthetic dataset** on Hugging Face Hub (Penumbra-Data).
 
 **Status**: post-Phase-6b (cyber range), v3.0-ready in code.
-800+ tests green (~786 backend + ~30 frontend), strict typing
+860+ tests green (~832 backend + ~30 frontend), strict typing
 across the stack, ~80k LOC across 11 packages. See
 [`ROADMAP.md`](ROADMAP.md) for the build history,
 [`CHANGELOG.md`](CHANGELOG.md) for recent additions,
@@ -18,7 +18,7 @@ across the stack, ~80k LOC across 11 packages. See
 attacker audit, and [`USER_TODO.md`](USER_TODO.md) for the
 maintainer checklist before the public launch.
 
-**3 React routes**: `/` (dashboard with ~98 tiles),
+**3 React routes**: `/` (dashboard with 91 clickable tiles / 96 chart components),
 `/bench` (Penumbra-Bench leaderboard), `/operator` (cyber-range
 Console). Three CLIs: `pna` (attacker), `psh` (shell coach),
 `pno` (operator).
