@@ -129,6 +129,22 @@ class Orchestrator:
     # ``unblock_agent`` once ``current_tick >= until_tick``.
     _pending_unblocks: dict[int, int] = field(default_factory=dict, init=False)
     _blocked_history_count: int = field(default=0, init=False)
+    # Phase 6b Tier 1 — operator slot. Lazy-built on first
+    # /operator/enable. operator_queue is the FIFO the API endpoints
+    # push into; the simulation's pre_tick_hook drains it. recent_results
+    # is a small rolling window for the /operator/status endpoint.
+    operator: object | None = field(default=None, init=False)
+    operator_context: object | None = field(default=None, init=False)
+    operator_queue: object | None = field(default=None, init=False)
+    operator_recent_results: list[object] = field(default_factory=list, init=False)
+    operator_initial_coins: float = field(default=100.0, init=False)
+    operator_attacks_survived: int = field(default=0, init=False)
+    operator_chain_contribution: int = field(default=0, init=False)
+    # Phase 6b Tier 6 — session replay. operator_session_logger is the
+    # parquet-backed writer; operator_session_id is the id of the
+    # currently-open session (None when operator is disabled).
+    operator_session_logger: object | None = field(default=None, init=False)
+    operator_session_id: str | None = field(default=None, init=False)
 
     @classmethod
     def build(
@@ -889,3 +905,167 @@ class Orchestrator:
                     )
         except asyncio.CancelledError:
             raise
+
+    # ── Phase 6b Tier 1 — operator slot lifecycle ─────────────────
+
+    def enable_operator(self) -> dict[str, object]:
+        """Bootstrap (or refresh) the operator slot.
+
+        Idempotent: a re-enable refreshes the wallet to its initial
+        state but reuses the existing keypair so signatures stay
+        verifiable across the lifecycle. Returns a small dict with the
+        operator id + current position, used by the /operator/enable
+        endpoint response.
+        """
+        from penumbra_core.agent import Agent, random_walk_policy
+        from penumbra_crypto.pq import sig_keygen
+        from penumbra_operator.actions import OperatorContext, refresh_wallet
+        from penumbra_operator.queue import OperatorQueue
+
+        sim = self.simulation
+        operator_id = len(sim.agents)
+        # If we're re-enabling, keep the existing agent + keypair; only
+        # refresh wallet + inventory.
+        if sim.operator_agent is None:
+            spawn = int(next(iter(sim.arena.graph.nodes())))
+            operator_agent = Agent(
+                id=operator_id,
+                position=spawn,
+                policy=random_walk_policy,
+                home=spawn,
+            )
+            sim.operator_agent = operator_agent
+            # Append a fresh Dilithium keypair so the operator can sign +
+            # verify just like the AI agents.
+            self.keystore.keypairs.append(sig_keygen())
+        else:
+            operator_agent = sim.operator_agent
+
+        # Wallet bootstrap / refresh.
+        if self.market is not None:
+            from penumbra_core.economy import Wallet
+
+            if operator_id not in self.market.wallets:  # type: ignore[attr-defined]
+                self.market.wallets[operator_id] = Wallet(  # type: ignore[attr-defined]
+                    agent_id=operator_id, coins=self.operator_initial_coins
+                )
+            else:
+                wallet = self.market.wallets[operator_id]  # type: ignore[attr-defined]
+                wallet.coins = self.operator_initial_coins
+                wallet.inventory = {}
+            # Make sure the cargo cap covers the operator too.
+            if self.cargo is not None and operator_id not in self.cargo.capacity:
+                self.cargo.capacity[operator_id] = next(iter(self.cargo.capacity.values()), 20)
+
+        queue = OperatorQueue()
+        self.operator_queue = queue
+        if self.market is not None and self.heatmap.dp_mechanism is not None:
+            from penumbra_core.logistics import LogisticsMempool
+
+            mempool = self.logistics_mempool or LogisticsMempool()
+            self.operator_context = OperatorContext(
+                simulation=sim,
+                operator_agent=operator_agent,
+                operator_agent_id=operator_id,
+                market=self.market,  # type: ignore[arg-type]
+                mempool=mempool,
+                dp_mechanism=self.heatmap.dp_mechanism,
+                keystore=self.keystore,
+                initial_coins=self.operator_initial_coins,
+                event_bus=self.event_bus,
+                federated_trainer=self.federated_trainer,
+            )
+            refresh_wallet(self.operator_context)  # type: ignore[arg-type]
+
+        # Wire pre-tick drain so queued actions land at the start of the
+        # next tick. The closure captures self so a subsequent disable +
+        # re-enable updates seamlessly.
+        sim.pre_tick_hook = self._drain_operator_queue
+        self.operator = object()  # marker so /operator/status returns enabled=True
+        # Phase 6b Tier 6 — open a fresh session log so every action
+        # the operator submits between now and disable is appended
+        # to state/operator/sessions/<id>/actions.parquet.
+        if self.operator_session_logger is None:
+            from penumbra_operator.replay import SessionLogger
+
+            self.operator_session_logger = SessionLogger()
+        self.operator_session_id = self.operator_session_logger.start_session(  # type: ignore[attr-defined]
+            scenario_id=None
+        )
+        return {
+            "enabled": True,
+            "operator_id": int(operator_id),
+            "position": int(operator_agent.position),
+            "session_id": str(self.operator_session_id),
+        }
+
+    def disable_operator(self) -> dict[str, object]:
+        """Stop the queue drain; leave the slot in place for the next enable."""
+        self.operator = None
+        self.operator_queue = None
+        # Keep the operator_agent + keypair + wallet in place so a
+        # subsequent enable is a clean re-start without surprises.
+        self.simulation.pre_tick_hook = None
+        closed_session_id: str | None = None
+        # Phase 6b Tier 6 — close the live session log (if any) and
+        # write its final scorecard + meta.json out to disk.
+        if (
+            self.operator_session_logger is not None
+            and self.operator_session_id is not None
+            and self.operator_context is not None
+        ):
+            from penumbra_operator.scoring import OperatorScoreCard
+
+            ctx = self.operator_context
+            wallet = ctx.market.wallets.get(ctx.operator_agent_id)  # type: ignore[attr-defined]
+            budget = ctx.dp_mechanism.budget  # type: ignore[attr-defined]
+            scorecard = OperatorScoreCard.compute(
+                coins_now=float(wallet.coins) if wallet is not None else 0.0,
+                coins_start=float(ctx.initial_coins),  # type: ignore[attr-defined]
+                epsilon_spent=float(budget.epsilon_spent),
+                epsilon_total=float(budget.epsilon),
+                attacks_survived=int(self.operator_attacks_survived),
+                chain_contribution=int(self.operator_chain_contribution),
+            )
+            try:
+                self.operator_session_logger.close_session(  # type: ignore[attr-defined]
+                    self.operator_session_id, scorecard
+                )
+                closed_session_id = self.operator_session_id
+            except Exception:
+                logger.exception("operator session close failed for %s", self.operator_session_id)
+            self.operator_session_id = None
+        return {"enabled": False, "closed_session_id": closed_session_id}
+
+    def _drain_operator_queue(self, current_tick: int) -> None:
+        """Pre-tick hook: pop every due action, apply, log into the recent buffer."""
+        queue = self.operator_queue
+        ctx = self.operator_context
+        if queue is None or ctx is None:
+            return
+        from penumbra_operator.actions import apply_action, coalesce_moves
+
+        due = queue.pop_due(current_tick)  # type: ignore[attr-defined]
+        if not due:
+            return
+        due = coalesce_moves(due)
+        session_logger = self.operator_session_logger
+        session_id = self.operator_session_id
+        for action in due:
+            try:
+                result = apply_action(ctx, action)  # type: ignore[arg-type]
+            except Exception:
+                logger.exception("operator action %s crashed", action.kind)
+                continue
+            self.operator_recent_results.append(result)
+            # Phase 6b Tier 6 — append (action, result) to the open session log.
+            if session_logger is not None and session_id is not None:
+                try:
+                    session_logger.record(session_id, action, result)  # type: ignore[attr-defined]
+                except Exception:
+                    logger.exception("operator session record failed")
+        # Cap the rolling window at 200 results (the dashboard tile in
+        # Tier 2 will render the last 50; 200 leaves room for late
+        # consumers without unbounded growth).
+        if len(self.operator_recent_results) > 200:
+            del self.operator_recent_results[: len(self.operator_recent_results) - 200]

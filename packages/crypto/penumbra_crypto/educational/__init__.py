@@ -13,4 +13,5 @@ Modules
 - beaver.py     — Beaver multiplication triples for SMPC
 - pedersen.py   — Pedersen commitments over a Schnorr group
 - schnorr.py    — Schnorr Σ-protocol + Fiat-Shamir non-interactive ZK
+- yao.py        — Yao garbled circuits + millionaires comparator
 """

@@ -478,6 +478,97 @@ def build_app(
             "timed_out": result.timed_out,
         }
 
+    @app.get("/coach/stories")
+    async def coach_stories() -> dict[str, object]:
+        """Phase 5 Tier 5 — story-mode lesson index for the StoryMode tile.
+
+        Static manifest of the 8 cross-pillar narrative lessons shipped under
+        `packages/shell_coach/lessons/`. The frontend filters this list by
+        `difficulty` and `pillars_touched`; each entry includes the
+        `psh lesson <id>` command the operator-mode terminal will run.
+        """
+        stories: list[dict[str, object]] = [
+            {
+                "id": "story_bullwhip_leak",
+                "title": "The bullwhip leak",
+                "difficulty": "hard",
+                "pillars": ["logistics", "statistics", "neural_networks", "rl", "crypto"],
+                "prereqs": [],
+                "command": "psh lesson story_bullwhip_leak",
+                "blurb": "Supplier observes demand -> carrier fingerprint -> MI on MAPPO -> poison.",
+            },
+            {
+                "id": "story_honest_validator",
+                "title": "The honest validator",
+                "difficulty": "hard",
+                "pillars": ["crypto", "neural_networks", "statistics", "chain"],
+                "prereqs": ["story_bullwhip_leak"],
+                "command": "psh lesson story_honest_validator",
+                "blurb": "BLS + Krum + DP + k-anonymity composed; measure each defense.",
+            },
+            {
+                "id": "story_replay_chain",
+                "title": "Replay -> equivocation -> SNARK forge",
+                "difficulty": "medium",
+                "pillars": ["crypto", "chain"],
+                "prereqs": [],
+                "command": "psh lesson story_replay_chain",
+                "blurb": "Three chained attacks, three defense closures fire.",
+            },
+            {
+                "id": "story_dp_starvation",
+                "title": "DP starvation",
+                "difficulty": "medium",
+                "pillars": ["statistics", "crypto"],
+                "prereqs": [],
+                "command": "psh lesson story_dp_starvation",
+                "blurb": "Burn the eps budget with QID queries -> re-identify.",
+            },
+            {
+                "id": "story_fl_backdoor",
+                "title": "FL backdoor -- Krum vs FedAvg",
+                "difficulty": "medium",
+                "pillars": ["neural_networks", "rl", "crypto"],
+                "prereqs": [],
+                "command": "psh lesson story_fl_backdoor",
+                "blurb": "One malicious client; defense drops attack success rate.",
+            },
+            {
+                "id": "story_carrier_extortion",
+                "title": "Carrier extortion",
+                "difficulty": "medium",
+                "pillars": ["logistics", "rl", "statistics"],
+                "prereqs": [],
+                "command": "psh lesson story_carrier_extortion",
+                "blurb": "Dispatch fingerprint -> re-id -> targeted reward poisoning.",
+            },
+            {
+                "id": "story_mix_net_defense",
+                "title": "Mix-net defense -- Loopix",
+                "difficulty": "medium",
+                "pillars": ["crypto", "logistics"],
+                "prereqs": [],
+                "command": "psh lesson story_mix_net_defense",
+                "blurb": "Naive routing vs 3-hop mix-net; attacker accuracy drops.",
+            },
+            {
+                "id": "story_ctf_speedrun",
+                "title": "CTF speedrun",
+                "difficulty": "easy",
+                "pillars": ["crypto", "statistics", "chain"],
+                "prereqs": ["story_dp_starvation", "story_replay_chain"],
+                "command": "psh lesson story_ctf_speedrun",
+                "blurb": "Operator-mode playthrough of 3 CTF challenges; beat your time.",
+            },
+        ]
+        all_pillars = sorted({p for s in stories for p in s["pillars"]})  # type: ignore[union-attr]
+        return {
+            "available": True,
+            "stories": stories,
+            "pillars": all_pillars,
+            "difficulties": ["easy", "medium", "hard"],
+        }
+
     @app.get("/coach/presets")
     async def coach_presets() -> dict[str, list[dict[str, str]]]:
         """Curated set of commands the frontend exposes as one-click buttons."""
@@ -2072,6 +2163,79 @@ def build_app(
             "tampered_match": bool(recovered_tampered == result.shared_secret),
         }
 
+    # ── Phase 5 Tier 1 crypto primitives ──────────────────────────
+    @app.get("/crypto/frost/demo")
+    async def crypto_frost_demo(n: int = 5, t: int = 3) -> dict[str, object]:
+        """FROST threshold Schnorr: t-of-n co-sign one Schnorr signature.
+
+        The on-wire signature is plain Schnorr — no verifier can tell it
+        came from a threshold of signers. Tamper-tests cover wrong
+        message + corrupted response scalar.
+        """
+        from penumbra_crypto import frost as _frost
+
+        return await asyncio.to_thread(_frost.demo, n=n, t=t)
+
+    @app.get("/crypto/sphincs/demo")
+    async def crypto_sphincs_demo() -> dict[str, object]:
+        """SPHINCS+-128f-simple: hash-based PQ signature, NIST FIPS 205.
+
+        Reports key + signature sizes alongside ML-DSA-65 (Dilithium-3)
+        so the dashboard tile can visualise the size trade-off: SPHINCS+
+        signatures are ~5x larger but rest on hash assumptions only.
+        """
+        from penumbra_crypto import sphincs as _sphincs
+
+        return await asyncio.to_thread(_sphincs.demo)
+
+    @app.get("/crypto/verkle/demo")
+    async def crypto_verkle_demo(n_leaves: int = 1_000_000) -> dict[str, object]:
+        """Verkle tree via KZG commits over BLS12-381 + Merkle proof-size compare.
+
+        The educational SRS retains the toxic-waste secret so the
+        prover side can run without an external ceremony; production
+        deployments must DESTROY s after the ceremony.
+        """
+        from penumbra_crypto import verkle as _verkle
+
+        n_leaves = max(2, min(int(n_leaves), 100_000_000))
+        return await asyncio.to_thread(_verkle.demo, n_leaves=n_leaves)
+
+    @app.get("/crypto/bbs-plus/demo")
+    async def crypto_bbs_plus_demo(n_messages: int = 5) -> dict[str, object]:
+        """BBS+ credentials: sign over a 5-attribute vector, selectively disclose 2."""
+        from penumbra_crypto import bbs_plus as _bbs
+
+        return await asyncio.to_thread(_bbs.demo, n_messages=n_messages)
+
+    @app.get("/crypto/threshold-ecdsa/demo")
+    async def crypto_threshold_ecdsa_demo(n: int = 3) -> dict[str, object]:
+        """GG18-style threshold ECDSA (educational, n-of-n trusted-dealer)."""
+        from penumbra_crypto import threshold_ecdsa as _tecdsa
+
+        return await asyncio.to_thread(_tecdsa.demo, n=n)
+
+    @app.get("/crypto/yao/demo")
+    async def crypto_yao_demo() -> dict[str, object]:
+        """Yao garbled circuits + millionaires comparator on two random integers."""
+        from penumbra_crypto.educational import yao as _yao
+
+        return await asyncio.to_thread(_yao.demo)
+
+    @app.get("/crypto/psi/demo")
+    async def crypto_psi_demo() -> dict[str, object]:
+        """OPRF-based PSI: Alice + Bob find the intersection of their private sets."""
+        from penumbra_crypto import psi as _psi
+
+        return await asyncio.to_thread(_psi.demo)
+
+    @app.get("/crypto/mix-net/demo")
+    async def crypto_mix_net_demo(n_relays: int = 4) -> dict[str, object]:
+        """Loopix-style onion mix-net: wrap, peel through N relays, deliver."""
+        from penumbra_crypto import mix_net as _mix
+
+        return await asyncio.to_thread(_mix.demo, n_relays=n_relays)
+
     # ── Logistics endpoints (Tier 1) ──────────────────────────────
     @app.get("/logistics/fill-rate")
     async def logistics_fill_rate() -> dict[str, object]:
@@ -2513,6 +2677,104 @@ def build_app(
         data["available"] = True
         return data
 
+    # ── Phase 5 Tier 3: defense primitives (privacy-utility tradeoffs) ─
+    @app.get("/defenses/data_poisoning/demo")
+    async def defenses_data_poisoning_demo() -> dict[str, object]:
+        """Sweep poisoning rate vs attacker max accuracy / utility shift.
+
+        Each point is (rate, attacker_max_accuracy, utility_mean_shift,
+        utility_std_shift). Pure-functional demo — no orchestrator
+        state touched.
+        """
+        from penumbra_crypto.defenses import data_poisoning
+
+        return await asyncio.to_thread(data_poisoning.demo)
+
+    @app.get("/defenses/padding/demo")
+    async def defenses_padding_demo() -> dict[str, object]:
+        """Padding curve + Poisson cover-traffic schedule sample.
+
+        Bandwidth overhead = target_size / mean(real size); a single
+        bucket size collapses distinct sizes to 1.
+        """
+        from penumbra_crypto.defenses import padding
+
+        return await asyncio.to_thread(padding.demo)
+
+    @app.get("/defenses/k_anonymity/demo")
+    async def defenses_k_anonymity_demo() -> dict[str, object]:
+        """Sweep k vs suppression rate / adversary advantage = 1/k."""
+        from penumbra_crypto.defenses import k_anonymity
+
+        return await asyncio.to_thread(k_anonymity.demo)
+
+    @app.get("/defenses/l_diversity/demo")
+    async def defenses_l_diversity_demo() -> dict[str, object]:
+        """Sweep ℓ at fixed k vs suppression / homogeneity safety."""
+        from penumbra_crypto.defenses import l_diversity
+
+        return await asyncio.to_thread(l_diversity.demo)
+
+    @app.get("/defenses/gan/demo")
+    async def defenses_gan_demo() -> dict[str, object]:
+        """Sweep correlation-preserve vs mean L2 / covariance Frobenius gaps.
+
+        Stub Gaussian release; CycleGAN deferred (same API).
+        """
+        from penumbra_crypto.defenses import gan_defenses
+
+        return await asyncio.to_thread(gan_defenses.demo)
+
+    @app.get("/defenses/request_obfuscation/demo")
+    async def defenses_request_obfuscation_demo() -> dict[str, object]:
+        """Sweep dummy count vs attacker budget inflation (Bonferroni)."""
+        from penumbra_crypto.defenses import request_obfuscation
+
+        return await asyncio.to_thread(request_obfuscation.demo)
+
+    # ── Phase 5 Tier 2 — attack-suite demos ────────────────────────
+    @app.get("/attacks/agent_fingerprint/demo")
+    async def attacks_agent_fingerprint_demo() -> dict[str, object]:
+        """1-NN behavioural fingerprint over observable agent traces."""
+        from penumbra_attacker.attacks import agent_fingerprint
+
+        return await asyncio.to_thread(agent_fingerprint.demo)
+
+    @app.get("/attacks/trajectory_fingerprint/demo")
+    async def attacks_trajectory_fingerprint_demo() -> dict[str, object]:
+        """Per-agent HMM fitted via Baum-Welch then forward-likelihood classify."""
+        from penumbra_attacker.attacks import trajectory_fingerprint
+
+        return await asyncio.to_thread(trajectory_fingerprint.demo)
+
+    @app.get("/attacks/membership_inference/demo")
+    async def attacks_membership_inference_demo() -> dict[str, object]:
+        """Shokri shadow-model membership inference on a tiny softmax policy."""
+        from penumbra_attacker.attacks import membership_inference
+
+        return await asyncio.to_thread(membership_inference.demo)
+
+    @app.get("/attacks/model_inversion/demo")
+    async def attacks_model_inversion_demo() -> dict[str, object]:
+        """Deep-Leakage-from-Gradients reconstruction against a linear policy."""
+        from penumbra_attacker.attacks import model_inversion
+
+        return await asyncio.to_thread(model_inversion.demo)
+
+    @app.get("/attacks/reward_poisoning/demo")
+    async def attacks_reward_poisoning_demo() -> dict[str, object]:
+        """Inject 5% poisoned rewards; measure policy drift on a 4-armed bandit."""
+        from penumbra_attacker.attacks import reward_poisoning
+
+        return await asyncio.to_thread(reward_poisoning.demo)
+
+    @app.get("/attacks/cache_sidechannel/demo")
+    async def attacks_cache_sidechannel_demo() -> dict[str, object]:
+        """Flush+Reload-style timing test on TenSEAL CKKS add — should NOT leak."""
+        from penumbra_attacker.attacks import cache_sidechannel
+
+        return await asyncio.to_thread(cache_sidechannel.demo, n_samples=80, vector_size=32)
+
     @app.get("/chain/latest")
     async def chain_latest() -> dict[str, object]:
         node = app.state.penumbra.orchestrator.node
@@ -2656,6 +2918,483 @@ def build_app(
                     await task
             await asyncio.to_thread(session.close)
             logger.info("PTY session pid=%d closed", session.pid)
+
+    # ── Phase 6b Tier 1 — operator endpoints ──────────────────────
+
+    def _require_operator() -> tuple[object, object, object]:
+        """Return (orchestrator, operator_queue, operator_context) or raise 409."""
+        orch = app.state.penumbra.orchestrator
+        if orch.operator is None or orch.operator_queue is None or orch.operator_context is None:
+            raise HTTPException(
+                status_code=409,
+                detail="operator is not enabled; POST /operator/enable first",
+            )
+        return orch, orch.operator_queue, orch.operator_context
+
+    def _serialise_result(result: object) -> dict[str, object]:
+        # Convert OperatorActionResult dataclass into a plain JSON dict.
+        return {
+            "kind": getattr(result, "kind", ""),
+            "success": bool(getattr(result, "success", False)),
+            "data": dict(getattr(result, "data", {})),
+            "error": getattr(result, "error", None),
+            "skipped": bool(getattr(result, "skipped", False)),
+            "elapsed_ms": float(getattr(result, "elapsed_ms", 0.0)),
+            "applied_tick": int(getattr(result, "applied_tick", -1)),
+        }
+
+    def _submit_and_drain(kind: str, payload: dict[str, object]) -> dict[str, object]:
+        """Enqueue an action, drain it immediately, return its result.
+
+        Tier 1 endpoints synchronously drain after submit so the CLI
+        gets a useful response. The same queue is also drained by the
+        simulation's pre_tick_hook, which is what makes the action
+        catalogue robust under concurrent CLI + dashboard submission.
+        """
+        from penumbra_operator.actions import OperatorAction, apply_action
+
+        orch, queue, ctx = _require_operator()
+        action = OperatorAction(
+            kind=kind,
+            payload=dict(payload),
+            submit_tick=int(orch.simulation.tick_counter),  # type: ignore[attr-defined]
+        )
+        queue.submit(action)  # type: ignore[attr-defined]
+        # Pop the action we just submitted (and any earlier-queued
+        # actions still pending). Apply in deterministic order.
+        from penumbra_operator.actions import coalesce_moves
+
+        due = queue.pop_due(int(orch.simulation.tick_counter))  # type: ignore[attr-defined]
+        due = coalesce_moves(due)
+        results: list[object] = []
+        session_logger = getattr(orch, "operator_session_logger", None)
+        session_id = getattr(orch, "operator_session_id", None)
+        for due_action in due:
+            result = apply_action(ctx, due_action)  # type: ignore[arg-type]
+            orch.operator_recent_results.append(result)  # type: ignore[attr-defined]
+            results.append(result)
+            # Phase 6b Tier 6 — record into the open session log.
+            if session_logger is not None and session_id is not None:
+                try:
+                    session_logger.record(session_id, due_action, result)
+                except Exception:
+                    pass
+        if len(orch.operator_recent_results) > 200:  # type: ignore[attr-defined]
+            del orch.operator_recent_results[: len(orch.operator_recent_results) - 200]  # type: ignore[attr-defined]
+        # Return the result that matches our action kind, falling back
+        # to the last result if coalescing dropped ours (e.g. earlier
+        # move overwritten by a later one in the same tick).
+        for r in reversed(results):
+            if getattr(r, "kind", "") == kind:
+                return _serialise_result(r)
+        if results:
+            return _serialise_result(results[-1])
+        # Coalesced away (no result emitted): mirror an "ok, coalesced"
+        # response so the caller knows the submission was accepted.
+        return {
+            "kind": kind,
+            "success": True,
+            "data": {"coalesced": True},
+            "error": None,
+            "skipped": False,
+            "elapsed_ms": 0.0,
+            "applied_tick": int(orch.simulation.tick_counter),  # type: ignore[attr-defined]
+        }
+
+    @app.post("/operator/enable")
+    async def operator_enable() -> dict[str, object]:
+        orch = app.state.penumbra.orchestrator
+        info = orch.enable_operator()
+        from penumbra_operator.actions import known_kinds
+
+        info["known_kinds"] = list(known_kinds())
+        return info
+
+    @app.post("/operator/disable")
+    async def operator_disable() -> dict[str, object]:
+        orch = app.state.penumbra.orchestrator
+        return orch.disable_operator()
+
+    @app.post("/operator/move")
+    async def operator_move(payload: dict[str, object]) -> dict[str, object]:
+        return _submit_and_drain("move", payload)
+
+    @app.post("/operator/buy")
+    async def operator_buy(payload: dict[str, object]) -> dict[str, object]:
+        return _submit_and_drain("buy", payload)
+
+    @app.post("/operator/sell")
+    async def operator_sell(payload: dict[str, object]) -> dict[str, object]:
+        return _submit_and_drain("sell", payload)
+
+    @app.post("/operator/dispatch_order")
+    async def operator_dispatch_order(payload: dict[str, object]) -> dict[str, object]:
+        return _submit_and_drain("dispatch_order", payload)
+
+    @app.post("/operator/cancel_assignment")
+    async def operator_cancel_assignment(payload: dict[str, object]) -> dict[str, object]:
+        return _submit_and_drain("cancel_assignment", payload)
+
+    @app.post("/operator/query_dp")
+    async def operator_query_dp(payload: dict[str, object]) -> dict[str, object]:
+        return _submit_and_drain("query_dp", payload)
+
+    @app.post("/operator/sign")
+    async def operator_sign(payload: dict[str, object]) -> dict[str, object]:
+        return _submit_and_drain("sign", payload)
+
+    @app.post("/operator/verify")
+    async def operator_verify(payload: dict[str, object]) -> dict[str, object]:
+        return _submit_and_drain("verify", payload)
+
+    # ── Phase 6b Tier 3 + Tier 4 — attack + defense endpoints ──────
+    #
+    # Each kind below is wired through the same _submit_and_drain
+    # plumbing as the Tier 1 actions. The closure dance is a factory
+    # so we don't repeat 12 decorators with identical bodies.
+
+    def _make_action_endpoint(kind: str) -> object:
+        async def _endpoint(payload: dict[str, object]) -> dict[str, object]:
+            return _submit_and_drain(kind, payload)
+
+        _endpoint.__name__ = f"operator_{kind}"
+        return _endpoint
+
+    from penumbra_operator.actions import ATTACK_KINDS, DEFENSE_KINDS
+
+    for _kind in (*ATTACK_KINDS, *DEFENSE_KINDS):
+        app.post(f"/operator/{_kind}")(_make_action_endpoint(_kind))  # type: ignore[arg-type]
+
+    @app.get("/operator/defense_status")
+    async def operator_defense_status() -> dict[str, object]:
+        """Round-trip view of the current Tier 4 defense configuration."""
+        orch = app.state.penumbra.orchestrator
+        if orch.operator_context is None:
+            return {"enabled": False}
+        ctx = orch.operator_context
+        defenses = ctx.defenses  # type: ignore[attr-defined]
+        return {
+            "enabled": True,
+            "k_anonymity": defenses.k_anonymity,
+            "padding": defenses.padding,
+            "gan_poison": defenses.gan_poison,
+            "dp_paused": bool(defenses.dp_paused),
+            "krum_f": defenses.krum_f,
+            "key_rotations": int(defenses.key_rotations),
+        }
+
+    @app.get("/operator/status")
+    async def operator_status() -> dict[str, object]:
+        orch = app.state.penumbra.orchestrator
+        if orch.operator is None or orch.operator_queue is None or orch.operator_context is None:
+            return {
+                "enabled": False,
+                "hint": "POST /operator/enable to bootstrap the operator slot",
+            }
+        ctx = orch.operator_context
+        agent = ctx.operator_agent  # type: ignore[attr-defined]
+        wallet = ctx.market.wallets.get(ctx.operator_agent_id)  # type: ignore[attr-defined]
+        dp_budget = ctx.dp_mechanism.budget  # type: ignore[attr-defined]
+        from penumbra_operator.scoring import OperatorScoreCard
+
+        scorecard = OperatorScoreCard.compute(
+            coins_now=float(wallet.coins) if wallet is not None else 0.0,
+            coins_start=float(ctx.initial_coins),  # type: ignore[attr-defined]
+            epsilon_spent=float(dp_budget.epsilon_spent),
+            epsilon_total=float(dp_budget.epsilon),
+            attacks_survived=int(orch.operator_attacks_survived),
+            chain_contribution=int(orch.operator_chain_contribution),
+        )
+        recent = orch.operator_recent_results[-50:]
+        return {
+            "enabled": True,
+            "operator_id": int(ctx.operator_agent_id),  # type: ignore[attr-defined]
+            "position": int(agent.position),
+            "coins": float(wallet.coins) if wallet is not None else 0.0,
+            "inventory": dict(wallet.inventory) if wallet is not None else {},
+            "epsilon_total": float(dp_budget.epsilon),
+            "epsilon_spent": float(dp_budget.epsilon_spent),
+            "epsilon_remaining": float(dp_budget.remaining_epsilon),
+            "queue": orch.operator_queue.stats(),  # type: ignore[attr-defined]
+            "recent_results": [_serialise_result(r) for r in recent],
+            "scorecard": {
+                "profit": scorecard.profit,
+                "privacy_preserved": scorecard.privacy_preserved,
+                "attacks_survived": scorecard.attacks_survived,
+                "chain_contribution": scorecard.chain_contribution,
+                "composite": scorecard.composite,
+            },
+        }
+
+    # ── Phase 5 Tier 4 — Custom policy injection ──────────────────
+    @app.post("/attacker/policy")
+    async def attacker_register_policy(payload: dict[str, str]) -> dict[str, object]:
+        from penumbra_attacker.policy_sandbox import (
+            PolicyParseError,
+            PolicyRuntimeError,
+            PolicyTimeoutError,
+            register_policy,
+            try_policy,
+        )
+
+        name = payload.get("name", "")
+        code = payload.get("code", "")
+        scope = payload.get("scope", "all")
+        try:
+            registered = register_policy(name, code, scope)
+        except PolicyParseError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        try_state: dict[str, object] = {}
+        try:
+            sample = try_policy(name, {}, {})
+            try_state = {"ok": True, "result": repr(sample)}
+        except (PolicyRuntimeError, PolicyTimeoutError) as exc:
+            try_state = {"ok": False, "error": str(exc)}
+        return {
+            "name": registered.name,
+            "scope": registered.scope,
+            "source_chars": len(registered.source),
+            "try": try_state,
+        }
+
+    @app.get("/attacker/policies")
+    async def attacker_list_policies() -> dict[str, object]:
+        from penumbra_attacker.policy_sandbox import list_registered
+
+        return {"available": True, "policies": list_registered()}
+
+    @app.delete("/attacker/policy/{name}")
+    async def attacker_unregister_policy(name: str) -> dict[str, object]:
+        from penumbra_attacker.policy_sandbox import unregister
+
+        removed = unregister(name)
+        if not removed:
+            raise HTTPException(status_code=404, detail=f"no policy named {name!r}")
+        return {"name": name, "removed": True}
+
+    # ── Phase 5 Tier 4 — Capture-the-flag ─────────────────────────
+    @app.get("/ctf/challenges")
+    async def ctf_list_challenges() -> dict[str, object]:
+        from penumbra_ctf import global_registry
+
+        return {"available": True, "challenges": global_registry().list_summaries()}
+
+    @app.post("/ctf/submit/{challenge_id}")
+    async def ctf_submit(challenge_id: str, payload: dict[str, str]) -> dict[str, object]:
+        from penumbra_ctf import ChallengeNotFoundError, global_registry
+
+        flag = payload.get("flag", "")
+        session_id = payload.get("session_id", "anonymous")
+        try:
+            return global_registry().submit(challenge_id, flag, session_id)
+        except ChallengeNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/ctf/leaderboard/{challenge_id}")
+    async def ctf_leaderboard(challenge_id: str) -> dict[str, object]:
+        from penumbra_ctf import ChallengeNotFoundError, global_registry
+
+        try:
+            return {
+                "challenge_id": challenge_id,
+                "leaderboard": global_registry().leaderboard(challenge_id),
+            }
+        except ChallengeNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    # ── Phase 5 Tier 4 — World branching ──────────────────────────
+    @app.post("/world/branch")
+    async def world_branch(payload: dict[str, object]) -> dict[str, object]:
+        from penumbra_transport.world import global_branches
+
+        name = str(payload.get("name", ""))
+        raw_n = payload.get("n_branches", 5)
+        n_branches = int(raw_n) if isinstance(raw_n, (int, float, str)) else 5
+        try:
+            ids = global_branches().branch(
+                name, app.state.penumbra.simulation, n_branches=n_branches
+            )
+        except InvalidSnapshotNameError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"available": True, "name": name, "branch_ids": ids}
+
+    @app.get("/world/branches")
+    async def world_list_branches() -> dict[str, object]:
+        from penumbra_transport.world import global_branches
+
+        return {"available": True, "branches": global_branches().list_branches()}
+
+    @app.post("/world/branch/{branch_id}/advance")
+    async def world_branch_advance(branch_id: str, payload: dict[str, int]) -> dict[str, object]:
+        from penumbra_transport.world import BranchNotFoundError, global_branches
+
+        ticks = int(payload.get("ticks", 1))
+        try:
+            result = global_branches().advance(branch_id, ticks)
+        except BranchNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return dict(result)
+
+    @app.post("/world/branches/compare")
+    async def world_branches_compare(payload: dict[str, object]) -> dict[str, object]:
+        from penumbra_transport.world import BranchNotFoundError, global_branches
+
+        raw = payload.get("branch_ids", [])
+        if not isinstance(raw, list):
+            raise HTTPException(status_code=400, detail="branch_ids must be a list")
+        try:
+            return global_branches().compare([str(b) for b in raw])
+        except BranchNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    # ── Phase 6b Tier 5 — scenario engine ─────────────────────────
+
+    def _get_scenario_runner() -> object:
+        """Lazy-build the scenario runner on first use; cache on app.state."""
+        runner = getattr(app.state, "scenario_runner", None)
+        if runner is None:
+            from penumbra_operator.scenarios import ScenarioRunner
+
+            runner = ScenarioRunner.from_directory()
+            app.state.scenario_runner = runner
+        return runner
+
+    @app.get("/operator/scenarios")
+    async def operator_scenarios_list() -> dict[str, object]:
+        runner = _get_scenario_runner()
+        scenarios = runner.list_scenarios()  # type: ignore[attr-defined]
+        session_scores = getattr(app.state, "scenario_session_scores", {})
+        return {
+            "available": True,
+            "scenarios": scenarios,
+            "session_scores": dict(session_scores),
+        }
+
+    @app.post("/operator/scenarios/{scenario_id}/start")
+    async def operator_scenarios_start(scenario_id: str) -> dict[str, object]:
+        from penumbra_operator.scenarios import ScenarioError
+
+        from penumbra_transport.events import Event
+
+        runner = _get_scenario_runner()
+        orch, _queue, ctx = _require_operator()
+        try:
+            info = runner.start(scenario_id, ctx)  # type: ignore[attr-defined]
+        except ScenarioError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        opening = info.get("opening_event", {})
+        if isinstance(opening, dict):
+            opening_kind = str(opening.get("kind", "operator.scenario.start"))
+            payload_raw = opening.get("payload", {})
+            opening_payload = dict(payload_raw) if isinstance(payload_raw, dict) else {}
+        else:
+            opening_kind = "operator.scenario.start"
+            opening_payload = {}
+        orch.event_bus.emit(  # type: ignore[attr-defined]
+            Event(
+                kind=opening_kind,
+                tick=int(orch.simulation.tick_counter),  # type: ignore[attr-defined]
+                payload=opening_payload,
+            )
+        )
+        return info
+
+    @app.post("/operator/scenarios/{scenario_id}/abandon")
+    async def operator_scenarios_abandon(scenario_id: str) -> dict[str, object]:
+        runner = _get_scenario_runner()
+        return runner.abandon(scenario_id)  # type: ignore[attr-defined]
+
+    @app.get("/operator/scenarios/{scenario_id}/status")
+    async def operator_scenarios_status(scenario_id: str) -> dict[str, object]:
+        from penumbra_operator.scenarios import ScenarioError
+
+        runner = _get_scenario_runner()
+        _orch, _queue, ctx = _require_operator()
+        try:
+            return runner.check_status(scenario_id, ctx)  # type: ignore[attr-defined]
+        except ScenarioError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    # ── Phase 6b Tier 6 — session replay + leaderboard ────────────
+
+    def _get_session_logger() -> object:
+        """Return the orchestrator's SessionLogger, bootstrapping if needed."""
+        orch = app.state.penumbra.orchestrator
+        if getattr(orch, "operator_session_logger", None) is None:
+            from penumbra_operator.replay import SessionLogger
+
+            orch.operator_session_logger = SessionLogger()
+        return orch.operator_session_logger
+
+    @app.get("/operator/sessions")
+    async def operator_sessions_list() -> dict[str, object]:
+        """List metadata for every closed operator session on disk."""
+        slog = _get_session_logger()
+        sessions = slog.list_sessions()  # type: ignore[attr-defined]
+        return {"available": True, "sessions": sessions, "n": len(sessions)}
+
+    @app.get("/operator/sessions/{session_id}/replay")
+    async def operator_sessions_replay(session_id: str) -> dict[str, object]:
+        """Re-run a recorded session against a fresh sim; return the determinism diff."""
+        from penumbra_core.agent import Agent, random_walk_policy
+        from penumbra_core.arena import ArenaConfig
+        from penumbra_core.economy import Market, Wallet
+        from penumbra_core.logistics import LogisticsMempool
+        from penumbra_core.rng import bootstrap
+        from penumbra_core.simulation import Simulation, SimulationConfig
+        from penumbra_crypto.dp import DPMechanism, PrivacyBudget
+        from penumbra_operator.actions import OperatorContext
+        from penumbra_operator.replay import (
+            SessionLogError,
+            replay as _do_replay,
+            scorecard_diff,
+        )
+        from penumbra_transport.agent_signing import AgentKeystore
+
+        slog = _get_session_logger()
+        try:
+            meta = slog.load_meta(session_id)  # type: ignore[attr-defined]
+        except SessionLogError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        orch = app.state.penumbra.orchestrator
+        n_agents = int(getattr(orch.simulation.config, "n_agents", 4))
+        sim = Simulation.build(
+            SimulationConfig(n_agents=n_agents, arena=ArenaConfig(n_nodes=15)),
+            bootstrap(42),
+        )
+        operator_id = n_agents
+        nodes = list(sim.arena.graph.nodes())
+        spawn = int(nodes[0])
+        operator_agent = Agent(
+            id=operator_id, position=spawn, policy=random_walk_policy, home=spawn
+        )
+        sim.operator_agent = operator_agent
+        market = Market.build(nodes=nodes, n_agents=n_agents, seed=42)
+        market.wallets[operator_id] = Wallet(agent_id=operator_id, coins=100.0)
+        mempool = LogisticsMempool()
+        dp = DPMechanism(PrivacyBudget(epsilon=10.0))
+        keystore = AgentKeystore.for_n_agents(operator_id + 1)
+        fresh_ctx = OperatorContext(
+            simulation=sim,
+            operator_agent=operator_agent,
+            operator_agent_id=operator_id,
+            market=market,
+            mempool=mempool,
+            dp_mechanism=dp,
+            keystore=keystore,
+            initial_coins=100.0,
+        )
+        try:
+            replayed = _do_replay(session_id, fresh_ctx, logger=slog)  # type: ignore[arg-type]
+        except SessionLogError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        original = meta.get("final_scorecard") or {}
+        diff = scorecard_diff(original, replayed)
+        diff["session_id"] = session_id
+        diff["scenario_id"] = meta.get("scenario_id")
+        diff["parquet_path"] = str(slog.parquet_path(session_id))  # type: ignore[attr-defined]
+        return diff
 
     return app
 

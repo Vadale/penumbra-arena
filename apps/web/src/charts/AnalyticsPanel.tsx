@@ -672,6 +672,125 @@ export function AnalyticsPanel() {
           accent
           onClick={() => open("security_blocked")}
         />
+        <Cell
+          label="defense — decoy"
+          value="data poisoning"
+          caption="attacker fits contaminated stream"
+          accent
+          onClick={() => open("defense_data_poisoning")}
+        />
+        <Cell
+          label="defense — padding"
+          value="bucket + cover"
+          caption="sizes → 1, Poisson arrivals"
+          accent
+          onClick={() => open("defense_padding")}
+        />
+        <Cell
+          label="defense — k-anon"
+          value="suppression"
+          caption="adv ≤ 1/k"
+          accent
+          onClick={() => open("defense_k_anonymity")}
+        />
+        <Cell
+          label="defense — ℓ-div"
+          value="distinct sensitive"
+          caption="homogeneity-safe"
+          accent
+          onClick={() => open("defense_l_diversity")}
+        />
+        <Cell
+          label="defense — GAN"
+          value="synth trace"
+          caption="Gaussian stub; CycleGAN deferred"
+          accent
+          onClick={() => open("defense_gan")}
+        />
+        <Cell
+          label="defense — obfusc."
+          value="Bonferroni + dummies"
+          caption="drain attacker DP budget"
+          accent
+          onClick={() => open("defense_request_obfuscation")}
+        />
+        <Cell
+          label="attack — fingerprint"
+          value="1-NN behavioural"
+          caption="re-id across matches"
+          accent
+          onClick={() => open("attack_agent_fingerprint")}
+        />
+        <Cell
+          label="attack — trajectory"
+          value="HMM Baum-Welch"
+          caption="temporal action structure"
+          accent
+          onClick={() => open("attack_trajectory_fingerprint")}
+        />
+        <Cell
+          label="attack — membership"
+          value="Shokri shadows"
+          caption="was sample in training?"
+          accent
+          onClick={() => open("attack_membership_inference")}
+        />
+        <Cell
+          label="attack — model inv."
+          value="grad leakage"
+          caption="reconstruct from ∇"
+          accent
+          onClick={() => open("attack_model_inversion")}
+        />
+        <Cell
+          label="attack — reward poison"
+          value="5% backdoor"
+          caption="REINFORCE drifts"
+          accent
+          onClick={() => open("attack_reward_poisoning")}
+        />
+        <Cell
+          label="attack — cache timing"
+          value="CKKS const-time"
+          caption="must FAIL on TenSEAL"
+          accent
+          onClick={() => open("attack_cache_sidechannel")}
+        />
+        <Cell
+          label="operator — scenarios"
+          value="12 starter drills"
+          caption="tabletop exercises"
+          ember
+          onClick={() => open("operator_scenarios")}
+        />
+        <Cell
+          label="custom policy"
+          value="sandboxed injection"
+          caption="try + adopt + remove"
+          accent
+          onClick={() => open("custom_policy")}
+        />
+        <Cell
+          label="capture-the-flag"
+          value="5 challenges"
+          caption="leaderboard per id"
+          accent
+          onClick={() => open("ctf")}
+        />
+        <Cell
+          label="story mode"
+          value="8 stories"
+          caption="cross-pillar lessons"
+          accent
+          onClick={() => open("story_mode")}
+        />
+        <Cell
+          label="world — branches"
+          value="pickle clones"
+          caption="N branches · side-by-side"
+          accent
+          onClick={() => open("world_branches")}
+        />
       </div>
 
       {summary && (
@@ -756,6 +875,31 @@ export function AnalyticsPanel() {
             case "event_bus":
             case "event_graph":
             case "security_blocked":
+            case "defense_data_poisoning":
+            case "defense_padding":
+            case "defense_k_anonymity":
+            case "defense_l_diversity":
+            case "defense_gan":
+            case "defense_request_obfuscation":
+            case "frost":
+            case "sphincs":
+            case "verkle":
+            case "bbs_plus":
+            case "threshold_ecdsa":
+            case "yao":
+            case "psi":
+            case "mix_net":
+            case "attack_agent_fingerprint":
+            case "attack_trajectory_fingerprint":
+            case "operator_scenarios":
+            case "attack_membership_inference":
+            case "attack_model_inversion":
+            case "attack_reward_poisoning":
+            case "attack_cache_sidechannel":
+            case "custom_policy":
+            case "ctf":
+            case "story_mode":
+            case "world_branches":
               return undefined;
             default:
               return histories[mapMetricToHistoryKey(openMetric)];
@@ -851,6 +995,30 @@ function mapMetricToHistoryKey(
     | "event_bus"
     | "event_graph"
     | "security_blocked"
+    | "defense_data_poisoning"
+    | "defense_padding"
+    | "defense_k_anonymity"
+    | "defense_l_diversity"
+    | "defense_gan"
+    | "defense_request_obfuscation"
+    | "frost"
+    | "sphincs"
+    | "verkle"
+    | "bbs_plus"
+    | "threshold_ecdsa"
+    | "yao"
+    | "psi"
+    | "mix_net"
+    | "attack_agent_fingerprint"
+    | "attack_trajectory_fingerprint"
+    | "attack_membership_inference"
+    | "attack_model_inversion"
+    | "attack_reward_poisoning"
+    | "attack_cache_sidechannel"
+    | "operator_scenarios"
+    | "custom_policy"
+    | "ctf"
+    | "world_branches"
   >,
 ): keyof ReturnType<typeof useDashboardLive>["history"] {
   switch (m) {

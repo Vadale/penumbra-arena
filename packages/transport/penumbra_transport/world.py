@@ -1,10 +1,13 @@
-"""World snapshots: save + load + list named simulation+chain checkpoints.
+"""World snapshots: save + load + list named simulation+chain checkpoints + in-memory branches.
 
 Concept taught: a "world" snapshot is the FULL state of the running
 system — chain + simulation — persisted to disk under a human-
 friendly name, restorable across process restarts. Both layers are
 captured so a snapshot represents one moment in time you can return
-to.
+to. The Phase 5 Tier 4 extension adds *branches*: N pickle-clones of
+the live simulation that can be advanced independently and compared
+side-by-side. Branches live in process memory, not on disk, so they
+are cheap to spawn and disappear on restart by design.
 
 Layout
 ------
@@ -38,7 +41,7 @@ from __future__ import annotations
 import os
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -174,3 +177,114 @@ class InvalidSnapshotNameError(ValueError):
 
 class SnapshotNotFoundError(FileNotFoundError):
     """Raised when load_world() can't find the requested snapshot."""
+
+
+class BranchNotFoundError(KeyError):
+    """Raised when a branch id is unknown to the registry."""
+
+
+@dataclass(slots=True)
+class BranchEntry:
+    """One in-memory branched simulation."""
+
+    branch_id: str
+    parent_tick: int
+    simulation: Simulation
+
+
+@dataclass(slots=True)
+class WorldBranchRegistry:
+    """Process-local map of branch_id → cloned Simulation.
+
+    Cloning is done via `pickle.dumps`/`loads` which round-trips agents,
+    arena, RNG, and policies. Branches stay in memory; they are not
+    persisted across restarts on purpose — branching is a "what if?"
+    tool, not a checkpoint mechanism.
+    """
+
+    branches: dict[str, BranchEntry] = field(default_factory=dict)
+
+    def branch(self, name: str, source: Simulation, *, n_branches: int = 5) -> list[str]:
+        """Snapshot `source` into `n_branches` independent clones.
+
+        Returns the list of newly-minted branch ids. Each id is the
+        prefix `name` plus a 1-based index so they sort lexically.
+        Cloning routes through `save_simulation` / `load_simulation`,
+        which strips agent policies + match-end callbacks (closures
+        over the live orchestrator never pickle cleanly). Reattach a
+        random-walk policy on restore so the branch still ticks.
+        """
+        _validate_name(name)
+        if n_branches < 1:
+            raise InvalidSnapshotNameError("n_branches must be >= 1")
+        import tempfile
+
+        created: list[str] = []
+        with tempfile.NamedTemporaryFile(suffix=".pkl", delete=True) as fp:
+            save_simulation(source, Path(fp.name))
+            for i in range(1, n_branches + 1):
+                branch_id = f"{name}-{i}"
+                clone = load_simulation(Path(fp.name))
+                self.branches[branch_id] = BranchEntry(
+                    branch_id=branch_id, parent_tick=source.tick_counter, simulation=clone
+                )
+                created.append(branch_id)
+        return created
+
+    def advance(self, branch_id: str, ticks: int) -> dict[str, str | int]:
+        """Advance the named branch by up to `ticks` ticks; returns final tick."""
+        entry = self.branches.get(branch_id)
+        if entry is None:
+            raise BranchNotFoundError(f"no branch {branch_id!r}")
+        for _ in range(max(0, ticks)):
+            entry.simulation.tick()
+        return {
+            "branch_id": branch_id,
+            "parent_tick": entry.parent_tick,
+            "current_tick": entry.simulation.tick_counter,
+        }
+
+    def list_branches(self) -> list[dict[str, object]]:
+        """Snapshot of every branch for /world/branches."""
+        return [
+            {
+                "branch_id": b.branch_id,
+                "parent_tick": b.parent_tick,
+                "current_tick": b.simulation.tick_counter,
+                "n_agents": len(b.simulation.agents),
+            }
+            for b in self.branches.values()
+        ]
+
+    def compare(self, branch_ids: list[str]) -> dict[str, object]:
+        """Side-by-side diff: positions + wealth + tick counter per branch."""
+        rows: list[dict[str, object]] = []
+        for bid in branch_ids:
+            entry = self.branches.get(bid)
+            if entry is None:
+                raise BranchNotFoundError(f"no branch {bid!r}")
+            sim = entry.simulation
+            positions = [int(a.position) for a in sim.agents]
+            wealth = [float(getattr(a, "coins", 0.0)) for a in sim.agents]
+            rows.append(
+                {
+                    "branch_id": bid,
+                    "current_tick": sim.tick_counter,
+                    "positions": positions,
+                    "wealth": wealth,
+                    "n_agents": len(sim.agents),
+                }
+            )
+        return {"branches": rows}
+
+    def drop(self, branch_id: str) -> bool:
+        """Forget the named branch; returns True iff it existed."""
+        return self.branches.pop(branch_id, None) is not None
+
+
+_GLOBAL_BRANCHES = WorldBranchRegistry()
+
+
+def global_branches() -> WorldBranchRegistry:
+    """Process-wide branch registry used by the FastAPI endpoints."""
+    return _GLOBAL_BRANCHES

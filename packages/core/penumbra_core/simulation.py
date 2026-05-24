@@ -82,6 +82,19 @@ class Simulation:
     state: RunState = RunState.RUNNING
     on_match_end: Callable[[Match, Arena, list[Agent]], None] | None = None
     batch_policy: BatchPolicy | None = None
+    operator_agent: Agent | None = None
+    """Phase 6b — external operator slot (id = n_agents). When non-None,
+    the simulation includes this agent in the per-tick observe+move loop.
+    The operator's policy is a no-op (stay put); its position changes
+    only via the operator action queue, drained by the orchestrator
+    before each tick. See ``packages/operator/`` for the action handlers.
+    """
+    pre_tick_hook: Callable[[int], None] | None = None
+    """Optional callback the loop fires BEFORE moving agents on each
+    tick. The orchestrator wires the operator queue drain into this
+    hook so queued actions are applied at the canonical "start of next
+    tick" cadence the plan specifies.
+    """
 
     @classmethod
     def build(
@@ -151,6 +164,8 @@ class Simulation:
 
     def _tick(self) -> TickFrame:
         """One discrete tick: arena advances, agents act, match status checked."""
+        if self.pre_tick_hook is not None:
+            self.pre_tick_hook(self.tick_counter)
         self.arena.step()
         self._move_agents()
         self._evaluate_match()
@@ -179,6 +194,14 @@ class Simulation:
                 continue
             cost = obs.neighbour_costs[target]
             agent.move_to(target, cost, tick=self.tick_counter)
+        # Phase 6b — operator agent is a regular Agent slot. Its position
+        # changed (if at all) via the queue drain in pre_tick_hook; here
+        # we just compute its observation so consumers that snapshot
+        # agent positions see a complete world. The operator's policy is
+        # a no-op (it never moves on its own), so we don't ask it for an
+        # action.
+        if self.operator_agent is not None:
+            self.operator_agent.observe(self.arena, tick=self.tick_counter)
 
     def _evaluate_match(self) -> None:
         match = self.current_match
@@ -209,11 +232,14 @@ class Simulation:
         self.next_match_id += 1
 
     def _snapshot(self) -> TickFrame:
+        positions = {a.id: a.position for a in self.agents}
+        if self.operator_agent is not None:
+            positions[self.operator_agent.id] = self.operator_agent.position
         return TickFrame(
             tick=self.tick_counter,
             match_id=self.current_match.id,
             match_status=self.current_match.status,
-            agent_positions={a.id: a.position for a in self.agents},
+            agent_positions=positions,
             arena_edge_count=self.arena.graph.number_of_edges(),
             arena_goals=list(self.arena.goals),
         )

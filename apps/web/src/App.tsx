@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { Bench } from "./pages/Bench";
+import { Operator } from "./pages/Operator";
 import { Dashboard } from "./routes/Dashboard";
 
 /**
  * Minimal path-based router. We don't pull in `react-router` because
- * Penumbra only has two top-level pages so far (dashboard + bench).
- * Listens to `popstate` so the browser back button works.
+ * Penumbra only has a handful of top-level pages (dashboard + bench
+ * + operator). Listens to `popstate` so the browser back button works.
  */
 export function App() {
   const [path, setPath] = useState<string>(() => window.location.pathname);
@@ -18,6 +19,9 @@ export function App() {
 
   if (path.startsWith("/bench")) {
     return <Bench />;
+  }
+  if (path.startsWith("/operator")) {
+    return <Operator />;
   }
   return <Dashboard />;
 }

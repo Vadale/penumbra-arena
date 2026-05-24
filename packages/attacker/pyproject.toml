@@ -6,6 +6,8 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
   "numpy>=2.0",
+  "scipy>=1.13",
+  "torch>=2.4",
   "typer>=0.13",
   "penumbra-core",
   "penumbra-crypto",

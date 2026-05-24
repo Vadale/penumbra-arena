@@ -13,6 +13,8 @@ dependencies = [
   "penumbra-chain",
   "penumbra-crypto",
   "penumbra-analytics",
+  "penumbra-attacker",
+  "penumbra-ctf",
 ]
 
 [tool.uv.sources]
@@ -20,6 +22,8 @@ penumbra-core = { workspace = true }
 penumbra-chain = { workspace = true }
 penumbra-crypto = { workspace = true }
 penumbra-analytics = { workspace = true }
+penumbra-attacker = { workspace = true }
+penumbra-ctf = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

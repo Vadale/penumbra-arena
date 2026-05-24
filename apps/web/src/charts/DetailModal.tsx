@@ -43,7 +43,14 @@ import { ActionHistogramChart } from "./ActionHistogramChart";
 import { ANOVAChart } from "./ANOVAChart";
 import { ArenaGraphChart } from "./ArenaGraphChart";
 import { ArimaChart } from "./ArimaChart";
+import { AttackAgentFingerprintChart } from "./AttackAgentFingerprintChart";
+import { AttackCacheSidechannelChart } from "./AttackCacheSidechannelChart";
+import { AttackMembershipInferenceChart } from "./AttackMembershipInferenceChart";
+import { AttackModelInversionChart } from "./AttackModelInversionChart";
+import { AttackRewardPoisoningChart } from "./AttackRewardPoisoningChart";
+import { AttackTrajectoryFingerprintChart } from "./AttackTrajectoryFingerprintChart";
 import { BayesianDensity } from "./BayesianDensity";
+import { BBSPlusChart } from "./BBSPlusChart";
 import { BeaverChart } from "./BeaverChart";
 import { BLSChart } from "./BLSChart";
 import { BlockedAgentsChart } from "./BlockedAgentsChart";
@@ -52,12 +59,21 @@ import { CausalChart } from "./CausalChart";
 import { CKKSCompareChart } from "./CKKSCompareChart";
 import { ClusterScatter } from "./ClusterScatter";
 import { CorrelationHeatmap } from "./CorrelationHeatmap";
+import { CTFChart } from "./CTFChart";
+import { CustomPolicyChart } from "./CustomPolicyChart";
+import { DefenseDataPoisoningChart } from "./DefenseDataPoisoningChart";
+import { DefenseGANChart } from "./DefenseGANChart";
+import { DefenseKAnonymityChart } from "./DefenseKAnonymityChart";
+import { DefenseLDiversityChart } from "./DefenseLDiversityChart";
+import { DefensePaddingChart } from "./DefensePaddingChart";
+import { DefenseRequestObfuscationChart } from "./DefenseRequestObfuscationChart";
 import { DilithiumChart } from "./DilithiumChart";
 import { DpCompareChart } from "./DpCompareChart";
 import { EconomyChart } from "./EconomyChart";
 import { EventBusChart } from "./EventBusChart";
 import { EventGraphChart } from "./EventGraphChart";
 import { FederatedStatusChart } from "./FederatedStatusChart";
+import { FROSTChart } from "./FROSTChart";
 import { GATAttentionChart } from "./GATAttentionChart";
 import { GarchChart } from "./GarchChart";
 import { GrangerMatrix } from "./GrangerMatrix";
@@ -74,13 +90,16 @@ import { LogisticsReorderPolicyChart } from "./LogisticsReorderPolicyChart";
 import { LogisticsVRPChart } from "./LogisticsVRPChart";
 import { LogitChart } from "./LogitChart";
 import { MempoolChart } from "./MempoolChart";
+import { MixNetChart } from "./MixNetChart";
 import { MonteCarloFan } from "./MonteCarloFan";
 import { MultiCheckpointChart } from "./MultiCheckpointChart";
 import { MultiplierZKChart } from "./MultiplierZKChart";
+import { OperatorScenarioChart } from "./OperatorScenarioChart";
 import { PCAScree } from "./PCAScree";
 import { PedersenChart } from "./PedersenChart";
 import { PermutationChart } from "./PermutationChart";
 import { PolicyInspector } from "./PolicyInspector";
+import { PSIChart } from "./PSIChart";
 import { RegressionChart } from "./RegressionChart";
 import { RewardShapingChart } from "./RewardShapingChart";
 import { ROCChart } from "./ROCChart";
@@ -89,17 +108,23 @@ import { SchnorrChart } from "./SchnorrChart";
 import { ShamirChart } from "./ShamirChart";
 import { SlashingChart } from "./SlashingChart";
 import { SnarkForgeChart } from "./SnarkForgeChart";
+import { SPHINCSChart } from "./SPHINCSChart";
 import { SpectralChart } from "./SpectralChart";
+import { StoryModeChart } from "./StoryModeChart";
 import { SurvivalChart } from "./SurvivalChart";
 import { TFHEChart } from "./TFHEChart";
+import { ThresholdECDSAChart } from "./ThresholdECDSAChart";
 import { TopicsBar } from "./TopicsBar";
 import { TrainingCurves } from "./TrainingCurves";
 import { ValueMapChart } from "./ValueMapChart";
 import { VarIrfChart } from "./VarIrfChart";
 import { VDFChart } from "./VDFChart";
+import { VerkleChart } from "./VerkleChart";
 import { VRFLeaderChart } from "./VRFLeaderChart";
 import { WealthChart } from "./WealthChart";
+import { WorldBranchChart } from "./WorldBranchChart";
 import { WorldSnapshotChart } from "./WorldSnapshotChart";
+import { YaoChart } from "./YaoChart";
 import { ZKVerifyChart } from "./ZKVerifyChart";
 
 export type MetricKind =
@@ -159,6 +184,14 @@ export type MetricKind =
   | "schnorr"
   | "zk_multiplier"
   | "snark_forge"
+  | "frost"
+  | "sphincs"
+  | "verkle"
+  | "bbs_plus"
+  | "threshold_ecdsa"
+  | "yao"
+  | "psi"
+  | "mix_net"
   | "logistics_fill_rate"
   | "logistics_inventory_health"
   | "logistics_orders"
@@ -170,7 +203,24 @@ export type MetricKind =
   | "federated_status"
   | "event_bus"
   | "event_graph"
-  | "security_blocked";
+  | "security_blocked"
+  | "defense_data_poisoning"
+  | "defense_padding"
+  | "defense_k_anonymity"
+  | "defense_l_diversity"
+  | "defense_gan"
+  | "defense_request_obfuscation"
+  | "attack_agent_fingerprint"
+  | "attack_trajectory_fingerprint"
+  | "attack_membership_inference"
+  | "attack_model_inversion"
+  | "attack_reward_poisoning"
+  | "attack_cache_sidechannel"
+  | "operator_scenarios"
+  | "custom_policy"
+  | "ctf"
+  | "story_mode"
+  | "world_branches";
 
 interface Props {
   open: boolean;
@@ -485,6 +535,46 @@ const META: Record<MetricKind, { label: string; description: string; yUnit?: str
     description:
       "Attempt to fool the Groth16 verifier WITHOUT a witness. Two attacks: (1) flip A's low bit — the proof point goes off-curve, pairing equation fails. (2) Replay an honest proof with TAMPERED public inputs — Groth16 binds proofs to public inputs via the linear-combination IC, so verifier rejects. The honest control still accepts.",
   },
+  frost: {
+    label: "FROST — threshold Schnorr (round-optimised)",
+    description:
+      "t-of-n participants co-sign a Schnorr signature that verifies as plain (R, s) — the threshold structure is INVISIBLE to the verifier. Per-signature binding factors ρᵢ defeat the Drijvers-style sub-exponential forgery on naive 2-round protocols. Used by Bitcoin Lightning, Coinbase MPC custody, Frostsnap.",
+  },
+  sphincs: {
+    label: "SPHINCS+ vs Dilithium — PQ signature sizes",
+    description:
+      "Hash-based PQ signatures (SPHINCS+-128f-simple, NIST FIPS 205) trade signature size (~17 KB) for structural simplicity: only hash-collision resistance is assumed. ML-DSA-65 (Dilithium-3) ships smaller ~3.3 KB sigs but rests on Module-LWE. Two PQ families on one shelf gives Penumbra two independent migration paths.",
+  },
+  verkle: {
+    label: "Verkle tree — KZG opening + Merkle size comparison",
+    description:
+      "Verkle proofs replace each Merkle sibling list (depth × 32 B) with ONE KZG opening per level (48 B G1 point). At 1M leaves the compression is ~4×; at 256-ary trees of state-size depth it climbs into 10–20×. Ethereum's 'Verge' roadmap adopts Verkle precisely for stateless-client proof bandwidth.",
+  },
+  bbs_plus: {
+    label: "BBS+ — selective-disclosure credentials",
+    description:
+      "Issuer signs ONCE over an L-attribute vector; holder later proves 'I have a valid credential whose attributes at indices I are values V' without revealing the rest. Pairing equation e(A, w + g₂·e) = e(g₁ + h₀·s + Σ hᵢ·mᵢ, g₂). Powers EU Digital Identity Wallet 2026 + AnonCreds.",
+  },
+  threshold_ecdsa: {
+    label: "Threshold ECDSA — GG18 (educational)",
+    description:
+      "n-of-n parties co-sign a secp256k1 ECDSA signature. The hard step is k⁻¹·d under secret sharing — GG18 solves it with Paillier-MtA + ZK proofs; our educational variant uses a trusted dealer + Beaver-style additive shares of (k⁻¹·d). The signature is plain ECDSA on the wire.",
+  },
+  yao: {
+    label: "Yao's millionaires — garbled-circuit comparator",
+    description:
+      "Two parties learn ONLY whether a < b, a == b, or a > b — never the values. Each wire carries 2 random 128-bit labels; each gate ships 4 doubly-encrypted output labels; the evaluator decrypts EXACTLY ONE row per gate using OT-selected input labels. The output label decodes to {0, 1}.",
+  },
+  psi: {
+    label: "Private Set Intersection — OPRF/DH",
+    description:
+      "Alice + Bob find S_A ∩ S_B without revealing anything else. Alice ships {H(x)^α}; Bob raises by his secret β and publishes {H(y)^β}; Alice removes α and compares OPRF images. Used by Apple PSI, Google Password Checkup, Signal contact discovery.",
+  },
+  mix_net: {
+    label: "Mix-net — Loopix-style onion routing",
+    description:
+      "onion_i = E_{K_i}(next_hop || delay || onion_{i+1}). Each relay peels one layer, learns predecessor + successor only. A global adversary cannot link sender → receiver as long as one honest relay shuffles its queue. The Penumbra dispatcher hides assignment metadata this way.",
+  },
   logistics_fill_rate: {
     label: "Logistics — end-customer fill rate",
     description:
@@ -544,6 +634,91 @@ const META: Record<MetricKind, { label: string; description: string; yUnit?: str
     label: "Security — blocked agents",
     description:
       "Phase 6a Tier 2: agents whose signing rejections crossed the threshold are auto-blocked from Market trades, logistics dispatch, and FL aggregation. The block lifts after the cool-off window. The history counter never decreases; the gated-trade gauge counts every BUY/SELL skipped because of an active block.",
+  },
+  defense_data_poisoning: {
+    label: "Defense — decoy injection (privacy-utility curve)",
+    description:
+      "Phase 5 Tier 3: defender mixes a configurable fraction of plausible decoy records into a release so an attacker that trusts every record fits a contaminated distribution. Decoys are sampled per-field from the empirical distribution of the real records and flagged with is_decoy=True for defender-side filters. Curve sweeps rate vs (attacker_max_accuracy = 1 − rate, utility shift of mean + std).",
+  },
+  defense_padding: {
+    label: "Defense — request padding + Poisson cover traffic",
+    description:
+      "Phase 5 Tier 3: pad every message to a fixed bucket so packet sizes collapse to one visible size, and emit cover traffic on a Poisson schedule so inter-arrival timing leaks nothing. Bandwidth overhead = target_size / mean(real size); privacy headline is the distinct-sizes-after count collapsing to 1. Poisson arrivals are the requirement Loopix relies on for its mix-net bound.",
+  },
+  defense_k_anonymity: {
+    label: "Defense — k-anonymity (suppression)",
+    description:
+      "Phase 5 Tier 3: release only those records whose quasi-identifier tuple is shared by at least k − 1 others; everything else is suppressed. Adversary best re-identification on any released bucket is bounded by 1/k. Curve sweeps k vs (suppression rate, 1/k). Vulnerable to the homogeneity attack when sensitive values are shared inside a bucket — see the ℓ-diversity tile.",
+  },
+  defense_l_diversity: {
+    label: "Defense — ℓ-diversity (k-anonymity + distinctness)",
+    description:
+      "Phase 5 Tier 3: tightens k-anonymity by requiring each released bucket to contain ≥ ℓ distinct values on the sensitive column. Defeats the homogeneity attack at the cost of more aggressive suppression. The curve fixes k and sweeps ℓ; cyan dots mark homogeneity-safe releases. The next upgrade — t-closeness — defends against the skewness attack.",
+  },
+  defense_gan: {
+    label: "Defense — synthetic-trace release (Gaussian stub)",
+    description:
+      "Phase 5 Tier 3: release samples from a generative model fitted to the real trajectory features instead of the records themselves. Every released sample is a fresh draw, so a membership-inference adversary on the output scores at chance. The Tier 3 stub uses a Gaussian fit (mean + covariance) with a tunable correlation-preserve knob; CycleGAN / TimeGAN deferred behind the same API.",
+  },
+  defense_request_obfuscation: {
+    label: "Defense — Bonferroni + dummy DP queries",
+    description:
+      "Phase 5 Tier 3: split the family-wise ε across all queries (per-query ε = ε_family / k) and inject k_dummy decoy queries so the adversary's family grows. An attacker that wants to maintain its usual family-wise guarantee must accept a smaller per-query budget — its DP accountant drains proportionally faster. Curve sweeps dummy count vs attacker budget inflation.",
+  },
+  attack_agent_fingerprint: {
+    label: "Attack — 1-NN agent fingerprint",
+    description:
+      "Phase 5 Tier 2: build a per-agent feature vector from action histogram, latency stats, trajectory curvature and trade pattern; a 1-NN classifier re-identifies agents across matches well above the 1/N baseline. Defence is DP noise on aggregates + per-match identity shuffling.",
+  },
+  attack_trajectory_fingerprint: {
+    label: "Attack — HMM trajectory fingerprint",
+    description:
+      "Phase 5 Tier 2: fit one Baum-Welch HMM per agent over historical action sequences. Forward log-likelihood scoring re-identifies unseen trajectories by picking the most likely model. Captures temporal structure that 1-NN over static features misses. Defence: RAPPOR-style action randomisation.",
+  },
+  attack_membership_inference: {
+    label: "Attack — Shokri shadow-model MI",
+    description:
+      "Phase 5 Tier 2: Shokri et al. 2017 trains N small shadow classifiers; their confidence vectors on members vs non-members teach a meta-classifier (ridge logistic) that decides 'this observation was in the training set' on the real target policy. Defence: DP-SGD + output confidence clipping drops advantage below 1%.",
+  },
+  attack_model_inversion: {
+    label: "Attack — Deep Leakage from Gradients",
+    description:
+      "Phase 5 Tier 2: Zhu et al. 2019. Given a leaked per-sample gradient (think: a federated round delta on a single example), recover the input by minimising ‖∇_θ L(model(x̂), y) − ∇_observed‖² over x̂. Defence: DP-SGD per-sample gradient clipping + Gaussian noise + CKKS secure aggregation hides individual gradients.",
+  },
+  attack_reward_poisoning: {
+    label: "Attack — reward poisoning (5% backdoor)",
+    description:
+      "Phase 5 Tier 2: inject inflated rewards on 5% of training episodes, all tied to the attacker's target action. Softmax REINFORCE on a 4-armed bandit drifts toward the attacker's preference and away from the true best action. Defence: reward clipping, median-of-means aggregation, Byzantine-robust aggregators (Krum, TrimmedMean).",
+  },
+  attack_cache_sidechannel: {
+    label: "Attack — cache side-channel on CKKS (must FAIL)",
+    description:
+      "Phase 5 Tier 2 pedagogical: Flush+Reload-style timing on TenSEAL CKKS add over sparse vs dense ciphertexts; Welch t-test the latencies. Modern CKKS pads to the full polynomial degree on every op, so the t-stat stays small and `leak_detected` returns False. The companion sanity test (artificially leaky op) confirms the attack DOES detect leaks when present.",
+  },
+  operator_scenarios: {
+    label: "Operator — scenario engine (12 starter drills)",
+    description:
+      "Phase 6b Tier 5: pick one of 12 starter scenarios (defense, attack, chain, FL, logistics, sandbox) and the runner snapshots the operator's start state then evaluates victory + failure clauses against live state at 1 Hz. Each scenario declares its preconditions, opening event, and per-axis scorecard weights so the composite is comparable across runs.",
+  },
+  custom_policy: {
+    label: "Custom Agent Policy — sandboxed injection",
+    description:
+      "Phase 5 Tier 4: write a Python `policy(state, observation)` function, the backend AST-validates and runs it in a numpy+math-only sandbox with a 50 ms wall-clock budget. Use it to test attack policies (adversarial, byzantine, reward-poisoning) against the live arena without rebuilding the server.",
+  },
+  ctf: {
+    label: "Capture-the-Flag — privacy + crypto challenges",
+    description:
+      "Phase 5 Tier 4: 5 starter YAML challenges (DP reconstruction, linkability, replay, byzantine equivocation, SNARK forge). Pick a challenge, read its setup + acceptance criteria, build the attack offline, submit the flag for a per-challenge leaderboard slot.",
+  },
+  story_mode: {
+    label: "Story Mode — cross-pillar attack chains",
+    description:
+      "Phase 5 Tier 5: 8 narrative `psh lesson` tutorials that thread an attack across logistics, statistics, NN, RL, and crypto pillars. Filter by difficulty or pillar; pick a story to copy the launch command for the embedded terminal.",
+  },
+  world_branches: {
+    label: "World branches — pickle-clone & compare",
+    description:
+      "Phase 5 Tier 4: snapshot the live simulation into N in-memory branches via pickle round-trip. Advance any branch independently for K ticks and compare positions + wealth + tick counter side-by-side. Branches are intentionally non-persistent — process-local what-if explorations.",
   },
 };
 
@@ -746,6 +921,30 @@ export function DetailModal({
     if (metric === "snark_forge") {
       return <SnarkForgeChart />;
     }
+    if (metric === "frost") {
+      return <FROSTChart />;
+    }
+    if (metric === "sphincs") {
+      return <SPHINCSChart />;
+    }
+    if (metric === "verkle") {
+      return <VerkleChart />;
+    }
+    if (metric === "bbs_plus") {
+      return <BBSPlusChart />;
+    }
+    if (metric === "threshold_ecdsa") {
+      return <ThresholdECDSAChart />;
+    }
+    if (metric === "yao") {
+      return <YaoChart />;
+    }
+    if (metric === "psi") {
+      return <PSIChart />;
+    }
+    if (metric === "mix_net") {
+      return <MixNetChart />;
+    }
     if (metric === "logistics_fill_rate") {
       return <LogisticsFillRateChart />;
     }
@@ -781,6 +980,57 @@ export function DetailModal({
     }
     if (metric === "security_blocked") {
       return <BlockedAgentsChart />;
+    }
+    if (metric === "defense_data_poisoning") {
+      return <DefenseDataPoisoningChart />;
+    }
+    if (metric === "defense_padding") {
+      return <DefensePaddingChart />;
+    }
+    if (metric === "defense_k_anonymity") {
+      return <DefenseKAnonymityChart />;
+    }
+    if (metric === "defense_l_diversity") {
+      return <DefenseLDiversityChart />;
+    }
+    if (metric === "defense_gan") {
+      return <DefenseGANChart />;
+    }
+    if (metric === "defense_request_obfuscation") {
+      return <DefenseRequestObfuscationChart />;
+    }
+    if (metric === "attack_agent_fingerprint") {
+      return <AttackAgentFingerprintChart />;
+    }
+    if (metric === "attack_trajectory_fingerprint") {
+      return <AttackTrajectoryFingerprintChart />;
+    }
+    if (metric === "attack_membership_inference") {
+      return <AttackMembershipInferenceChart />;
+    }
+    if (metric === "attack_model_inversion") {
+      return <AttackModelInversionChart />;
+    }
+    if (metric === "attack_reward_poisoning") {
+      return <AttackRewardPoisoningChart />;
+    }
+    if (metric === "attack_cache_sidechannel") {
+      return <AttackCacheSidechannelChart />;
+    }
+    if (metric === "operator_scenarios") {
+      return <OperatorScenarioChart />;
+    }
+    if (metric === "custom_policy") {
+      return <CustomPolicyChart />;
+    }
+    if (metric === "ctf") {
+      return <CTFChart />;
+    }
+    if (metric === "story_mode") {
+      return <StoryModeChart />;
+    }
+    if (metric === "world_branches") {
+      return <WorldBranchChart />;
     }
     return <LineChart values={values ?? []} label={meta.label} yUnit={meta.yUnit} />;
   })();
