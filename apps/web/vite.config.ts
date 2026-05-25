@@ -21,7 +21,25 @@ export default defineConfig({
       "/health": API_HTTP,
       "/state": API_HTTP,
       "/control": API_HTTP,
-      "/config": API_HTTP,
+      "/config": {
+        target: API_HTTP,
+        changeOrigin: true,
+        // /config is BOTH a React route (live runtime editor at the
+        // bare path) AND a REST endpoint (GET reads, POST writes).
+        // We bypass to the SPA only on a browser navigation request
+        // (Accept: text/html), so fetch() calls from the React app
+        // — which use Accept: application/json or */* — still hit
+        // the backend. URL discrimination alone (as the /operator
+        // bypass does) would break the POST /config save round-trip.
+        bypass: (req) => {
+          if (req.url !== "/config" && req.url !== "/config/") return undefined;
+          const accept = req.headers.accept ?? "";
+          if (req.method === "GET" && accept.includes("text/html")) {
+            return req.url;
+          }
+          return undefined;
+        },
+      },
       "/chain": API_HTTP,
       "/dashboard": API_HTTP,
       "/encrypted-heatmap": API_HTTP,

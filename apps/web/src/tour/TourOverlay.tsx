@@ -23,32 +23,37 @@ interface Step {
 
 const STEPS: Step[] = [
   {
-    title: "1 / 6 · Arena (left)",
+    title: "1 / 7 · Arena (left)",
     body: "N=50 agents on a procedurally dynamic graph. The DF-style tile map renders fuzzy halos sized by recent position variance. Agents act under the live MAPPO policy — toggle MAPPO/RANDOM in the status bar to switch on the fly.",
     emphasis: "left",
   },
   {
-    title: "2 / 6 · Status bar (bottom)",
+    title: "2 / 7 · Status bar (bottom)",
     body: "Live counters: tick, match, chain height, DP ε remaining, signing stats. The two interactive controls on the right are the MAPPO/RANDOM toggle and the temperature slider — they mutate the live inference policy without restart.",
     emphasis: "bottom",
   },
   {
-    title: "3 / 6 · Coach console (bottom)",
-    body: "In-dashboard runner for pna (attacker CLI) + psh (shell tutor). 5 attack chips (replay, byzantine, DP reconstruction, linkability, timing side-channel) plus shell-coach lessons.",
+    title: "3 / 7 · Coach console (bottom)",
+    body: "In-dashboard runner for pna (attacker CLI) + psh (shell tutor) + pno (operator). 12 attack chips, 19 shell lessons, all reachable without leaving the browser. Switch to the 'shell' tab for a live macOS zsh PTY or 'repl' for a sandboxed Python REPL with pna.api pre-imported.",
     emphasis: "bottom",
   },
   {
-    title: "4 / 6 · Analytics tiles (right)",
-    body: "90+ clickable tiles covering descriptive + inferential + econometrics + ML + crypto + chain + economy + logistics + defenses + attacks. Stats panels open detail modals with educational descriptions. Live polling rates tuned per panel weight.",
+    title: "4 / 7 · Three CLIs you can install",
+    body: "If you prefer your own terminal: `uv tool install ./packages/{attacker,shell_coach,operator}` exposes `pna` (12 attacks), `psh` (19 lessons + explain/suggest/interpret), and `pno` (20 operator actions + 12 scenarios). All three honour PENUMBRA_API_URL so one export points them at the running stack.",
+    emphasis: "bottom",
+  },
+  {
+    title: "5 / 7 · Analytics tiles (right)",
+    body: "99 clickable tiles in 12 sections — start with statistics + econometrics + economy (the 'essentials' band at the top); the rest (crypto, defenses, attacks, federated, logistics, interactive) is opt-in depth. Clicking any tile opens a detail modal with the educational description, the live chart, and a 'try it in your shell' CLI snippet.",
     emphasis: "right",
   },
   {
-    title: "5 / 6 · ML interaction",
+    title: "6 / 7 · ML interaction",
     body: "Click 'MAPPO π' for the policy inspector, 'training' for live PPO start/stop + curves, 'V(s)' for critic + per-node entropy, 'reward' for live reward shaping sliders, 'A/B π' to load a second checkpoint.",
     emphasis: "right",
   },
   {
-    title: "6 / 6 · Crypto & chain",
+    title: "7 / 7 · Crypto & chain",
     body: "Click 'ZK proof' for Groth16 verify ACCEPT vs REJECT, 'BLS agg' to inspect block signatures, 'Kyber'/'Dilithium' for PQ key sizes, 'VDF' for the compute/verify asymmetry, 'Shamir' for secret splitting, 'snapshots' to save/load the perpetual state.",
     emphasis: "right",
   },

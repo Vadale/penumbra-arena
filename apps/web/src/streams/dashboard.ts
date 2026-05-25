@@ -308,20 +308,33 @@ function pushRolling(arr: number[], v: number | null): number[] {
 export interface DashboardLive {
   snap: DashboardSnapshot | null;
   history: DashboardHistory;
+  /**
+   * `null` while the first response is in flight or after any successful
+   * poll; a short message describing the failure once we've missed at
+   * least one poll AND the previous attempt errored. The UI uses this to
+   * render an explicit "couldn't reach /dashboard" hint instead of a
+   * spinner that never settles when the backend is down.
+   */
+  error: string | null;
 }
 
 export function useDashboardLive(): DashboardLive {
   const [snap, setSnap] = useState<DashboardSnapshot | null>(null);
   const [history, setHistory] = useState<DashboardHistory>(EMPTY_HISTORY);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     const poll = async () => {
       try {
         const res = await fetch("/dashboard");
-        if (!res.ok) return;
+        if (!res.ok) {
+          if (!cancelled) setError(`HTTP ${res.status} from /dashboard`);
+          return;
+        }
         const payload = (await res.json()) as DashboardSnapshot;
         if (cancelled) return;
+        setError(null);
         setSnap(payload);
         setHistory((h) => ({
           trajectory_mean: pushRolling(h.trajectory_mean, payload.summary?.mean ?? null),
@@ -343,8 +356,10 @@ export function useDashboardLive(): DashboardLive {
           ),
           n_topics: pushRolling(h.n_topics, payload.n_topics),
         }));
-      } catch {
-        // ignore; next poll will retry
+      } catch (exc) {
+        if (!cancelled) {
+          setError(exc instanceof Error ? exc.message : "fetch /dashboard failed");
+        }
       }
     };
     void poll();
@@ -355,7 +370,7 @@ export function useDashboardLive(): DashboardLive {
     };
   }, []);
 
-  return { snap, history };
+  return { snap, history, error };
 }
 
 /** Back-compat for older callers — returns just the snapshot. */

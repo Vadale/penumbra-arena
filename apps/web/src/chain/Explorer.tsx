@@ -76,8 +76,18 @@ function BlockRow({ block }: { block: BlockView }) {
 }
 
 export function ChainExplorer() {
-  const latest = useChainLatest();
+  const { latest, error } = useChainLatest();
 
+  if (latest === null && error !== null) {
+    return (
+      <div className="space-y-1 border border-[color:var(--color-penumbra-ember)] bg-[color:var(--color-penumbra-ember-bg)] p-2 text-xs uppercase tracking-wider text-[color:var(--color-penumbra-ember)]">
+        <div>chain offline</div>
+        <div className="font-mono text-[10px] normal-case tracking-normal text-[color:var(--color-penumbra-muted)]">
+          {error} · retrying…
+        </div>
+      </div>
+    );
+  }
   if (latest === null) {
     return (
       <div className="text-xs uppercase tracking-wider text-[color:var(--color-penumbra-muted)]">

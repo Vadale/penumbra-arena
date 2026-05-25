@@ -37,8 +37,19 @@ export interface ChainLatest {
 
 const POLL_MS = 3_000;
 
-export function useChainLatest(): ChainLatest | null {
+export interface ChainLatestQuery {
+  latest: ChainLatest | null;
+  /**
+   * Set when the last poll failed AND we have no previous snapshot to
+   * show. Lets the Chain Explorer render "couldn't reach /chain" instead
+   * of looping a connecting spinner forever when the backend is down.
+   */
+  error: string | null;
+}
+
+export function useChainLatest(): ChainLatestQuery {
   const [latest, setLatest] = useState<ChainLatest | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,11 +57,18 @@ export function useChainLatest(): ChainLatest | null {
     const poll = async () => {
       try {
         const response = await fetch("/chain/latest");
-        if (!response.ok) return;
+        if (!response.ok) {
+          if (!cancelled) setError(`HTTP ${response.status} from /chain/latest`);
+          return;
+        }
         const payload = (await response.json()) as ChainLatest;
-        if (!cancelled) setLatest(payload);
-      } catch {
-        // network blip; the next poll will retry
+        if (cancelled) return;
+        setError(null);
+        setLatest(payload);
+      } catch (exc) {
+        if (!cancelled) {
+          setError(exc instanceof Error ? exc.message : "fetch /chain/latest failed");
+        }
       }
     };
 
@@ -62,5 +80,5 @@ export function useChainLatest(): ChainLatest | null {
     };
   }, []);
 
-  return latest;
+  return { latest, error };
 }

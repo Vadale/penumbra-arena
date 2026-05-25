@@ -31,6 +31,32 @@ import { TourOverlay } from "../tour/TourOverlay";
 type BottomTab = "coach" | "terminal" | "repl";
 type ArenaMode = "map" | "world" | "graph" | "3d";
 
+// Persist the two view-mode selectors across page refreshes so a
+// learner who picks "3d arena + shell tab" doesn't lose it on F5.
+const BOTTOM_TAB_KEY = "penumbra.dashboard.bottomTab";
+const ARENA_MODE_KEY = "penumbra.dashboard.arenaMode";
+const BOTTOM_TABS: ReadonlySet<BottomTab> = new Set<BottomTab>(["coach", "terminal", "repl"]);
+const ARENA_MODES: ReadonlySet<ArenaMode> = new Set<ArenaMode>(["map", "world", "graph", "3d"]);
+
+function readStoredTab<T extends string>(key: string, allowed: ReadonlySet<T>, fallback: T): T {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (raw !== null && allowed.has(raw as T)) return raw as T;
+  } catch {
+    // localStorage throws in private-browsing — fall through to default.
+  }
+  return fallback;
+}
+
+function writeStoredTab(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // ignore quota / private-browsing failures
+  }
+}
+
 export function Dashboard() {
   usePenumbraSocket();
   useFrameHistoryRecorder();
@@ -38,8 +64,20 @@ export function Dashboard() {
 
   const connected = usePenumbraStore((s) => s.connected);
   const lastFrame = usePenumbraStore((s) => s.lastFrame);
-  const [bottomTab, setBottomTab] = useState<BottomTab>("coach");
-  const [arenaMode, setArenaMode] = useState<ArenaMode>("map");
+  const [bottomTab, setBottomTabState] = useState<BottomTab>(() =>
+    readStoredTab<BottomTab>(BOTTOM_TAB_KEY, BOTTOM_TABS, "coach"),
+  );
+  const [arenaMode, setArenaModeState] = useState<ArenaMode>(() =>
+    readStoredTab<ArenaMode>(ARENA_MODE_KEY, ARENA_MODES, "map"),
+  );
+  const setBottomTab = useCallback((next: BottomTab) => {
+    setBottomTabState(next);
+    writeStoredTab(BOTTOM_TAB_KEY, next);
+  }, []);
+  const setArenaMode = useCallback((next: ArenaMode) => {
+    setArenaModeState(next);
+    writeStoredTab(ARENA_MODE_KEY, next);
+  }, []);
   const [helpOpen, setHelpOpen] = useState(false);
   const [paused, setPaused] = useState(false);
   const [timeWarp, setTimeWarp] = useState(1);
@@ -86,15 +124,22 @@ export function Dashboard() {
   const shortcutHandlers = useMemo(
     () => ({
       onBottomTab: setBottomTab,
-      onArenaToggle: () =>
-        setArenaMode((m) =>
-          m === "map" ? "world" : m === "world" ? "graph" : m === "graph" ? "3d" : "map",
-        ),
+      onArenaToggle: () => {
+        const next: ArenaMode =
+          arenaMode === "map"
+            ? "world"
+            : arenaMode === "world"
+              ? "graph"
+              : arenaMode === "graph"
+                ? "3d"
+                : "map";
+        setArenaMode(next);
+      },
       onPauseToggle,
       onTimeWarpDelta,
       onHelpToggle: () => setHelpOpen((o) => !o),
     }),
-    [onPauseToggle, onTimeWarpDelta],
+    [arenaMode, setBottomTab, setArenaMode, onPauseToggle, onTimeWarpDelta],
   );
 
   useKeyboardShortcuts(shortcutHandlers);
@@ -132,15 +177,7 @@ export function Dashboard() {
             config
           </a>
           <NotifPermBadge permission={notifPerm} />
-          <span
-            className={
-              connected
-                ? "rounded-sm border border-[color:var(--color-penumbra-cyan)] bg-[color:var(--color-penumbra-cyan-bg)] px-1.5 py-0.5 text-xs uppercase tracking-wider text-[color:var(--color-penumbra-cyan)]"
-                : "rounded-sm border border-[color:var(--color-penumbra-ember)] bg-[color:var(--color-penumbra-ember-bg)] px-1.5 py-0.5 text-xs uppercase tracking-wider text-[color:var(--color-penumbra-ember)]"
-            }
-          >
-            {connected ? "linked" : "offline"}
-          </span>
+          <ConnectionBadge connected={connected} lastFrame={lastFrame} />
         </div>
       </header>
 
@@ -175,13 +212,25 @@ export function Dashboard() {
           <TimeScrubber />
           <div className="flex h-[42%] min-h-0 flex-col border-t border-r border-[color:var(--color-penumbra-border)] bg-[color:var(--color-penumbra-panel)]">
             <div className="flex items-center gap-3 border-b border-[color:var(--color-penumbra-border)] px-3 py-1.5 text-xs uppercase tracking-[0.18em]">
-              <PanelTab active={bottomTab === "coach"} onClick={() => setBottomTab("coach")}>
+              <PanelTab
+                active={bottomTab === "coach"}
+                onClick={() => setBottomTab("coach")}
+                hint="curated pna/psh/pno chips — safe, in-process"
+              >
                 coach
               </PanelTab>
-              <PanelTab active={bottomTab === "terminal"} onClick={() => setBottomTab("terminal")}>
+              <PanelTab
+                active={bottomTab === "terminal"}
+                onClick={() => setBottomTab("terminal")}
+                hint="live macOS zsh PTY (requires PENUMBRA_ENABLE_PTY=1)"
+              >
                 shell
               </PanelTab>
-              <PanelTab active={bottomTab === "repl"} onClick={() => setBottomTab("repl")}>
+              <PanelTab
+                active={bottomTab === "repl"}
+                onClick={() => setBottomTab("repl")}
+                hint="sandboxed Python REPL with pna.api pre-imported"
+              >
                 repl
               </PanelTab>
             </div>
@@ -231,6 +280,41 @@ export function Dashboard() {
   );
 }
 
+function ConnectionBadge({ connected, lastFrame }: { connected: boolean; lastFrame: unknown }) {
+  // Three states a learner needs to be able to tell apart at a glance:
+  //   linked  — WS open + at least one frame arrived (cyan)
+  //   stale   — WS dropped but we still have a last frame to show. The
+  //             arena is frozen, not dead; the user should know they
+  //             are looking at the past (ember w/ "stale" word).
+  //   offline — never connected (ember w/ "offline" word)
+  if (connected) {
+    return (
+      <span
+        role="status"
+        aria-label="websocket linked, data is live"
+        className="rounded-sm border border-[color:var(--color-penumbra-cyan)] bg-[color:var(--color-penumbra-cyan-bg)] px-1.5 py-0.5 text-xs uppercase tracking-wider text-[color:var(--color-penumbra-cyan)]"
+      >
+        linked
+      </span>
+    );
+  }
+  const label = lastFrame !== null ? "stale" : "offline";
+  const aria =
+    lastFrame !== null
+      ? "websocket dropped, showing last known frame"
+      : "websocket offline, no data yet";
+  return (
+    <span
+      role="status"
+      aria-label={aria}
+      title={aria}
+      className="rounded-sm border border-[color:var(--color-penumbra-ember)] bg-[color:var(--color-penumbra-ember-bg)] px-1.5 py-0.5 text-xs uppercase tracking-wider text-[color:var(--color-penumbra-ember)]"
+    >
+      {label}
+    </span>
+  );
+}
+
 function NotifPermBadge({ permission }: { permission: NotificationPermissionState }) {
   const badge = permissionBadge(permission);
   return (
@@ -269,15 +353,19 @@ function PanelTab({
   active,
   onClick,
   children,
+  hint,
 }: {
   active: boolean;
   onClick: () => void;
   children: string;
+  hint?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      title={hint}
+      aria-label={hint ? `${children} — ${hint}` : children}
       className={
         active
           ? "border-b border-[color:var(--color-penumbra-cyan)] pb-0.5 text-[color:var(--color-penumbra-cyan)]"

@@ -86,6 +86,19 @@ export function WelcomeOverlay() {
             Click any tile on the right to learn what is behind it. Click <strong>Operator</strong>{" "}
             in the top nav to play a cyber-range scenario yourself.
           </p>
+          <p>
+            Prefer your own terminal? Penumbra ships three CLIs:{" "}
+            <code className="rounded bg-slate-800 px-1 text-[12px] text-sky-300">pna</code> (12
+            attacks),{" "}
+            <code className="rounded bg-slate-800 px-1 text-[12px] text-sky-300">psh</code> (19
+            lessons), and{" "}
+            <code className="rounded bg-slate-800 px-1 text-[12px] text-sky-300">pno</code>{" "}
+            (cyber-range operator). Install with{" "}
+            <code className="rounded bg-slate-800 px-1 text-[12px] text-slate-200">
+              uv tool install ./packages/&lt;name&gt;
+            </code>
+            .
+          </p>
           <p className="text-xs text-slate-400">
             Press <kbd className="rounded border border-slate-700 px-1">?</kbd> anytime for help.
             Default speed is 2 ticks per second &mdash; adjust with the speed widget at the top.

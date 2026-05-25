@@ -88,11 +88,29 @@ function Cell({
   );
 }
 
-function SectionHeader({ children, subtitle }: { children: string; subtitle?: string }) {
+function SectionHeader({
+  children,
+  subtitle,
+  essentials,
+}: {
+  children: string;
+  subtitle?: string;
+  essentials?: boolean;
+}) {
   return (
     <div className="mt-3 mb-1 border-b border-[color:var(--color-penumbra-border)] pb-0.5 first:mt-0">
-      <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--color-penumbra-muted)]">
-        {children}
+      <div className="flex items-baseline gap-2 text-[10px] uppercase tracking-[0.18em] text-[color:var(--color-penumbra-muted)]">
+        <span>{children}</span>
+        {essentials && (
+          <span
+            role="note"
+            title="Start here — the data flow that drives every other tile"
+            aria-label="Essentials — start here"
+            className="rounded-sm border border-[color:var(--color-penumbra-cyan)] bg-[color:var(--color-penumbra-cyan-bg)] px-1 py-[1px] text-[8px] tracking-[0.2em] text-[color:var(--color-penumbra-cyan)]"
+          >
+            essentials
+          </span>
+        )}
       </div>
       {subtitle && (
         <div className="mt-0.5 text-[9px] leading-snug text-[color:var(--color-penumbra-dim)] normal-case tracking-normal">
@@ -104,9 +122,19 @@ function SectionHeader({ children, subtitle }: { children: string; subtitle?: st
 }
 
 export function AnalyticsPanel() {
-  const { snap, history } = useDashboardLive();
+  const { snap, history, error } = useDashboardLive();
   const [openMetric, setOpenMetric] = useState<MetricKind | null>(null);
 
+  if (snap === null && error !== null) {
+    return (
+      <div className="space-y-1 border border-[color:var(--color-penumbra-ember)] bg-[color:var(--color-penumbra-ember-bg)] p-2 text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-ember)]">
+        <div>analytics offline</div>
+        <div className="font-mono text-[9px] normal-case tracking-normal text-[color:var(--color-penumbra-muted)]">
+          {error} · retrying…
+        </div>
+      </div>
+    );
+  }
   if (snap === null) {
     return (
       <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-penumbra-muted)]">
@@ -122,7 +150,10 @@ export function AnalyticsPanel() {
 
   return (
     <div className="space-y-2">
-      <SectionHeader subtitle="Live descriptive + inferential tests on agent trajectories.">
+      <SectionHeader
+        essentials
+        subtitle="Live descriptive + inferential tests on agent trajectories."
+      >
         statistics
       </SectionHeader>
       <div className="grid grid-cols-1 gap-1">
@@ -220,7 +251,10 @@ export function AnalyticsPanel() {
         />
       </div>
 
-      <SectionHeader subtitle="ARIMA / VAR / GARCH / Granger / survival / causal inference on the live stream.">
+      <SectionHeader
+        essentials
+        subtitle="ARIMA / VAR / GARCH / Granger / survival / causal inference on the live stream."
+      >
         econometrics · time series · risk
       </SectionHeader>
       <div className="grid grid-cols-1 gap-1">
@@ -362,7 +396,10 @@ export function AnalyticsPanel() {
         />
       </div>
 
-      <SectionHeader subtitle="Agent purchases, candle markets, CPI/inflation and the Gini coefficient.">
+      <SectionHeader
+        essentials
+        subtitle="Agent purchases, candle markets, CPI/inflation and the Gini coefficient."
+      >
         economy · markets · wealth
       </SectionHeader>
       <div className="grid grid-cols-1 gap-1">
