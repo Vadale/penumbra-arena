@@ -17,6 +17,7 @@ import contextlib
 import hashlib
 import logging
 import time
+from collections import deque
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -123,7 +124,11 @@ class Orchestrator:
     # + rolling history of policy.improved events (surfaced by the
     # /events/policy-improvements endpoint).
     _policy_reward_baseline: float | None = field(default=None, init=False)
-    _policy_improvements: list[Event] = field(default_factory=list, init=False)
+    # Bounded ring (oldest evicted automatically) — the /events/policy
+    # -improvements endpoint reads the last N entries via list(...).
+    _policy_improvements: deque[Event] = field(
+        default_factory=lambda: deque(maxlen=256), init=False
+    )
     # Tier 2 — agent_id → until_tick for an active security block. The
     # orchestrator scans this dict each analytics tick and calls
     # ``unblock_agent`` once ``current_tick >= until_tick``.
@@ -136,7 +141,9 @@ class Orchestrator:
     operator: object | None = field(default=None, init=False)
     operator_context: object | None = field(default=None, init=False)
     operator_queue: object | None = field(default=None, init=False)
-    operator_recent_results: list[object] = field(default_factory=list, init=False)
+    operator_recent_results: deque[object] = field(
+        default_factory=lambda: deque(maxlen=200), init=False
+    )
     operator_initial_coins: float = field(default=100.0, init=False)
     operator_attacks_survived: int = field(default=0, init=False)
     operator_chain_contribution: int = field(default=0, init=False)
@@ -377,19 +384,26 @@ class Orchestrator:
                         "ratio": float(mean_reward / baseline),
                     },
                 )
+                # deque(maxlen=256) evicts oldest automatically — no
+                # cap-check needed. The event bus also keeps a 1024-event
+                # ring so anything older stays recoverable from there.
                 self._policy_improvements.append(improved)
-                # Cap the in-memory history so a long-running session
-                # doesn't grow without bound; the bus already keeps a
-                # 1024-event deque so anything older is recoverable
-                # there too.
-                if len(self._policy_improvements) > 256:
-                    del self._policy_improvements[: len(self._policy_improvements) - 256]
                 bus.emit(improved)
             # Update EMA AFTER the comparison so the spike isn't
             # immediately absorbed.
             self._policy_reward_baseline = ema_alpha * mean_reward + (1.0 - ema_alpha) * baseline
 
         bus.subscribe("ml.policy.updated", on_policy_updated)
+
+    def _cpu_bound_analytics(self) -> None:
+        """Combined recompute + sign/verify call.
+
+        Exists so the analytics loop can hand off both CPU-bound steps
+        to a single thread (one event-loop hop instead of two) without
+        allocating a fresh closure per tick.
+        """
+        self.pipeline.recompute()
+        self.sign_and_verify_moves()
 
     def sign_and_verify_moves(self) -> None:
         """Sign-and-verify the current tick's agent positions.
@@ -529,9 +543,12 @@ class Orchestrator:
             while True:
                 await asyncio.sleep(self.analytics_interval)
                 try:
-                    positions = np.asarray(
-                        [a.position for a in self.simulation.agents], dtype=np.float64
-                    )
+                    # Iterate `self.simulation.agents` ONCE per analytics
+                    # tick; both the positions ndarray and the per-id
+                    # position dict reuse the same snapshot. Saves a
+                    # second O(N) traversal and a transient list at 1 Hz.
+                    agent_snapshot = list(self.simulation.agents)
+                    positions = np.asarray([a.position for a in agent_snapshot], dtype=np.float64)
                     heatmap_density = (
                         self.heatmap.latest.density if self.heatmap.latest is not None else None
                     )
@@ -549,7 +566,7 @@ class Orchestrator:
                     # Drive one market tick: production + price update +
                     # settle sells & buys for any agent that just moved.
                     if self.market is not None:
-                        agent_positions = {a.id: a.position for a in self.simulation.agents}
+                        agent_positions = {a.id: a.position for a in agent_snapshot}
                         rng = self.simulation.seeded.numpy_for("economy")
                         trades = self.market.tick(  # type: ignore[attr-defined]
                             tick=self.simulation.tick_counter,
@@ -577,11 +594,13 @@ class Orchestrator:
                             wealth=self.market.wealth_distribution(),  # type: ignore[attr-defined]
                             tick=self.simulation.tick_counter,
                         )
-                    await asyncio.to_thread(self.pipeline.recompute)
-                    # Sign + verify the current tick's moves. The protocol
-                    # demo is per-tick even though analytics is per-second
-                    # because the heatmap is the cadence we already pay.
-                    await asyncio.to_thread(self.sign_and_verify_moves)
+                    # Batch the two CPU-bound steps into one thread hop
+                    # so we pay only one event-loop context switch per
+                    # analytics tick. Sign+verify of the tick's moves
+                    # shares the heatmap's wall-clock budget; recompute
+                    # runs the consumer ladder at their per-consumer
+                    # cadences.
+                    await asyncio.to_thread(self._cpu_bound_analytics)
                 except Exception:
                     logger.exception("analytics pipeline raised; continuing")
                 iterations += 1
@@ -1064,8 +1083,6 @@ class Orchestrator:
                     session_logger.record(session_id, action, result)  # type: ignore[attr-defined]
                 except Exception:
                     logger.exception("operator session record failed")
-        # Cap the rolling window at 200 results (the dashboard tile in
-        # Tier 2 will render the last 50; 200 leaves room for late
-        # consumers without unbounded growth).
-        if len(self.operator_recent_results) > 200:
-            del self.operator_recent_results[: len(self.operator_recent_results) - 200]
+        # deque(maxlen=200) evicts oldest automatically — no cap-check
+        # needed. Dashboard tile reads the last 50; 200 leaves headroom
+        # for late consumers.

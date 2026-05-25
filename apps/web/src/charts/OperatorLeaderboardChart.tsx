@@ -7,7 +7,7 @@
  * link for the underlying actions.parquet.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Stat } from "./_shared";
 
 interface SessionMeta {
@@ -58,20 +58,37 @@ export function OperatorLeaderboardChart() {
   const [replay, setReplay] = useState<ReplayDiff | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchSessions = useCallback(async () => {
-    try {
-      const res = await fetch("/operator/sessions");
-      if (res.ok) setData((await res.json()) as SessionsResponse);
-    } catch (exc) {
-      setError(String(exc));
-    }
-  }, []);
-
   useEffect(() => {
-    void fetchSessions();
-    const handle = window.setInterval(() => void fetchSessions(), 5000);
-    return () => window.clearInterval(handle);
-  }, [fetchSessions]);
+    // Abort an in-flight request when the next poll fires or the
+    // component unmounts. Without this, a slow /operator/sessions
+    // endpoint accumulates concurrent fetches faster than they resolve
+    // and the React tree thrashes setData with stale-then-fresh races.
+    let cancelled = false;
+    let currentController: AbortController | null = null;
+
+    const poll = async () => {
+      currentController?.abort();
+      const controller = new AbortController();
+      currentController = controller;
+      try {
+        const res = await fetch("/operator/sessions", { signal: controller.signal });
+        if (cancelled || controller.signal.aborted) return;
+        if (res.ok) setData((await res.json()) as SessionsResponse);
+      } catch (exc) {
+        if (cancelled || controller.signal.aborted) return;
+        if (exc instanceof DOMException && exc.name === "AbortError") return;
+        setError(String(exc));
+      }
+    };
+
+    void poll();
+    const handle = window.setInterval(() => void poll(), 5000);
+    return () => {
+      cancelled = true;
+      currentController?.abort();
+      window.clearInterval(handle);
+    };
+  }, []);
 
   const expand = async (sessionId: string) => {
     setError(null);

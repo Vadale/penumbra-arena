@@ -3,8 +3,11 @@
 A detailed, phase-by-phase blueprint for turning Penumbra's existing market
 into a fully-fledged operations-research / supply-chain simulation lab.
 
-**Status**: planning. Not implemented. Wait for the 24h stress test to
-finish before integrating into the live backend (would invalidate metrics).
+**Status**: **SHIPPED 2026-05-23** (Tier 1-4). See `CHANGELOG.md`
+"Logistics layer" section and `packages/core/penumbra_core/logistics*.py`
+for the actual implementation. This document is the original
+specification kept for reference; the as-shipped behaviour may differ
+in detail from the design sketched below.
 
 Sister documents:
 - `ROADMAP.md` — the historical build plan and where we are

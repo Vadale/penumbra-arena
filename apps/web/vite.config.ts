@@ -75,6 +75,10 @@ export default defineConfig({
   },
   build: {
     target: "es2022",
-    sourcemap: true,
+    // Sourcemaps are useful in dev/CI builds but ship raw source paths
+    // + a 10–20 % bundle overhead when uploaded to production. Vite
+    // already emits sourcemaps in `vite dev` regardless of this flag,
+    // so dropping it here only affects `pnpm build` artifacts.
+    sourcemap: process.env.NODE_ENV !== "production",
   },
 });

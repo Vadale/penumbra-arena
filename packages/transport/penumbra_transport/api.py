@@ -282,7 +282,9 @@ def build_app(
         return {"state": "running"}
 
     @app.post("/control/step")
-    async def step(payload: dict[str, object] = Body(default={})) -> dict[str, object]:
+    async def step(
+        payload: dict[str, object] = Body(default_factory=dict),
+    ) -> dict[str, object]:
         """Advance the simulation by ``n`` ticks (default 1) regardless of pause.
 
         Body: ``{"n": int}`` with ``n`` in ``[1, 100]``. Empty body or

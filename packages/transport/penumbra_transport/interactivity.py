@@ -38,10 +38,6 @@ class UnsupportedMetricError(InteractivityError):
     """Raised when an export is requested for an unknown metric kind."""
 
 
-class UnsupportedFormatError(InteractivityError):
-    """Raised when an export format is not one of csv / json / png."""
-
-
 # Original tabular metrics. These flow through the standard "columns +
 # rows" CSV/JSON renderer and the legacy line-chart PNG renderer.
 TABULAR_METRICS: tuple[str, ...] = (
