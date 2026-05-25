@@ -62,6 +62,11 @@ ignore = [
 "packages/learning/**" = ["RUF002", "RUF003"]
 "packages/attacker/**" = ["RUF002", "RUF003"]
 "packages/transport/**" = ["RUF002", "RUF003"]
+# Pedagogical scripts under examples/ use math symbols (Greek letters,
+# em-dashes), use `random` for variety (not crypto), and use list
+# concatenation for readability. We allow the same relaxations crypto/
+# analytics enjoy plus S311 (random) and RUF005 (concat).
+"examples/**" = ["RUF001", "RUF002", "RUF003", "S311", "RUF005", "N806"]
 
 [tool.ruff.format]
 quote-style = "double"
