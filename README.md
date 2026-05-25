@@ -2,191 +2,157 @@
 
 ![Penumbra dashboard — 50 MAPPO agents on encrypted state, live econometrics, EventBus reactions](docs/hero.png)
 
-> A privacy-preserving perpetual multi-agent arena built to teach
-> statistics, linear algebra, modern neural networks, and cutting-edge
-> cryptography in one integrated runtime — with a hands-on adversarial
-> console and a real macOS/Unix shell coach baked in.
->
-> Ships as a **3-in-1 artefact**: a **teaching platform** (~57
-> concept tiles), a **benchmark suite** (Penumbra-Bench), and a
-> **synthetic dataset** on Hugging Face Hub (Penumbra-Data).
+> A privacy-preserving multi-agent arena built to teach statistics,
+> linear algebra, modern neural networks, and cutting-edge cryptography
+> in one integrated runtime — with an adversarial attacker console and
+> a real macOS/Unix shell coach baked in.
 
-**Status**: post-Phase-6b + interactive lab. **961 tests** green
-(856 backend + 105 frontend), strict typing across the stack,
-~72k LOC across 11 packages (44k Python + 28k TypeScript). See
-[`USAGE.md`](USAGE.md) for the
-hands-on quickstart, [`ROADMAP.md`](ROADMAP.md) for the build
-history, [`CHANGELOG.md`](CHANGELOG.md) for recent additions,
-[`SECURITY_AUDIT.md`](SECURITY_AUDIT.md) for the crypto/chain/
-attacker audit, and [`USER_TODO.md`](USER_TODO.md) for the
-maintainer checklist before the public launch.
+**Status**: **v1.0 — feature-frozen.** Future work moves to focused
+spin-off projects that reuse packages from this monorepo (see
+[`CHANGELOG.md`](CHANGELOG.md) v1.0). Maintenance + security fixes
+welcome; new features land in the spin-offs.
 
-**4 React routes**: `/` (dashboard with 99 clickable tiles / 82
-chart components — Lab + Achievements + AgentDetail + BranchCompare
-+ TimeScrubber + Notifications), `/bench` (Penumbra-Bench
-leaderboard), `/operator` (cyber-range Console with Save & Resume),
-`/config` (live runtime configuration). Three CLIs: `pna` (attacker),
-`psh` (shell coach), `pno` (operator) — all honour
-`PENUMBRA_API_URL`.
+## Try it in 30 seconds
 
-## Concept
+```sh
+git clone https://github.com/Vadale/penumbra-arena
+cd penumbra-arena
+make demo
+```
 
-50 autonomous agents compete on a procedurally dynamic graph ("arena").
-Each agent's true state is encrypted (CKKS); the spectator sees only
+`make demo` installs deps (uv + pnpm), boots the FastAPI backend on
+:8100, the Vite dev server on :5173, waits for `/health` to answer,
+and opens your browser. Quit later with `pkill -f penumbra_transport
+.api ; pkill -f vite`. See [`USAGE.md`](USAGE.md) for the hands-on
+tour.
+
+## Want to see ONE primitive without booting the stack?
+
+`examples/` holds 6 self-contained scripts, ~100 LOC each, no backend
+required:
+
+```sh
+uv run python examples/01_dp_budget_walkthrough.py
+uv run python examples/02_ckks_encrypt_aggregate.py
+uv run python examples/04_merkle_cve_2012_2459.py
+```
+
+See [`examples/README.md`](examples/README.md) for the full list.
+
+## What's inside
+
+50 autonomous agents compete on a procedurally dynamic graph. Each
+agent's true state is encrypted (CKKS); the spectator sees only
 DP-noised aggregates. Every pillar fires on every tick:
 
-- **Neural networks** — MAPPO multi-agent RL on Apple MPS, GATv2 path-
-  finder, live PPO training that mutates the inference policy in real
-  time
+- **Neural networks** — MAPPO multi-agent RL on Apple MPS, GATv2
+  pathfinder, live PPO training that mutates the running policy
 - **Cryptography** — CKKS + TFHE homomorphic encryption, differential
-  privacy with budget accounting, post-quantum (Kyber + Dilithium),
-  BLS aggregate signatures, VRF leader election, Wesolowski VDF,
-  Groth16 zk-SNARK verifier, educational SMPC primitives (Shamir +
-  Beaver + Pedersen + Schnorr + LWE TFHE)
+  privacy with budget accounting, post-quantum (Kyber + Dilithium +
+  SPHINCS+), BLS aggregate signatures, VRF leader election, Wesolowski
+  VDF, Groth16 + STARK verifiers, FROST, BBS+, Verkle, threshold ECDSA
 - **Statistics** — descriptive + inferential + econometrics (OLS / IV /
   GMM / VAR / GARCH / Granger / ARIMA) + Monte Carlo (Sobol QMC) +
-  causal (IPW / AIPW) + survival (Kaplan-Meier) + Bayesian (NumPyro
-  SVI) + ANOVA / permutation / Pearson + Spearman + ACF/PACF + ROC
-- **Linear algebra & topology** — graph Laplacians + spectral clustering
-  + persistent homology (ripser) + optimal transport (Sinkhorn)
-- **Economy** — closed-system market with wallets, dynamic ask prices,
-  production, OHLC candles, CPI inflation index, Gini wealth
-  distribution
+  causal (IPW / AIPW) + survival (Kaplan-Meier) + Bayesian (NumPyro SVI)
+- **Linear algebra & topology** — graph Laplacians + spectral
+  clustering + persistent homology + optimal transport
 - **Blockchain** — local PoS-VRF chain with BLS-aggregated finality,
-  mempool, slashing-by-equivocation
-- **Adversarial console** — 12 attacks across 2 tiers (`pna` CLI +
-  dashboard chips): replay, byzantine, DP reconstruction, linkability,
-  timing side-channel, SNARK forgery + agent_fingerprint,
-  trajectory_fingerprint, membership_inference, model_inversion,
-  reward_poisoning, cache_sidechannel
-- **Shell coach** — 19 lessons (11 base + 8 cross-pillar story
-  tutorials) in YAML, command explainer, error helper (`psh` CLI +
-  sidebar)
+  Merkle (CVE-2012-2459-resistant), mempool, slashing
+- **Adversarial** — 12 attack demos (`pna` CLI + dashboard chips)
+- **Shell** — 19 lessons (`psh` CLI + sidebar)
 
-Every concept above has a **clickable dashboard tile** that opens an
-educational modal — 99 tiles in total.
+Every concept has a clickable dashboard tile that opens an educational
+modal. The full concept → file index is in
+[`CONCEPTS.md`](CONCEPTS.md).
 
-## Run
+## Want to fork a focused piece?
 
-```sh
-# Backend
-PENUMBRA_SEED=42 \
-PENUMBRA_MAPPO_CHECKPOINT="$(pwd)/checkpoints/mappo_v0.pt" \
-uv run uvicorn penumbra_transport.api:app --port 8100
+Penumbra is intentionally a monorepo of well-built primitives — easier
+to mine than to extend. The most-extractable parts:
 
-# Frontend (separate terminal)
-PENUMBRA_API_PORT=8100 pnpm --filter web dev
+- **`packages/chain/`** (~95 % reusable) → the seed of
+  `penumbra-chain-sim`, a standalone educational PoS-VRF simulator
+- **`packages/crypto/penumbra_crypto/educational/`** (Shamir + Beaver
+  + Pedersen + Schnorr + TFHE + Yao) → standalone pip package
+  `penumbra-educational-crypto` for SMPC pedagogy
+- **`packages/analytics/`** + `apps/web/src/charts/` → the seed of a
+  stats workspace where users upload their own CSV
 
-# Or everything together
-docker compose up
-```
+If you build something on top of (or out of) Penumbra, open an issue —
+happy to link from the README.
 
-Then open <http://localhost:5173>.
-
-Install the CLIs system-wide:
-
-```sh
-uv tool install ./packages/attacker     # pna --help
-uv tool install ./packages/shell_coach  # psh lessons
-```
-
-## Architecture
-
-Hexagonal. Pure domain in `packages/core/`, adapters elsewhere:
+## Project map
 
 ```
 packages/
-  core/         arena + agent + match + simulation + market economy
-  crypto/       CKKS, TFHE, DP, Kyber, Dilithium, BLS, VRF, VDF, Groth16,
-                educational SMPC (Shamir, Beaver, Pedersen, Schnorr, LWE)
-  chain/        block + Merkle + PoS-VRF consensus + mempool + slashing
-  learning/     MAPPO (CleanRL-style) + GATv2 + LiveTrainer + RewardWeights
-  analytics/    13 streaming consumers + dashboard pipeline orchestrator
-  attacker/     6 attacks + pna CLI
-  shell_coach/  19 YAML lessons (11 base + 8 story) + suggester + explain + psh CLI
-  transport/    FastAPI + WebSocket + PTY bridge + REPL bridge + orchestrator
-apps/web/       React 19 + Vite + TS strict + r3f + tailwind v4 + biome
+  core/         arena + agent + simulation + market economy + logistics
+  crypto/       CKKS, DP, Kyber, Dilithium, BLS, VRF, VDF, Groth16, STARK,
+                FROST, SPHINCS+, BBS+, Verkle, threshold ECDSA, Yao, PSI,
+                mix-net + educational SMPC primitives + defenses
+  chain/        block + Merkle + PoS-VRF + BLS aggregate + slashing
+  learning/     MAPPO + GATv2 + LiveTrainer + federated (DP-SGD, Krum,
+                FedProx, CKKS aggregation) + Rényi DP accountant
+  analytics/    13 streaming consumers + dashboard pipeline
+  attacker/     12 attacks + pna CLI
+  shell_coach/  19 YAML lessons + suggester + explain + psh CLI
+  transport/    FastAPI + WS + PTY + REPL + orchestrator + EventBus
+  operator/     20-action cyber-range mode + 12 scenarios + pno CLI
+  ctf/          5 capture-the-flag challenges
+  notebook/     %penumbra Jupyter magics
+apps/web/       React 19 + Vite + r3f + tailwind v4
 infra/          docker compose + Dockerfiles
 circuits/       circom + snarkjs (multiplier + legal_path Groth16)
-scripts/        training, memory profile, stress test, post-stress analysis
+examples/       6 standalone scripts — one primitive each, no full stack
+scripts/        demo.sh + memory profile + stress test + post-stress analysis
 ```
+
+## Docs
+
+| File | Purpose |
+|---|---|
+| [`README.md`](README.md) | this file — orient + try |
+| [`USAGE.md`](USAGE.md) | hands-on tour, CLI walkthroughs, REST endpoints |
+| [`CONCEPTS.md`](CONCEPTS.md) | every named concept → file:line |
+| [`BUILDING_GUIDE.md`](BUILDING_GUIDE.md) | 10-phase pedagogical re-build |
+| [`CHANGELOG.md`](CHANGELOG.md) | what shipped when, including v1.0 freeze |
+| [`ROADMAP.md`](ROADMAP.md) | build phases and shipped scope |
+| [`CLAUDE.md`](CLAUDE.md) | conventions, architecture, memory budget |
+| [`SECURITY.md`](SECURITY.md) | disclosure process |
+| [`SECURITY_AUDIT.md`](SECURITY_AUDIT.md) | crypto/chain/attacker audit findings |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | setup, conventions, PR process |
+| `packages/<name>/README.md` | per-package "concept taught" + endpoints |
 
 ## Develop
 
 ```sh
-uv sync                                  # install Python workspace
-uv run pytest -q                         # 856 backend tests
-uv run pyright                           # strict
-uv run ruff check . && uv run ruff format --check .
-
-pnpm install                             # install frontend
-pnpm --filter web typecheck              # tsc --noEmit
-pnpm --filter web test                   # 105 vitest
-pnpm --filter web build                  # production bundle
-pnpm --filter web exec biome check src   # lint
+make dev      # boot backend + frontend (no auto-browser)
+make test     # backend pytest (-k "not slow") + frontend vitest
+make lint     # ruff + pyright + biome
+make clean    # remove .venv, node_modules, dist
 ```
-
-The full per-package contracts + endpoint table live in
-[`packages/*/README.md`](packages/) (one per package) and
-[`CLAUDE.md`](CLAUDE.md) at the repo root.
-
-## Documents
-
-| File | What it has |
-|---|---|
-| [`README.md`](README.md) | This file — orientation. |
-| [`USAGE.md`](USAGE.md) | **Hands-on quickstart** — boot, dashboard interactions, all three CLIs (`pna` / `psh` / `pno`), REST endpoints, common workflows, troubleshooting. |
-| [`BUILDING_GUIDE.md`](BUILDING_GUIDE.md) | **Pedagogical re-build guide** — 10 phases, ~15-20h to read, ~80-120h to re-implement. Read this to LEARN how Penumbra works by rebuilding it. |
-| [`EVALUATION_PROMPT.md`](EVALUATION_PROMPT.md) | Anti-leading brief to seek an independent second-opinion verdict from another frontier model. |
-| [`ROADMAP.md`](ROADMAP.md) | Build phases, what shipped where, tag-by-tag. |
-| [`PROMPTING_GUIDE.md`](PROMPTING_GUIDE.md) | Step-by-step recipes for adding features. |
-| [`CLAUDE.md`](CLAUDE.md) | Claude Code instructions: conventions, agent guide, M4 budget. |
-| [`OSS_LAUNCH_ROADMAP.md`](OSS_LAUNCH_ROADMAP.md) | The 12-week timeline to take Penumbra public. |
-| [`OSS_GROWTH_PLAYBOOK.md`](OSS_GROWTH_PLAYBOOK.md) | Deep tactical manual: free + organic stars and visibility (pre-launch SEO, channel etiquette, anti-patterns, KPI dashboard). |
-| [`OSS_PAPER_DRAFT.md`](OSS_PAPER_DRAFT.md) | Working draft of the academic preprint for the OSS launch. |
-| [`LOGISTICS_PLAN.md`](LOGISTICS_PLAN.md) | Proposed Tier-1-to-4 logistics extension (post-launch). |
-| [`FEDERATED_LEARNING_PLAN.md`](FEDERATED_LEARNING_PLAN.md) | Federated learning extension — FedAvg + CKKS-encrypted aggregation + DP-SGD + Byzantine-robust variants (post-launch v1.2). |
-| [`BENCHMARK_PLAN.md`](BENCHMARK_PLAN.md) | **Penumbra-Bench** — 5-task benchmark suite + leaderboard for privacy-aware, adversarially-robust, multi-agent RL. |
-| [`SYNTHETIC_DATA_PLAN.md`](SYNTHETIC_DATA_PLAN.md) | **Penumbra-Data** — multi-modal synthetic dataset on Hugging Face Hub (Mini → Mega tiers) with full generative provenance. |
-| [`EDU_B2B_PITCH.md`](EDU_B2B_PITCH.md) | Enterprise training — secondary commercial direction layered on top of OSS if demand validates. |
-| [`REVIEW_PLAN.md`](REVIEW_PLAN.md) | Operating script for the post-stress review pass. |
-| `packages/<name>/README.md` | Per-package "concept taught" + endpoints + experiments. |
 
 ## Hardware target
 
-Mac mini M4, 16 GB RAM. Tested green; the build holds under 8 GB total
-with browser + all subsystems active. CPU/MPS budgets and tuning levers
-are documented in [`CLAUDE.md`](CLAUDE.md).
+Mac mini M4, 16 GB RAM. Tested green; under 8 GB total with browser
++ all subsystems active. Tuning levers documented in
+[`CLAUDE.md`](CLAUDE.md).
 
 ## License
 
-- Code: **MIT** — see [`LICENSE`](LICENSE).
-- Data: **CC-BY-4.0** — applies to `state/datasets/**` and Hugging
-  Face dataset publications. See [`LICENSE-DATA`](LICENSE-DATA).
+- Code: **MIT** — see [`LICENSE`](LICENSE)
+- Data: **CC-BY-4.0** — applies to `state/datasets/**`. See
+  [`LICENSE-DATA`](LICENSE-DATA)
 
 Sole author: **Vadale**.
 
 ## Citation
 
-If you use Penumbra in research or teaching, please cite via the
-[`CITATION.cff`](CITATION.cff) at the repo root, or use:
-
 ```bibtex
 @software{vadale2026penumbra,
   author = {Vadale},
-  title  = {Penumbra: a privacy-preserving perpetual multi-agent arena},
+  title  = {Penumbra: a privacy-preserving multi-agent arena},
   year   = {2026},
   url    = {https://github.com/Vadale/penumbra-arena},
-  note   = {MIT-licensed code + CC-BY-4.0 dataset}
+  note   = {v1.0, MIT-licensed code + CC-BY-4.0 dataset}
 }
 ```
-
-Paper draft: [`PAPER.md`](PAPER.md) (arXiv-ready).
-
-## Contributing
-
-Read [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup, coding
-conventions, and how to open a PR. Security disclosures go through
-[`SECURITY.md`](SECURITY.md). Community conduct in
-[`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md). Recent changes in
-[`CHANGELOG.md`](CHANGELOG.md).
