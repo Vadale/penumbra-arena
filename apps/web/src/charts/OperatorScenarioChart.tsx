@@ -76,24 +76,34 @@ export function OperatorScenarioChart() {
       return;
     }
     let cancelled = false;
+    let currentController: AbortController | null = null;
     const poll = async () => {
+      // Aborting the previous request means a slow `/status` endpoint
+      // doesn't queue concurrent fetches against a 1 Hz cadence.
+      currentController?.abort();
+      const controller = new AbortController();
+      currentController = controller;
       try {
-        const res = await fetch(`/operator/scenarios/${activeId}/status`);
+        const res = await fetch(`/operator/scenarios/${activeId}/status`, {
+          signal: controller.signal,
+        });
+        if (cancelled || controller.signal.aborted) return;
         if (!res.ok) {
-          if (!cancelled) setError(`HTTP ${res.status} on /operator/scenarios/${activeId}/status`);
+          setError(`HTTP ${res.status} on /operator/scenarios/${activeId}/status`);
           return;
         }
-        if (!cancelled) setStatus((await res.json()) as ProgressPayload);
+        setStatus((await res.json()) as ProgressPayload);
       } catch (exc) {
-        if (!cancelled) {
-          setError(`network error: ${exc instanceof Error ? exc.message : String(exc)}`);
-        }
+        if (cancelled || controller.signal.aborted) return;
+        if (exc instanceof DOMException && exc.name === "AbortError") return;
+        setError(`network error: ${exc instanceof Error ? exc.message : String(exc)}`);
       }
     };
     void poll();
     const handle = window.setInterval(() => void poll(), 1000);
     return () => {
       cancelled = true;
+      currentController?.abort();
       window.clearInterval(handle);
     };
   }, [activeId]);

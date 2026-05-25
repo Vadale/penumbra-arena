@@ -53,22 +53,29 @@ export function useChainLatest(): ChainLatestQuery {
 
   useEffect(() => {
     let cancelled = false;
+    let currentController: AbortController | null = null;
 
     const poll = async () => {
+      // Abort the previous request before the next one fires so a slow
+      // backend can't queue concurrent fetches behind the 3 s interval.
+      currentController?.abort();
+      const controller = new AbortController();
+      currentController = controller;
       try {
-        const response = await fetch("/chain/latest");
+        const response = await fetch("/chain/latest", { signal: controller.signal });
+        if (cancelled || controller.signal.aborted) return;
         if (!response.ok) {
-          if (!cancelled) setError(`HTTP ${response.status} from /chain/latest`);
+          setError(`HTTP ${response.status} from /chain/latest`);
           return;
         }
         const payload = (await response.json()) as ChainLatest;
-        if (cancelled) return;
+        if (cancelled || controller.signal.aborted) return;
         setError(null);
         setLatest(payload);
       } catch (exc) {
-        if (!cancelled) {
-          setError(exc instanceof Error ? exc.message : "fetch /chain/latest failed");
-        }
+        if (cancelled || controller.signal.aborted) return;
+        if (exc instanceof DOMException && exc.name === "AbortError") return;
+        setError(exc instanceof Error ? exc.message : "fetch /chain/latest failed");
       }
     };
 
@@ -76,6 +83,7 @@ export function useChainLatest(): ChainLatestQuery {
     const timer = window.setInterval(poll, POLL_MS);
     return () => {
       cancelled = true;
+      currentController?.abort();
       window.clearInterval(timer);
     };
   }, []);

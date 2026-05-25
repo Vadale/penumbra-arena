@@ -325,15 +325,24 @@ export function useDashboardLive(): DashboardLive {
 
   useEffect(() => {
     let cancelled = false;
+    let currentController: AbortController | null = null;
     const poll = async () => {
+      // Abort the previous in-flight request before issuing the next
+      // one. Without this, a backend slower than POLL_MS would queue
+      // concurrent fetches and the snapshot state would jitter as
+      // late responses overwrite fresher ones.
+      currentController?.abort();
+      const controller = new AbortController();
+      currentController = controller;
       try {
-        const res = await fetch("/dashboard");
+        const res = await fetch("/dashboard", { signal: controller.signal });
+        if (cancelled || controller.signal.aborted) return;
         if (!res.ok) {
-          if (!cancelled) setError(`HTTP ${res.status} from /dashboard`);
+          setError(`HTTP ${res.status} from /dashboard`);
           return;
         }
         const payload = (await res.json()) as DashboardSnapshot;
-        if (cancelled) return;
+        if (cancelled || controller.signal.aborted) return;
         setError(null);
         setSnap(payload);
         setHistory((h) => ({
@@ -357,15 +366,16 @@ export function useDashboardLive(): DashboardLive {
           n_topics: pushRolling(h.n_topics, payload.n_topics),
         }));
       } catch (exc) {
-        if (!cancelled) {
-          setError(exc instanceof Error ? exc.message : "fetch /dashboard failed");
-        }
+        if (cancelled || controller.signal.aborted) return;
+        if (exc instanceof DOMException && exc.name === "AbortError") return;
+        setError(exc instanceof Error ? exc.message : "fetch /dashboard failed");
       }
     };
     void poll();
     const timer = window.setInterval(poll, POLL_MS);
     return () => {
       cancelled = true;
+      currentController?.abort();
       window.clearInterval(timer);
     };
   }, []);
