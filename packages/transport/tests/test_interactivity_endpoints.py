@@ -195,9 +195,9 @@ def test_export_chart_extended_metric_png(metric: str) -> None:
         assert response.status_code == 200, response.text
         assert response.headers.get("content-type", "").startswith("image/png")
         assert response.content[:8] == b"\x89PNG\r\n\x1a\n"
-        assert (
-            len(response.content) > 1024
-        ), f"{metric} png unexpectedly small ({len(response.content)} bytes)"
+        assert len(response.content) > 1024, (
+            f"{metric} png unexpectedly small ({len(response.content)} bytes)"
+        )
 
 
 @pytest.mark.parametrize(

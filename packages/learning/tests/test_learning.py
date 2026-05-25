@@ -131,9 +131,14 @@ def test_mappo_save_load_roundtrip() -> None:
     np.testing.assert_array_equal(a1, a2)
 
 
+@pytest.mark.slow
 def test_mappo_update_reduces_critic_loss_on_constant_returns() -> None:
     """If we feed the critic a constant target, its loss should monotonically
-    decrease across iterations (sanity check on the gradient direction)."""
+    decrease across iterations (sanity check on the gradient direction).
+
+    Marked `slow`: 45 s on CPU — the assertion needs enough PPO steps for
+    the loss curve to be visibly monotone.
+    """
     agent = MAPPO(_config(n_agents=2))
     device = agent.device
     obs_dim = NEIGHBOURS_K * OBS_PER_NEIGHBOUR

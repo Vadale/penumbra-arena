@@ -14,9 +14,9 @@ import numpy as np
 from penumbra_analytics.dashboard_pipeline import DashboardPipeline
 
 
-def _build_pipeline_with_fast_inflation() -> (
-    tuple[DashboardPipeline, list[tuple[str, dict[str, object]]]]
-):
+def _build_pipeline_with_fast_inflation() -> tuple[
+    DashboardPipeline, list[tuple[str, dict[str, object]]]
+]:
     """Pipeline whose inflation cadence is 0 so each recompute() fires it.
 
     Other cadences are pushed to "never" so the test stays focused on

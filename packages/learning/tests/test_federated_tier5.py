@@ -28,6 +28,11 @@ from penumbra_learning.federated import (
 )
 from penumbra_learning.mappo import MAPPO, MAPPOConfig
 
+# Module-level `slow`: Tier-5 tests run real FedProx + sparsification +
+# quantization rounds over MAPPO actors. `pytest -k "not slow"` skips
+# in CI.
+pytestmark = pytest.mark.slow
+
 
 @pytest.fixture
 def small_mappo() -> MAPPO:

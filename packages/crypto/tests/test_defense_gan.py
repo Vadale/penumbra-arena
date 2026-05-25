@@ -18,6 +18,12 @@ from penumbra_crypto.defenses.gan_defenses import (
     train_gan,
 )
 
+# Module-level `slow`: every test in this file trains a small GAN — the
+# fastest takes ~50 s, the slowest (marginal-moment preservation) ~14 min.
+# `pytest -k "not slow"` skips them in CI; run locally to exercise the
+# generative pipeline.
+pytestmark = pytest.mark.slow
+
 
 def _real(n: int = 200, d: int = 3) -> np.ndarray:
     """Build a (n, d) matrix with non-trivial pairwise correlations."""

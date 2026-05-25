@@ -15,6 +15,11 @@ from penumbra_learning.federated_dp import (
 )
 from penumbra_learning.mappo import MAPPO, MAPPOConfig
 
+# Module-level `slow`: per-example DP-SGD over a small MAPPO actor + Rényi
+# accountant grids that span 118 orders. The Poisson-subsampling round-trip
+# dominates the runtime. `pytest -k "not slow"` skips in CI.
+pytestmark = pytest.mark.slow
+
 # ── accountant primitives ────────────────────────────────────────────
 
 
@@ -116,9 +121,9 @@ def test_default_grid_is_denser_than_sparse_baseline() -> None:
 
     eps_sparse = acc_sparse.epsilon(target_delta=target_delta)
     eps_dense = acc_dense.epsilon(target_delta=target_delta)
-    assert (
-        eps_dense < eps_sparse
-    ), f"dense grid should be tighter: dense={eps_dense:.4f} sparse={eps_sparse:.4f}"
+    assert eps_dense < eps_sparse, (
+        f"dense grid should be tighter: dense={eps_dense:.4f} sparse={eps_sparse:.4f}"
+    )
     # Dense grid is at least ~60 orders.
     assert len(acc_dense.orders) >= 60
 

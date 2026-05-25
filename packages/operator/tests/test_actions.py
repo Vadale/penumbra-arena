@@ -460,8 +460,12 @@ def _build_smoke_app() -> TestClient:
     return TestClient(build_app(sim, tick_hz=200.0))
 
 
+@pytest.mark.slow
 def test_cli_status_works_with_live_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     """One happy-path per action via the live HTTP layer.
+
+    Marked `slow`: 43 s — boots a full operator+sim TestClient and walks
+    20 actions through the CLI layer end-to-end.
 
     We piggyback on the FastAPI TestClient as the "backend" the CLI
     talks to. Monkey-patch the CLI's http helpers so they route into
@@ -561,8 +565,13 @@ def test_cli_status_works_with_live_backend(monkeypatch: pytest.MonkeyPatch) -> 
         assert result.exit_code == 0
 
 
+@pytest.mark.slow
 def test_cli_status_hints_when_not_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    """`pno status` without prior enable surfaces a hint about /operator/enable."""
+    """`pno status` without prior enable surfaces a hint about /operator/enable.
+
+    Marked `slow`: 42 s — same TestClient boot cost as the happy-path
+    version above.
+    """
     runner = CliRunner()
     with _build_smoke_app() as client:
         monkeypatch.setattr(

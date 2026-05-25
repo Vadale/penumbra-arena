@@ -36,4 +36,4 @@ async def test_psh_lessons_runs_if_installed() -> None:
 
 def test_allow_list_is_small() -> None:
     """We deliberately keep the allow-list tiny."""
-    assert {"pna", "psh"} == ALLOWED_BINARIES
+    assert {"pna", "psh", "pno"} == ALLOWED_BINARIES

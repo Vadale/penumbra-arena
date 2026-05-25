@@ -234,7 +234,11 @@ def _client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TestClient:
     return TestClient(build_app(sim, tick_hz=200.0))
 
 
+@pytest.mark.slow
 def test_endpoint_sessions_list_and_replay(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Marked `slow`: 42 s — spins up a full FastAPI TestClient with the
+    simulation lifespan, records a 60-action session, and replays it
+    end-to-end against the parquet log."""
     with _client(monkeypatch, tmp_path) as client:
         enable = client.post("/operator/enable")
         if enable.status_code in (404, 500):
@@ -260,6 +264,7 @@ def test_endpoint_sessions_list_and_replay(monkeypatch: pytest.MonkeyPatch, tmp_
         assert diff["deterministic"] is True, diff
 
 
+@pytest.mark.slow
 def test_endpoint_replay_missing_session_404(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

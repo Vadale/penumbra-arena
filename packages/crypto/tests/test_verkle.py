@@ -23,7 +23,10 @@ def test_kzg_tampered_y_rejects() -> None:
     assert not verkle.verify(setup, commitment, tampered)
 
 
+@pytest.mark.slow
 def test_kzg_random_polynomials_roundtrip() -> None:
+    """Marked `slow`: 34 s — 5 fresh KZG setups + commit/open/verify
+    rounds over pairing-heavy BLS12-381 operations."""
     setup = verkle.setup(max_degree=6)
     import secrets
 

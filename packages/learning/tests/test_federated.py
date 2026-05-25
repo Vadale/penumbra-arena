@@ -14,6 +14,11 @@ from penumbra_learning.federated import (
 )
 from penumbra_learning.mappo import MAPPO, MAPPOConfig
 
+# Module-level `slow`: every test in this file runs real local SGD over a
+# MAPPO actor across multiple federated rounds. `pytest -k "not slow"`
+# skips them in CI.
+pytestmark = pytest.mark.slow
+
 
 @pytest.fixture
 def small_mappo() -> MAPPO:

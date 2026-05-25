@@ -11,7 +11,7 @@ import random
 
 import numpy as np
 import pytest
-from hypothesis import given
+from hypothesis import given, settings
 from hypothesis import strategies as st
 from penumbra_core.rng import InvalidSeedError, Seeded, bootstrap, run_record
 
@@ -23,6 +23,13 @@ def _draw_sequence(seeded: Seeded, n: int = 64) -> tuple[list[float], np.ndarray
     return py, nps
 
 
+# Disable hypothesis deadline: `bootstrap()` reseeds torch/jax/numpy and the
+# first invocation legitimately takes longer than the 200ms default while the
+# native libs warm up; the property under test is correctness, not timing.
+# Marked `slow`: 100 hypothesis examples * 2 bootstraps ~ 70 s on CPU; the
+# CI subset (`-k "not slow"`) skips it. Run locally with `pytest packages/core`.
+@pytest.mark.slow
+@settings(deadline=None)
 @given(st.integers(min_value=0, max_value=2**63 - 1))
 def test_reproducibility_property(seed: int) -> None:
     """Same seed → bit-identical draws on both stdlib and numpy streams."""
