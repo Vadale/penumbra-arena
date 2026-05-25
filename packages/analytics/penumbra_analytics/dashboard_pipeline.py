@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 import time
-from collections import deque
+from collections import Counter, defaultdict, deque
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -864,22 +864,21 @@ class DashboardPipeline:
         window = list(self._purchases)[-800:]
         total_purchases = len(window)
         total_revenue = float(sum(float(getattr(p, "price_paid", 0.0)) for p in window))
-        cats: dict[str, int] = {}
-        prod_units: dict[int, int] = {}
-        prod_revenue: dict[int, float] = {}
-        baskets: dict[int, int] = {}  # tick → quantity-bucket histogram via per-agent grouping
-        per_agent_basket: dict[tuple[int, int], int] = {}
+        # defaultdict/Counter drop the `dict.get(key, 0) + ...` ritual the
+        # original used four times; same big-O, less hash-table churn and
+        # less arithmetic on Python integers per row.
+        cats: defaultdict[str, int] = defaultdict(int)
+        prod_units: defaultdict[int, int] = defaultdict(int)
+        prod_revenue: defaultdict[int, float] = defaultdict(float)
+        per_agent_basket: defaultdict[tuple[int, int], int] = defaultdict(int)
         for p in window:
-            cat = str(getattr(p, "category", "?"))
-            cats[cat] = cats.get(cat, 0) + int(getattr(p, "quantity", 1))
+            qty = int(getattr(p, "quantity", 1))
+            cats[str(getattr(p, "category", "?"))] += qty
             pid = int(getattr(p, "product_id", -1))
-            prod_units[pid] = prod_units.get(pid, 0) + int(getattr(p, "quantity", 1))
-            prod_revenue[pid] = prod_revenue.get(pid, 0.0) + float(getattr(p, "price_paid", 0.0))
-            key = (int(getattr(p, "agent_id", -1)), int(getattr(p, "tick", 0)))
-            per_agent_basket[key] = per_agent_basket.get(key, 0) + int(getattr(p, "quantity", 1))
-        for size in per_agent_basket.values():
-            bucket = min(size, 10)  # cap at 10+
-            baskets[bucket] = baskets.get(bucket, 0) + 1
+            prod_units[pid] += qty
+            prod_revenue[pid] += float(getattr(p, "price_paid", 0.0))
+            per_agent_basket[(int(getattr(p, "agent_id", -1)), int(getattr(p, "tick", 0)))] += qty
+        baskets: dict[int, int] = dict(Counter(min(size, 10) for size in per_agent_basket.values()))
 
         from penumbra_core.economy import PRODUCT_CATALOG
 
@@ -891,7 +890,11 @@ class DashboardPipeline:
         return EconomySnapshot(
             total_purchases=total_purchases,
             total_revenue=total_revenue,
-            category_counts=cats,
+            # Convert defaultdicts to plain dicts at the boundary so the
+            # snapshot serialises as a regular JSON object (defaultdict
+            # subclasses dict but downstream type checkers and the
+            # FastAPI response_model are stricter when handed plain dicts).
+            category_counts=dict(cats),
             top_products=tuple(top_products),
             basket_histogram=tuple(sorted(baskets.items())),
         )
