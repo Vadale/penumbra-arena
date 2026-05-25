@@ -6,6 +6,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+(no unreleased changes)
+
+## [1.0.0] - 2026-05-25 — feature freeze
+
+Penumbra is **feature-complete as a single monorepo**. Future work
+moves to focused mini-projects ("spin-offs") that reuse packages from
+this repo rather than new features on `main`. Top spin-off candidate:
+`penumbra-chain-sim` (~95% reuse of `packages/chain/`); free side-quest:
+`penumbra-educational-crypto` extracted to PyPI from
+`packages/crypto/penumbra_crypto/educational/`.
+
+This release tags the post-Phase-6b post-polish state:
+- 856 backend tests + 105 vitest, all green
+- 11 packages, 99 dashboard tiles, 82 chart components, 4 React routes
+- CI green on ubuntu-latest in ~14 min (Python + frontend jobs)
+- 3 CLIs (`pna`, `psh`, `pno`) honour `PENUMBRA_API_URL`
+- All security-audit findings from the crypto-auditor sweep are closed
+- Cross-pillar EventBus with 5 handler tiers wired in the orchestrator
+- Operator cyber-range mode + 12 starter scenarios + session replay
+
+No new features will land on `main` other than security fixes. The
+entry-experience polish (Makefile, examples/, CONCEPTS.md, package
+READMEs as tutorials) ships as part of this release; see the
+"Entry-experience polish" section below.
+
+### Added — Entry-experience polish (2026-05-25)
+
+- `Makefile` at repo root with discoverable targets: `make demo` runs
+  the clone-to-browser one-shot (uv sync + pnpm install + boot backend
+  + frontend + health-check + open browser); `make dev`, `make test`,
+  `make lint`, `make clean`.
+- `scripts/demo.sh` — the actual orchestrator the `make demo` target
+  invokes. Idempotent, handles existing-process-on-port, prints clear
+  status, waits for `/health` 200 OK before opening browser.
+- `examples/` directory with 6 self-contained scripts (~100 LOC each)
+  that exercise one Penumbra primitive WITHOUT booting the full
+  runtime. `uv run python examples/XX.py` works on a fresh clone.
+- `CONCEPTS.md` at repo root — alphabetical glossary of ~50 concepts
+  with `file:line` pointers. Grep-friendly entry for anyone looking
+  for "where is the X implementation".
+- README reduced to a one-screen hook (was 188 lines). Status line
+  now reads "v1.0 — feature frozen; future work in focused spin-offs".
+- 3 package READMEs rewritten as standalone tutorials:
+  `packages/crypto/README.md` (implementing CKKS + DP step by step),
+  `packages/attacker/README.md` (the 12 attacks and what defends each),
+  `packages/learning/README.md` (MAPPO + DP-SGD walkthrough).
+
 ### Added — Interactive lab + runtime tunables + chart PNG quality (2026-05-24)
 
 After end-to-end user testing of the v3 dashboard, surfaced + fixed:
@@ -281,5 +328,6 @@ After end-to-end user testing of the v3 dashboard, surfaced + fixed:
 Initial pre-public release. See `ROADMAP.md` for the Phase 0-8 build
 history.
 
-[Unreleased]: https://github.com/Vadale/penumbra-arena/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Vadale/penumbra-arena/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/Vadale/penumbra-arena/releases/tag/v1.0.0
 [0.1.0]: https://github.com/Vadale/penumbra-arena/releases/tag/v0.1.0
